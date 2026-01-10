@@ -18,9 +18,5 @@ makemigrations:
 superuser:
 	poetry run python -m penninibet.manage createsuperuser
 
-# .PHONY: update
-# update: install migrate ;
-
-.PHONY: activate
-activate:
-	source venv/Scripts/activate
+.PHONY: update
+update: install migrate ;
