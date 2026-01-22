@@ -19,6 +19,7 @@ pyyaml = "^6.0.3"
 
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^4.5.1"
+colorlog = "^6.10.1"
 
 
 [tool.ruff]
@@ -33,11 +34,6 @@ exclude = [
   ".venv",
   "migrations",
 ]
-
-[tool.ruff.format]
-# Opcional: padrão Black já é default; só mude se quiser:
-# quote-style = "double"
-# indent-style = "space"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM", "PLE"]
