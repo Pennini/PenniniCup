@@ -1,5 +1,6 @@
 import yaml
 
+
 def yaml_coerce(value):
     """
     Coerce a string value to its corresponding Python data type using YAML parsing.

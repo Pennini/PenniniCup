@@ -13,4 +13,4 @@ IN_DOCKER (where the value would be True)
 """
 
 # globals() is a dictionary of global variables
-deep_update(globals(), get_settings_from_environment(ENV_PREFIX)) # type: ignore
+deep_update(globals(), get_settings_from_environment(ENV_PREFIX))  # type: ignore

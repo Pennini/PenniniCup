@@ -1,0 +1,17 @@
+[flake8]
+ignore = E501
+; C101,D403,F403,F405,I100,I201,W503,W504
+exclude =
+    .git,
+    .mypy_cache,
+    __pycache__,
+    venv
+filename = *.py
+accept-encodings = utf-8
+inline-quotes = single
+max-complexity = 12
+max-linenumber = 119
+multiline-quotes = double
+per-file-ignores =
+    src/config/settings/docker.py:F821
+    src/config/settings/envvars.py:F821
