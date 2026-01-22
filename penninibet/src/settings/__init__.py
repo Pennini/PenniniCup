@@ -20,6 +20,9 @@ if not os.path.isabs(LOCAL_SETTINGS_PATH):
 
 include(
     'base.py',
+    'custom.py',
     optional(LOCAL_SETTINGS_PATH),
+    'envvars.py',
+    'docker.py',
 )
 
