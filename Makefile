@@ -4,19 +4,19 @@ install:
 
 .PHONY: runserver
 runserver:
-	poetry run python -m penninibet.manage runserver
+	poetry run python -m src.manage runserver
 
 .PHONY: migrate
 migrate:
-	poetry run python -m penninibet.manage migrate
+	poetry run python -m src.manage migrate
 
 .PHONY: makemigrations
 makemigrations:
-	poetry run python -m penninibet.manage makemigrations
+	poetry run python -m src.manage makemigrations
 
 .PHONY: createsuperuser
 superuser:
-	poetry run python -m penninibet.manage createsuperuser
+	poetry run python -m src.manage createsuperuser
 
 .PHONY: update
 update: install migrate ;

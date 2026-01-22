@@ -1,5 +1,5 @@
-from penninibet.core.utils.collections import deep_update
-from penninibet.core.utils.settings import get_settings_from_environment
+from src.common.utils.collections import deep_update
+from src.common.utils.settings import get_settings_from_environment
 
 """
 This takes env variables with matching prefix, strips out the prefix, and adds it to global settings.
