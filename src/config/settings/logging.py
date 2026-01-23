@@ -8,12 +8,10 @@ LOGGING = {
             "fmt_keys": {
                 "level": "levelname",
                 "message": "message",
-                "timestamp": "timestamp",
+                "asctime": "asctime",
                 "logger": "name",
-                "module": "module",
                 "function": "funcName",
                 "line": "lineno",
-                "thread": "threadName",
             },
         },
     },

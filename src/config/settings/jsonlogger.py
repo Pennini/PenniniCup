@@ -1,9 +1,11 @@
-import datetime as dt
 import json
 import logging
 from typing import override
 
 LOG_RECORD_BUILTIN_ATTRS = {
+    "name",
+    "msg",
+    "args",
     "levelname",
     "levelno",
     "pathname",
@@ -14,13 +16,16 @@ LOG_RECORD_BUILTIN_ATTRS = {
     "stack_info",
     "lineno",
     "funcName",
+    "created",
     "msecs",
     "relativeCreated",
     "thread",
     "threadName",
-    "process",
     "processName",
-    "message",
+    "process",
+    "taskName",
+    "asctime",
+    "timestamp",
 }
 
 
@@ -35,10 +40,7 @@ class MyJSONFormatter(logging.Formatter):
         return json.dumps(message, default=str)
 
     def _prepare_log_dict(self, record: logging.LogRecord) -> dict:
-        always_fields = {
-            "message": record.getMessage(),
-            "timestamp": dt.datetime.fromtimestamp(record.created, tz=dt.UTC).isoformat(),
-        }
+        always_fields = {"level": record.levelname, "message": record.getMessage()}
 
         if record.exc_info:
             always_fields["exc_info"] = self.formatException(record.exc_info)
@@ -53,7 +55,10 @@ class MyJSONFormatter(logging.Formatter):
         message.update(always_fields)
 
         for key, value in record.__dict__.items():
-            if key not in LOG_RECORD_BUILTIN_ATTRS and key not in self.fmt_keys.values():
-                message[key] = value
+            if key in LOG_RECORD_BUILTIN_ATTRS:
+                continue
+            if key in self.fmt_keys.values():
+                continue
+            message[key] = value
 
         return message
