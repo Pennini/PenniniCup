@@ -26,5 +26,9 @@ makemigrations:
 superuser:
 	poetry run python -m src.manage createsuperuser
 
+.PHONY: tailwind
+tailwind:
+	poetry run python -m src.manage tailwind start
+
 .PHONY: update
 update: install migrate install-pre-commit ;

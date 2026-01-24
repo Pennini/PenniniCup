@@ -1,0 +1,21 @@
+{% load static %} {% load static tailwind_tags %}
+<!doctype html>
+<html lang="pt-br">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+        <title>{% block title %}PenniniCup{% endblock %}</title>
+
+        <link rel="stylesheet" href="{% static 'css/styles.css' %}" />
+        {% tailwind_css %} {% block extra_head %} {% endblock %}
+    </head>
+    <body>
+        {% include "components/top_nav.html" %}
+
+        <h1 class="sr-only">Main content</h1>
+        <main class="min-h-screen pb-20 lg:pb-0 max-w-7xl mx-auto px-4 py-6">{% block content %}{% endblock %}</main>
+
+        {% include "components/bottom_nav.html" %}
+    </body>
+</html>

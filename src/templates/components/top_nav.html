@@ -1,0 +1,80 @@
+<nav class="hidden lg:flex items-center h-16 px-6 border-b bg-white">
+    <!-- Left -->
+    <div class="flex items-center gap-4">
+        <!-- Team Dropdown -->
+        <div class="relative group">
+            <button class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-100">
+                <img src="/static/img/logo.svg" class="h-6 w-6 rounded" />
+                <span class="font-medium">Tailwind Labs</span>
+
+                <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
+                    <path
+                        fill-rule="evenodd"
+                        d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.94a.75.75 0 111.08 1.04l-4.24 4.5a.75.75 0 01-1.08 0l-4.24-4.5a.75.75 0 01.02-1.06z"
+                    />
+                </svg>
+            </button>
+
+            <div class="absolute left-0 mt-2 w-64 bg-white border rounded-lg shadow-lg hidden group-hover:block z-50">
+                <a href="#" class="block px-4 py-2 hover:bg-gray-50"> ⚙️ Settings </a>
+
+                <div class="border-t my-1"></div>
+
+                <a href="#" class="flex items-center gap-2 px-4 py-2 hover:bg-gray-50">
+                    <img src="/static/img/logo.svg" class="h-5 w-5 rounded" />
+                    Tailwind Labs
+                </a>
+
+                <a href="#" class="flex items-center gap-2 px-4 py-2 hover:bg-gray-50">
+                    <span class="h-5 w-5 bg-purple-500 text-white rounded flex items-center justify-center text-xs"
+                        >WC</span
+                    >
+                    Workcation
+                </a>
+
+                <div class="border-t my-1"></div>
+
+                <a href="#" class="block px-4 py-2 hover:bg-gray-50"> ➕ New team… </a>
+            </div>
+        </div>
+
+        <!-- Links -->
+        <div class="flex gap-4 ml-4">
+            <a href="{% url 'penninicup:index' %}" class="font-medium text-gray-900">Home</a>
+            <a href="#" class="text-gray-600 hover:text-gray-900">Events</a>
+            <a href="#" class="text-gray-600 hover:text-gray-900">Orders</a>
+        </div>
+    </div>
+
+    <!-- Spacer -->
+    <div class="flex-1"></div>
+
+    <!-- Right -->
+    <div class="flex items-center gap-3">
+        <a href="#">🔍</a>
+        <a href="#">📥</a>
+
+        <!-- Profile Dropdown -->
+        <div class="relative group">
+            <button class="rounded-md overflow-hidden">
+                <img src="/static/img/profile.jpg" class="h-8 w-8 object-cover" />
+            </button>
+
+            <div class="absolute right-0 mt-2 w-64 bg-white border rounded-lg shadow-lg hidden group-hover:block z-50">
+                <a href="#" class="block px-4 py-2 hover:bg-gray-50">👤 My profile</a>
+                <a href="#" class="block px-4 py-2 hover:bg-gray-50">⚙️ Settings</a>
+
+                <div class="border-t my-1"></div>
+
+                <a href="#" class="block px-4 py-2 hover:bg-gray-50">🛡 Privacy policy</a>
+                <a href="#" class="block px-4 py-2 hover:bg-gray-50">💡 Share feedback</a>
+
+                <div class="border-t my-1"></div>
+
+                <a href="{% url 'accounts:logout' %}" class="block px-4 py-2 hover:bg-gray-50 text-red-600">
+                    🚪 Sign out
+                </a>
+            </div>
+        </div>
+    </div>
+</nav>
