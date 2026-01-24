@@ -1,0 +1,17 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>{% block title %}PenniniCup{% endblock %}</title>
+
+        <link rel="stylesheet" href="{% static 'css/styles.css' %}" />
+
+        {% block extra_head %} {% endblock %}
+    </head>
+    <body>
+        <h1 class="flex text-3xl font-bold underline justify-center">PenniniCup</h1>
+        {% block content %} {% endblock %}
+    </body>
+</html>

@@ -2,4 +2,4 @@ from django.apps import AppConfig
 
 
 class PenninicupConfig(AppConfig):
-    name = "penninicup"
+    name = "src.penninicup"

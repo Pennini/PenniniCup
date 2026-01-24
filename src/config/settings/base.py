@@ -16,7 +16,11 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "penninicup",
+    # Third-party apps
+    "rest_framework",
+    # Local apps
+    "src.accounts.apps.AccountsConfig",
+    "src.penninicup.apps.PenninicupConfig",
 ]
 
 MIDDLEWARE = [
@@ -34,7 +38,7 @@ ROOT_URLCONF = "src.config.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "src" / "templates"],  # type: ignore # noqa
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -96,6 +100,13 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = "static/"
+STATICFILES_DIRS = [
+    BASE_DIR / "src" / "static",  # type: ignore # noqa
+]
+
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/"
+LOGIN_URL = "/accounts/login/"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
