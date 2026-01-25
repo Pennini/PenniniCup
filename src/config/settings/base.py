@@ -19,8 +19,8 @@ INSTALLED_APPS = [
     # Third-party apps
     "rest_framework",
     "tailwind",
-    "src.theme",
     # Local apps
+    "src.theme",
     "src.accounts.apps.AccountsConfig",
     "src.penninicup.apps.PenninicupConfig",
 ]
@@ -115,7 +115,7 @@ LOGIN_URL = "/accounts/login/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
-TAILWIND_APP_NAME = "theme"
+TAILWIND_APP_NAME = "src.theme"
 if DEBUG:
     # Add django_browser_reload only in DEBUG mode
     INSTALLED_APPS += ["django_browser_reload"]
