@@ -7,16 +7,17 @@ app_name = "accounts"
 
 urlpatterns = [
     path("register/", views.RegisterView.as_view(), name="register"),
+    path("register/<uuid:token>/", views.RegisterView.as_view(), name="register_with_token"),
     path(
         "login/",
-        auth_views.LoginView.as_view(template_name="accounts/login.html", redirect_authenticated_user=True),
+        auth_views.LoginView.as_view(
+            template_name="accounts/login.html", redirect_authenticated_user=True, next_page="penninicup:index"
+        ),
         name="login",
     ),
     path(
         "logout/",
-        auth_views.LogoutView.as_view(
-            template_name="accounts/logged_out.html",
-        ),
+        auth_views.LogoutView.as_view(template_name="accounts/logout.html", next_page="accounts:login"),
         name="logout",
     ),
 ]

@@ -1,0 +1,112 @@
+{% extends "accounts/auth.html" %} {% block page_title %}PenniniCup — Cadastro{% endblock %} {% block auth_content %}
+{% if bolao_name %}
+<div class="mb-4 rounded-md p-3 text-sm bg-orange-500/10 text-orange-400 border border-orange-500/20">
+    <div class="flex items-start gap-2">
+        <span>🎉</span>
+        <div class="flex-1">
+            <p class="font-semibold">Você foi convidado!</p>
+            <p class="text-xs mt-1">{{ bolao_name }}</p>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<form method="post" action="{{ request.path }}" class="space-y-4">
+    {% csrf_token %} {% if not token %}
+    <div>
+        <label class="text-sm text-neutral-300">Token de Convite</label>
+        <div class="relative mt-1">
+            <i data-lucide="key" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400"></i>
+            <input
+                type="text"
+                name="invite_token"
+                required
+                placeholder="Cole seu token de convite aqui"
+                class="w-full rounded-md bg-neutral-800 border {% if form.invite_token.errors %}border-red-500{% else %}border-neutral-700{% endif %} pl-10 pr-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-orange-500 font-mono text-sm"
+            />
+        </div>
+        {% if form.invite_token.errors %}
+        <p class="text-xs text-red-400 mt-1">{{ form.invite_token.errors.0 }}</p>
+        {% endif %}
+        <p class="text-xs text-neutral-500 mt-1">Solicite o token ao administrador do bolão</p>
+    </div>
+    {% else %}
+    <input type="hidden" name="invite_token" value="{{ token }}" />
+    {% endif %} {% csrf_token %}
+
+    <div>
+        <label class="text-sm text-neutral-300">Nome de usuário</label>
+        <div class="relative mt-1">
+            <i data-lucide="user" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400"></i>
+            <input
+                type="text"
+                name="username"
+                required
+                placeholder="Seu apelido no bolão"
+                class="w-full rounded-md bg-neutral-800 border border-neutral-700 pl-10 pr-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+        </div>
+        {% if form.username.errors %}
+        <p class="text-xs text-red-400 mt-1">{{ form.username.errors.0 }}</p>
+        {% endif %}
+    </div>
+
+    <div>
+        <label class="text-sm text-neutral-300">Email</label>
+        <div class="relative mt-1">
+            <i data-lucide="mail" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400"></i>
+            <input
+                type="email"
+                name="email"
+                required
+                placeholder="seu@email.com"
+                class="w-full rounded-md bg-neutral-800 border border-neutral-700 pl-10 pr-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+        </div>
+        {% if form.email.errors %}
+        <p class="text-xs text-red-400 mt-1">{{ form.email.errors.0 }}</p>
+        {% endif %}
+    </div>
+
+    <div>
+        <label class="text-sm text-neutral-300">Senha</label>
+        <div class="relative mt-1">
+            <i data-lucide="lock" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400"></i>
+            <input
+                type="password"
+                name="password1"
+                required
+                placeholder="Mínimo 8 caracteres"
+                class="w-full rounded-md bg-neutral-800 border border-neutral-700 pl-10 pr-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+        </div>
+        {% if form.password1.errors %}
+        <p class="text-xs text-red-400 mt-1">{{ form.password1.errors.0 }}</p>
+        {% endif %}
+    </div>
+
+    <div>
+        <label class="text-sm text-neutral-300">Confirmar senha</label>
+        <div class="relative mt-1">
+            <i data-lucide="lock" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400"></i>
+            <input
+                type="password"
+                name="password2"
+                required
+                placeholder="Digite a senha novamente"
+                class="w-full rounded-md bg-neutral-800 border border-neutral-700 pl-10 pr-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+        </div>
+        {% if form.password2.errors %}
+        <p class="text-xs text-red-400 mt-1">{{ form.password2.errors.0 }}</p>
+        {% endif %}
+    </div>
+
+    <button
+        type="submit"
+        class="w-full rounded-md bg-orange-500 py-2 font-semibold text-black hover:bg-orange-400 transition"
+    >
+        Criar conta
+    </button>
+</form>
+{% endblock %}

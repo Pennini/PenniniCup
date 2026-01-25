@@ -1,0 +1,58 @@
+{% extends "accounts/auth.html" %} {% block page_title %}PenniniCup — Login{% endblock %} {% block auth_content %}
+<form method="post" action="{% url 'accounts:login' %}" class="space-y-4">
+    {% csrf_token %} {% if form.non_field_errors %}
+    <div class="rounded-md p-3 text-sm bg-red-500/10 text-red-400 border border-red-500/20">
+        <div class="flex items-start gap-2">
+            <span class="text-red-400">❌</span>
+            <div class="flex-1">
+                {% for error in form.non_field_errors %}
+                <p>{{ error }}</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div>
+        <label class="text-sm text-neutral-300">Nome de usuário</label>
+        <div class="relative mt-1">
+            <i data-lucide="user" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400"></i>
+            <input
+                type="text"
+                name="username"
+                required
+                value="{{ form.username.value|default:'' }}"
+                placeholder="Seu nome de usuário"
+                class="w-full rounded-md bg-neutral-800 border {% if form.username.errors %}border-red-500{% else %}border-neutral-700{% endif %} pl-10 pr-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+        </div>
+        {% if form.username.errors %}
+        <p class="text-xs text-red-400 mt-1">{{ form.username.errors.0 }}</p>
+        {% endif %}
+    </div>
+
+    <div>
+        <label class="text-sm text-neutral-300">Senha</label>
+        <div class="relative mt-1">
+            <i data-lucide="lock" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400"></i>
+            <input
+                type="password"
+                name="password"
+                required
+                placeholder="••••••"
+                class="w-full rounded-md bg-neutral-800 border {% if form.password.errors %}border-red-500{% else %}border-neutral-700{% endif %} pl-10 pr-3 py-2 text-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+            />
+        </div>
+        {% if form.password.errors %}
+        <p class="text-xs text-red-400 mt-1">{{ form.password.errors.0 }}</p>
+        {% endif %}
+    </div>
+
+    <button
+        type="submit"
+        class="w-full rounded-md bg-orange-500 py-2 font-semibold text-black hover:bg-orange-400 transition"
+    >
+        Entrar
+    </button>
+</form>
+{% endblock %}

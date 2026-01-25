@@ -53,17 +53,30 @@
     <div class="flex items-center gap-3">
         <!-- Profile Dropdown -->
         <div class="relative group">
-            <button class="rounded-md overflow-hidden">
+            <button class="rounded-md overflow-hidden hover:ring-2 hover:ring-orange-500 transition">
                 <img src="/static/img/profile.jpg" class="h-8 w-8 object-cover" />
             </button>
 
-            <div class="absolute right-0 mt-2 w-64 border rounded-lg shadow-lg hidden group-hover:block z-50">
-                <a href="#" class="block px-4 py-2 hover:bg-accent">👤 My profile</a>
+            <div
+                class="absolute right-0 mt-2 w-64 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50"
+            >
+                <a
+                    href="#"
+                    class="block px-4 py-2 text-neutral-300 hover:bg-neutral-700 hover:text-orange-500 transition rounded-t-lg"
+                >
+                    👤 Meu perfil
+                </a>
 
-                <div class="border-t my-1"></div>
+                <div class="border-t border-neutral-700"></div>
+
                 <form method="post" action="{% url 'accounts:logout' %}">
                     {% csrf_token %}
-                    <button type="submit" class="w-full text-left px-4 py-2 hover:bg-accent">🚪 Logout</button>
+                    <button
+                        type="submit"
+                        class="w-full text-left px-4 py-2 text-red-400 hover:bg-neutral-700 hover:text-red-300 transition rounded-b-lg"
+                    >
+                        🚪 Sair
+                    </button>
                 </form>
             </div>
         </div>
@@ -71,7 +84,6 @@
     {% else %}
     <div class="flex items-center">
         <a href="{% url 'accounts:login' %}" class="nav-action px-4 py-2"> Entrar </a>
-        <a href="{% url 'accounts:register' %}" class="nav-action secondary ml-2 px-4 py-2"> Registrar </a>
     </div>
     {% endif %}
 </nav>

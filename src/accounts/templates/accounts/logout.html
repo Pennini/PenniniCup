@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8" />
+        <title>PenniniCup — Logout</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+        {% load static tailwind_tags %} {% tailwind_css %}
+
+        <script src="https://unpkg.com/lucide@latest"></script>
+    </head>
+
+    <body class="min-h-screen flex items-center justify-center bg-neutral-950 p-4 text-white">
+        <div class="w-full max-w-md">
+            <!-- Logo / Header -->
+            <div class="text-center mb-8">
+                <div class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-orange-500">
+                    <i data-lucide="log-out" class="w-8 h-8 text-black"></i>
+                </div>
+                <h1 class="text-3xl font-bold text-orange-500">Até logo!</h1>
+                <p class="text-neutral-400 mt-2">Você foi desconectado com sucesso</p>
+            </div>
+
+            <!-- Card -->
+            <div class="rounded-xl border border-neutral-800 bg-neutral-900/80 backdrop-blur p-6 text-center">
+                <p class="text-neutral-300 mb-6">Obrigado por participar do PenniniCup!</p>
+
+                <div class="space-y-3">
+                    <a
+                        href="{% url 'accounts:login' %}"
+                        class="block w-full rounded-md bg-orange-500 py-2 font-semibold text-black hover:bg-orange-400 transition"
+                    >
+                        Entrar novamente
+                    </a>
+
+                    <a
+                        href="{% url 'penninicup:index' %}"
+                        class="block w-full rounded-md bg-transparent border border-neutral-700 py-2 font-semibold text-neutral-300 hover:border-orange-500 hover:text-orange-500 transition"
+                    >
+                        Voltar para o início
+                    </a>
+                </div>
+            </div>
+
+            <p class="mt-6 text-center text-sm text-neutral-400">⚽ Volte sempre!</p>
+        </div>
+
+        <script>
+            lucide.createIcons();
+        </script>
+    </body>
+</html>
