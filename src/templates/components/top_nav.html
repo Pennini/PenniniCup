@@ -1,11 +1,12 @@
-<nav class="hidden lg:flex items-center h-16 px-6 border-b bg-white">
+{% load static %}
+<nav class="max-lg:hidden flex items-center h-16 px-6 border-b bg-white">
     <!-- Left -->
     <div class="flex items-center gap-4">
         <!-- Team Dropdown -->
         <div class="relative group">
             <button class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-100">
-                <img src="/static/img/logo.svg" class="h-6 w-6 rounded" />
-                <span class="font-medium">Tailwind Labs</span>
+                <img src="{% static 'img/logo_penninicup.png' %}" class="h-6 w-6 rounded" />
+                <span class="font-medium">PenniniCup</span>
 
                 <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
                     <path
