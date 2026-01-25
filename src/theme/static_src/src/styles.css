@@ -1,6 +1,21 @@
 @import "tailwindcss";
 @plugin "daisyui";
 
+@theme {
+  --color-primary: #ff6600;
+  --color-primary-text: #ffffff;
+  --color-secondary: #262626;
+  --color-secondary-text: #fafafa;
+  --color-accent: #ff6600;
+  --color-accent-text: #ffffff;
+  --color-background: #121212;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-primary-text);
+}
+
 /**
   * A catch-all path to Django template files, JavaScript, and Python files
   * that contain Tailwind CSS classes and will be scanned by Tailwind to generate the final CSS file.

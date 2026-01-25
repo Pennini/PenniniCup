@@ -4,57 +4,43 @@
     <div class="flex items-center gap-4">
         <!-- Team Dropdown -->
         <div class="relative group">
-            <button class="flex items-center gap-2 px-3 py-2 rounded-md hover:bg-gray-100">
+            <a href="{% url 'penninicup:index' %}" class="flex items-center gap-2 px-3 py-2 rounded-md cursor:pointer">
                 <img src="{% static 'img/logo_penninicup.png' %}" class="h-6 w-6 rounded" />
                 <span class="font-medium">PenniniCup</span>
-
-                <svg class="w-4 h-4" viewBox="0 0 20 20" fill="currentColor">
-                    <path
-                        fill-rule="evenodd"
-                        d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.94a.75.75 0 111.08 1.04l-4.24 4.5a.75.75 0 01-1.08 0l-4.24-4.5a.75.75 0 01.02-1.06z"
-                    />
-                </svg>
-            </button>
-
-            <div class="absolute left-0 mt-2 w-64 bg-white border rounded-lg shadow-lg hidden group-hover:block z-50">
-                <a href="#" class="block px-4 py-2 hover:bg-gray-50"> ⚙️ Settings </a>
-
-                <div class="border-t my-1"></div>
-
-                <a href="#" class="flex items-center gap-2 px-4 py-2 hover:bg-gray-50">
-                    <img src="/static/img/logo.svg" class="h-5 w-5 rounded" />
-                    Tailwind Labs
-                </a>
-
-                <a href="#" class="flex items-center gap-2 px-4 py-2 hover:bg-gray-50">
-                    <span class="h-5 w-5 bg-purple-500 text-white rounded flex items-center justify-center text-xs"
-                        >WC</span
-                    >
-                    Workcation
-                </a>
-
-                <div class="border-t my-1"></div>
-
-                <a href="#" class="block px-4 py-2 hover:bg-gray-50"> ➕ New team… </a>
-            </div>
+            </a>
         </div>
 
         <!-- Links -->
-        <div class="flex gap-4 ml-4">
-            <a href="{% url 'penninicup:index' %}" class="font-medium text-gray-900">Home</a>
-            <a href="#" class="text-gray-600 hover:text-gray-900">Events</a>
-            <a href="#" class="text-gray-600 hover:text-gray-900">Orders</a>
+        {% with request.resolver_match.view_name as current_view %}
+        <div class="flex gap-4 ml-4 h-full">
+            <a
+                href="{% url 'penninicup:index' %}"
+                class="flex items-center h-16 px-1 border-b-2 -mb-[1px] transition-colors {% if current_view == 'penninicup:index' %}border-blue-600 text-gray-900{% else %}border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300{% endif %}"
+            >
+                Home
+            </a>
+            <a
+                href="#"
+                class="flex items-center h-16 px-1 border-b-2 -mb-[1px] transition-colors {% if current_view == 'events:list' %}border-blue-600 text-gray-900{% else %}border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300{% endif %}"
+            >
+                Events
+            </a>
+            <a
+                href="#"
+                class="flex items-center h-16 px-1 border-b-2 -mb-[1px] transition-colors {% if current_view == 'orders:list' %}border-blue-600 text-gray-900{% else %}border-transparent text-gray-600 hover:text-gray-900 hover:border-gray-300{% endif %}"
+            >
+                Orders
+            </a>
         </div>
+        {% endwith %}
     </div>
 
     <!-- Spacer -->
     <div class="flex-1"></div>
 
+    {% if user.is_authenticated %}
     <!-- Right -->
     <div class="flex items-center gap-3">
-        <a href="#">🔍</a>
-        <a href="#">📥</a>
-
         <!-- Profile Dropdown -->
         <div class="relative group">
             <button class="rounded-md overflow-hidden">
@@ -63,12 +49,6 @@
 
             <div class="absolute right-0 mt-2 w-64 bg-white border rounded-lg shadow-lg hidden group-hover:block z-50">
                 <a href="#" class="block px-4 py-2 hover:bg-gray-50">👤 My profile</a>
-                <a href="#" class="block px-4 py-2 hover:bg-gray-50">⚙️ Settings</a>
-
-                <div class="border-t my-1"></div>
-
-                <a href="#" class="block px-4 py-2 hover:bg-gray-50">🛡 Privacy policy</a>
-                <a href="#" class="block px-4 py-2 hover:bg-gray-50">💡 Share feedback</a>
 
                 <div class="border-t my-1"></div>
 
@@ -78,4 +58,17 @@
             </div>
         </div>
     </div>
+    {% else %}
+    <div>
+        <a href="{% url 'accounts:login' %}" class="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">
+            Entrar
+        </a>
+        <a
+            href="{% url 'accounts:register' %}"
+            class="ml-2 px-4 py-2 bg-gray-200 text-gray-900 rounded-md hover:bg-gray-300"
+        >
+            Cadastrar
+        </a>
+    </div>
+    {% endif %}
 </nav>
