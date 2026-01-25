@@ -1,19 +1,143 @@
 @import "tailwindcss";
-@plugin "daisyui";
+@plugin "daisyui" {
+  themes: false;
+  styled: true;
+  base: true;
+  utils: true;
+}
 
 @theme {
+  /* Custom color palette */
   --color-primary: #ff6600;
-  --color-primary-text: #ffffff;
   --color-secondary: #262626;
-  --color-secondary-text: #fafafa;
-  --color-accent: #ff6600;
-  --color-accent-text: #ffffff;
   --color-background: #121212;
+  --color-surface: #1b1b1b;
+
+  /* Tailwind color system */
+  --color-brand-orange: #ff6600;
+  --color-brand-dark: #262626;
+  --color-brand-darker: #1b1b1b;
+  --color-brand-darkest: #121212;
+  --color-brand-border: #2e2e2e;
+  --color-brand-text: #fafafa;
+}
+
+/* DaisyUI theme override */
+:root {
+  --p: 25 100% 50%; /* Primary: Orange */
+  --pc: 0 0% 100%; /* Primary content: White */
+  --s: 0 0% 15%; /* Secondary: Dark gray */
+  --sc: 0 0% 98%; /* Secondary content: Light */
+  --a: 25 100% 50%; /* Accent: Orange */
+  --ac: 0 0% 100%; /* Accent content: White */
+  --n: 0 0% 15%; /* Neutral: Dark */
+  --nc: 0 0% 98%; /* Neutral content: Light */
+  --b1: 0 0% 7%; /* Base background */
+  --b2: 0 0% 10%; /* Base secondary */
+  --b3: 0 0% 12%; /* Base tertiary */
+  --bc: 0 0% 98%; /* Base content */
 }
 
 body {
-  background: var(--color-background);
-  color: var(--color-primary-text);
+  background-color: var(--color-secondary);
+  color: var(--color-brand-text);
+}
+
+/* Navigation Components Layer */
+@layer components {
+  /* Top Navigation Bar */
+  .app-navbar {
+    background: linear-gradient(
+      90deg,
+      var(--color-brand-dark) 0%,
+      var(--color-brand-darker) 50%,
+      var(--color-brand-dark) 100%
+    );
+    color: var(--color-brand-text);
+    border-bottom: 1px solid var(--color-brand-border);
+    box-shadow: 0 10px 30px rgb(0 0 0 / 0.25);
+    backdrop-filter: blur(8px);
+  }
+
+  .app-navbar a {
+    color: inherit;
+    transition-property: color, border-color, opacity, transform;
+    transition-duration: 150ms;
+    transition-timing-function: ease;
+  }
+
+  .app-navbar a:hover,
+  .app-navbar a:focus-visible {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+  }
+
+  .app-navbar .nav-link {
+    border-color: transparent;
+  }
+
+  .app-navbar .nav-link-active,
+  .app-navbar a[aria-current="page"] {
+    color: var(--color-primary);
+    border-color: var(--color-primary);
+    font-weight: 600;
+  }
+
+  .app-navbar .nav-action {
+    color: #ffffff;
+    background-color: var(--color-primary);
+    border-radius: 9999px;
+    padding: 0.5rem 1rem;
+    box-shadow: 0 10px 20px rgb(255 102 0 / 0.35);
+    transition: all 150ms ease;
+  }
+
+  .app-navbar .nav-action:hover {
+    color: var(--color-brand-text);
+    box-shadow: 0 15px 25px rgb(255 102 0 / 0.45);
+    transform: translateY(-1px);
+  }
+
+  .app-navbar .nav-action.secondary {
+    background-color: transparent;
+    color: var(--color-brand-text);
+    border: 1px solid var(--color-brand-border);
+  }
+
+  .app-navbar .nav-action.secondary:hover {
+    border-color: var(--color-primary);
+    box-shadow: none;
+  }
+
+  /* Bottom Navigation Bar */
+  .bottom-nav {
+    background: linear-gradient(
+      180deg,
+      var(--color-brand-dark) 0%,
+      var(--color-brand-darker) 100%
+    );
+    color: var(--color-brand-text);
+    border-color: var(--color-brand-border);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    box-shadow: 0 -10px 30px rgb(0 0 0 / 0.35);
+  }
+
+  .bottom-nav .nav-link {
+    color: inherit;
+    transition: all 150ms ease;
+  }
+
+  .bottom-nav .nav-link:hover,
+  .bottom-nav .nav-link:focus-visible {
+    color: var(--color-primary);
+    transform: translateY(-2px);
+  }
+
+  .bottom-nav .nav-link-active,
+  .bottom-nav a[aria-current="page"] {
+    color: var(--color-primary);
+    font-weight: 600;
+  }
 }
 
 /**

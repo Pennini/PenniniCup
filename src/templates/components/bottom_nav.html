@@ -1,23 +1,80 @@
-<nav class="fixed bottom-0 left-0 right-0 bg-white border-t lg:hidden z-50">
+{% with request.resolver_match.view_name as current_view %}
+<nav class="bottom-nav fixed bottom-0 left-0 right-0 border-t lg:hidden z-50">
     <div class="flex justify-around h-16">
-        <a href="{% url 'penninicup:index' %}" class="flex flex-col items-center justify-center text-xs">
+        <a
+            href="{% url 'penninicup:index' %}"
+            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'penninicup:index' %}nav-link-active{% endif %}"
+            {%
+            if
+            current_view=""
+            ="penninicup:index"
+            %}aria-current="page"
+            {%
+            endif
+            %}
+        >
             🏠
             <span>Início</span>
         </a>
 
-        <a href="#" class="flex flex-col items-center justify-center text-xs">
+        {% if user.is_authenticated %}
+        <a
+            href="#"
+            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'ranking:list' %}nav-link-active{% endif %}"
+            {%
+            if
+            current_view=""
+            ="ranking:list"
+            %}aria-current="page"
+            {%
+            endif
+            %}
+        >
             🏆
             <span>Ranking</span>
         </a>
 
-        <a href="#" class="flex flex-col items-center justify-center text-xs">
+        <a
+            href="#"
+            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'bets:list' %}nav-link-active{% endif %}"
+            {%
+            if
+            current_view=""
+            ="bets:list"
+            %}aria-current="page"
+            {%
+            endif
+            %}
+        >
             🎯
             <span>Palpites</span>
         </a>
 
-        <a href="#" class="flex flex-col items-center justify-center text-xs">
+        <a
+            href="#"
+            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'profile:view' %}nav-link-active{% endif %}"
+            {%
+            if
+            current_view=""
+            ="profile:view"
+            %}aria-current="page"
+            {%
+            endif
+            %}
+        >
             👤
             <span>Perfil</span>
         </a>
+        {% else %}
+        <a href="{% url 'accounts:login' %}" class="nav-link flex flex-col items-center justify-center text-xs">
+            🔐
+            <span>Entrar</span>
+        </a>
+        <a href="{% url 'accounts:register' %}" class="nav-link flex flex-col items-center justify-center text-xs">
+            📝
+            <span>Registrar</span>
+        </a>
+        {% endif %}
     </div>
 </nav>
+{% endwith %}

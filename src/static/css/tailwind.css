@@ -1,7 +1,0 @@
-@source "../../templates/**/*.html";
-@source "../../penninicup/templates/**/*.html";
-@source "../../accounts/templates/**/*.html";
-
-@tailwind base;
-@tailwind components;
-@tailwind utilities;

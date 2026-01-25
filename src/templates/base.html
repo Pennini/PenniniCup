@@ -14,7 +14,20 @@
         {% include "components/top_nav.html" %}
 
         <h1 class="sr-only">Main content</h1>
-        <main class="min-h-screen pb-20 lg:pb-0 max-w-7xl mx-auto px-4 py-6">{% block content %}{% endblock %}</main>
+        <main class="min-h-screen pb-20 lg:pb-0 max-w-7xl mx-auto px-4 py-6">
+            {% if messages %}
+            <div class="mb-4">
+                {% for message in messages %}
+                <div
+                    class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %} mb-2"
+                    role="alert"
+                >
+                    {{ message }}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %} {% block content %}{% endblock %}
+        </main>
 
         {% include "components/bottom_nav.html" %}
     </body>
