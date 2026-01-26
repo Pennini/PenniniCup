@@ -9,6 +9,8 @@
 
         <link rel="icon" type="image/png" href="{% static 'img/favicon_penninicup.png' %}" />
         {% tailwind_css %} {% block extra_head %} {% endblock %}
+
+        <script src="https://unpkg.com/lucide@latest"></script>
     </head>
     <body>
         {% include "components/top_nav.html" %}
@@ -29,5 +31,9 @@
         </main>
 
         {% include "components/bottom_nav.html" %} {% block extra_scripts %} {% endblock %}
+
+        <script>
+            lucide.createIcons();
+        </script>
     </body>
 </html>

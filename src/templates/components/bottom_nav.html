@@ -3,7 +3,7 @@
     <div class="flex justify-around h-16">
         <a
             href="{% url 'penninicup:index' %}"
-            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'penninicup:index' %}nav-link-active{% endif %}"
+            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'penninicup:index' %}nav-link-active{% else %}text-neutral-400{% endif %}"
             {%
             if
             current_view=""
@@ -13,14 +13,14 @@
             endif
             %}
         >
-            🏠
+            <i data-lucide="house" class="w-4 h-4"></i>
             <span>Início</span>
         </a>
 
         {% if user.is_authenticated %}
         <a
             href="#"
-            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'ranking:list' %}nav-link-active{% endif %}"
+            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'ranking:list' %}nav-link-active{% else %}text-neutral-400{% endif %}"
             {%
             if
             current_view=""
@@ -30,13 +30,13 @@
             endif
             %}
         >
-            🏆
+            <i data-lucide="award" class="w-4 h-4"></i>
             <span>Ranking</span>
         </a>
 
         <a
             href="#"
-            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'bets:list' %}nav-link-active{% endif %}"
+            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'bets:list' %}nav-link-active{% else %}text-neutral-400{% endif %}"
             {%
             if
             current_view=""
@@ -46,13 +46,13 @@
             endif
             %}
         >
-            🎯
+            <i data-lucide="target" class="w-4 h-4"></i>
             <span>Palpites</span>
         </a>
 
         <a
             href="#"
-            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'profile:view' %}nav-link-active{% endif %}"
+            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'profile:view' %}nav-link-active{% else %}text-neutral-400{% endif %}"
             {%
             if
             current_view=""
@@ -62,12 +62,15 @@
             endif
             %}
         >
-            👤
+            <i data-lucide="user-round" class="w-4 h-4"></i>
             <span>Perfil</span>
         </a>
         {% else %}
-        <a href="{% url 'accounts:login' %}" class="nav-link flex flex-col items-center justify-center text-xs">
-            🔐
+        <a
+            href="{% url 'accounts:login' %}"
+            class="nav-link flex flex-col items-center justify-center text-xs text-neutral-400"
+        >
+            <i data-lucide="lock" class="w-4 h-4"></i>
             <span>Entrar</span>
         </a>
         {% endif %}

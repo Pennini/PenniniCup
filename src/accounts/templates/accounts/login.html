@@ -3,7 +3,7 @@
     {% csrf_token %} {% if form.non_field_errors %}
     <div class="rounded-md p-3 text-sm bg-red-500/10 text-red-400 border border-red-500/20">
         <div class="flex items-start gap-2">
-            <span class="text-red-400">❌</span>
+            <i data-lucide="x" class="w-4 h-4 text-red-400"></i>
             <div class="flex-1">
                 {% for error in form.non_field_errors %}
                 <p>{{ error }}</p>

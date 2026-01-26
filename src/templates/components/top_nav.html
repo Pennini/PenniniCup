@@ -54,7 +54,7 @@
         <!-- Profile Dropdown -->
         <div class="relative group">
             <button class="rounded-md overflow-hidden hover:ring-2 hover:ring-orange-500 transition">
-                <img src="/static/img/profile.jpg" class="h-8 w-8 object-cover" />
+                <i data-lucide="circle-user-round" class="w-8 h-8 text-neutral-300"></i>
             </button>
 
             <div
@@ -62,9 +62,10 @@
             >
                 <a
                     href="#"
-                    class="block px-4 py-2 text-neutral-300 hover:bg-neutral-700 hover:text-orange-500 transition rounded-t-lg"
+                    class="flex items-center gap-2 px-4 py-2 text-neutral-300 hover:bg-neutral-700 hover:text-orange-500 transition rounded-t-lg"
                 >
-                    👤 Meu perfil
+                    <i data-lucide="user-round" class="w-4 h-4"></i>
+                    <span>Meu perfil</span>
                 </a>
 
                 <div class="border-t border-neutral-700"></div>
@@ -73,9 +74,10 @@
                     {% csrf_token %}
                     <button
                         type="submit"
-                        class="w-full text-left px-4 py-2 text-red-400 hover:bg-neutral-700 hover:text-red-300 transition rounded-b-lg"
+                        class="w-full flex items-center gap-2 text-left px-4 py-2 text-red-400 hover:bg-neutral-700 hover:text-red-300 transition rounded-b-lg"
                     >
-                        🚪 Sair
+                        <i data-lucide="log-out" class="w-4 h-4"></i>
+                        <span>Sair</span>
                     </button>
                 </form>
             </div>

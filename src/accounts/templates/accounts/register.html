@@ -1,15 +1,17 @@
 {% extends "accounts/auth.html" %} {% block page_title %}PenniniCup — Cadastro{% endblock %} {% block auth_content %}
-{% if bolao_name %}
+{% comment %} {% if bolao_name %} {% endcomment %}
 <div class="mb-4 rounded-md p-3 text-sm bg-orange-500/10 text-orange-400 border border-orange-500/20">
     <div class="flex items-start gap-2">
-        <span>🎉</span>
+        <span><i data-lucide="party-popper" class="w-4 h-4"></i></span>
         <div class="flex-1">
-            <p class="font-semibold">Você foi convidado!</p>
+            <p class="font-semibold">Você se registrou com sucesso!</p>
+            {% comment %}
             <p class="text-xs mt-1">{{ bolao_name }}</p>
+            {% endcomment %}
         </div>
     </div>
 </div>
-{% endif %}
+{% comment %} {% endif %} {% endcomment %}
 
 <form method="post" action="{{ request.path }}" class="space-y-4">
     {% csrf_token %} {% if not token %}
