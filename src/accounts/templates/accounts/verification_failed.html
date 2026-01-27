@@ -1,5 +1,6 @@
 {% extends "accounts/auth.html" %} {% block page_title %}PenniniCup — Erro na Verificação{% endblock %} {% block
 auth_content %}
+
 <div class="text-center space-y-4">
     <div class="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-red-500/10">
         <i data-lucide="x-circle" class="w-10 h-10 text-red-500"></i>
@@ -40,4 +41,5 @@ auth_content %}
         </a>
     </div>
 </div>
-{% endblock %}
+
+{% endblock auth_content %}

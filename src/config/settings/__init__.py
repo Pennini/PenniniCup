@@ -23,7 +23,12 @@ if not os.path.isabs(LOCAL_SETTINGS_PATH):
     LOCAL_SETTINGS_PATH = str(BASE_DIR / LOCAL_SETTINGS_PATH)
 
 
-include(
+# Determine when we should load the test overrides. We prefer an explicit
+# profile flag, but also allow CI/pytest markers to avoid surprises.
+SETTINGS_PROFILE = os.getenv(f"{ENV_PREFIX}SETTINGS_PROFILE", "").lower()
+RUNNING_TESTS = SETTINGS_PROFILE == "test" or os.getenv("PYTEST_CURRENT_TEST") or os.getenv("DJANGO_TESTING")
+
+settings_modules = [
     "base.py",
     "jsonlogger.py",
     "logging.py",
@@ -31,4 +36,10 @@ include(
     optional(LOCAL_SETTINGS_PATH),
     "envvars.py",
     "docker.py",
-)
+]
+
+if RUNNING_TESTS:
+    # Insert right after base so test overrides take precedence for DB/email.
+    settings_modules.insert(1, "test.py")
+
+include(*settings_modules)
