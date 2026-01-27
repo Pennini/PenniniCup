@@ -1,10 +1,15 @@
 import os.path
 from pathlib import Path
 
+from dotenv import load_dotenv
 from split_settings.tools import include, optional
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent.parent.parent
+
+# Carregar variáveis de ambiente do arquivo .env (APENAS AQUI)
+env_path = BASE_DIR / ".env"
+load_dotenv(dotenv_path=env_path)
 
 # Namespacing our own custom environment variables
 ENV_PREFIX = "PENNINIBET_"

@@ -1,11 +1,14 @@
+{% load static %} {% load static tailwind_tags %}
 <!doctype html>
 <html lang="pt-BR">
     <head>
         <meta charset="UTF-8" />
-        <title>{% block page_title %}PenniniCup — Login{% endblock %}</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+        <title>{% block title %}PenniniCup - Entrar{% endblock %}</title>
 
-        {% load static tailwind_tags %} {% tailwind_css %}
+        <link rel="icon" type="image/png" href="{% static 'img/favicon_penninicup.png' %}" />
+        {% tailwind_css %} {% block extra_head %} {% endblock %}
 
         <script src="https://unpkg.com/lucide@latest"></script>
     </head>
@@ -21,7 +24,7 @@
                     <div
                         class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-orange-500 shadow-[0_10px_25px_rgba(255,102,0,0.6)] hover:shadow-[0_15px_30px_rgba(255,102,0,0.8)]"
                     >
-                        <i data-lucide="trophy" class="w-8 h-8 text-black"></i>
+                        <i data-lucide="trophy" class="w-8 h-8 text-neutral-700"></i>
                     </div>
                     <h1 class="text-3xl font-bold text-orange-500">PenniniCup</h1>
                 </a>

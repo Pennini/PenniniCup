@@ -23,7 +23,7 @@ makemigrations:
 	poetry run python -m src.manage makemigrations
 
 .PHONY: createsuperuser
-superuser:
+createsuperuser:
 	poetry run python -m src.manage createsuperuser
 
 .PHONY: tailwind

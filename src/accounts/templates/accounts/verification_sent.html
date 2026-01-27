@@ -1,0 +1,33 @@
+{% extends "accounts/auth.html" %} {% block page_title %}PenniniCup — Verifique seu E-mail{% endblock %} {% block
+auth_content %}
+<div class="text-center space-y-4">
+    <div class="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-orange-500/10">
+        <i data-lucide="mail" class="w-10 h-10 text-orange-500"></i>
+    </div>
+
+    <h2 class="text-2xl font-bold text-white">Verifique seu E-mail</h2>
+
+    <p class="text-neutral-300">
+        Enviamos um link de confirmação para<br />
+        <span class="font-semibold text-white">{{ user.email }}</span>
+    </p>
+
+    <p class="text-sm text-neutral-400">Clique no link no e-mail para ativar sua conta. O link expira em 24 horas.</p>
+
+    <div class="pt-4 space-y-2">
+        <p class="text-xs text-neutral-500">Não recebeu o e-mail?</p>
+        <a
+            href="{% url 'accounts:resend_verification' %}"
+            class="inline-block text-sm text-orange-500 hover:text-orange-400 transition"
+        >
+            Reenviar e-mail de verificação
+        </a>
+    </div>
+
+    <div class="pt-6 border-t border-neutral-800">
+        <a href="{% url 'penninicup:index' %}" class="text-sm text-neutral-400 hover:text-white transition">
+            ← Voltar para o início
+        </a>
+    </div>
+</div>
+{% endblock %}

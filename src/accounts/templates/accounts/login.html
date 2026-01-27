@@ -48,6 +48,12 @@
         {% endif %}
     </div>
 
+    <div class="flex items-center justify-end">
+        <a href="{% url 'accounts:password_reset' %}" class="text-sm text-orange-500 hover:text-orange-400 transition">
+            Esqueceu sua senha?
+        </a>
+    </div>
+
     <button
         type="submit"
         class="w-full rounded-md bg-orange-500 py-2 font-semibold text-black hover:bg-orange-400 transition"

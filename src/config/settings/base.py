@@ -1,3 +1,5 @@
+import os
+
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = NotImplemented
 
@@ -89,9 +91,9 @@ AUTH_PASSWORD_VALIDATORS = [
 # Internationalization
 # https://docs.djangoproject.com/en/4.2/topics/i18n/
 
-LANGUAGE_CODE = "en-us"
+LANGUAGE_CODE = "pt-br"
 
-TIME_ZONE = "UTC"
+TIME_ZONE = "America/Sao_Paulo"
 
 USE_I18N = True
 
@@ -112,6 +114,23 @@ MEDIA_ROOT = BASE_DIR / "media"  # type: ignore # noqa
 LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
 LOGIN_URL = "/accounts/login/"
+
+# Email Configuration
+# Para desenvolvimento, usa console backend (imprime e-mails no terminal)
+# Para produção, configure as variáveis de ambiente no .env
+
+EMAIL_BACKEND = os.getenv("EMAIL_BACKEND", "django.core.mail.backends.console.EmailBackend")
+EMAIL_HOST = os.getenv("EMAIL_HOST", "smtp.gmail.com")
+EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
+EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").lower() == "true"
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
+# DEFAULT_FROM_EMAIL usa o mesmo EMAIL_HOST_USER (Gmail exige que sejam iguais)
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+EMAIL_TIMEOUT = 10
+
+# Custom User Model
+AUTH_USER_MODEL = "accounts.CustomUser"
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field

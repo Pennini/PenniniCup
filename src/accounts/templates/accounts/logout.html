@@ -1,11 +1,14 @@
+{% load static %} {% load static tailwind_tags %}
 <!doctype html>
 <html lang="pt-BR">
     <head>
         <meta charset="UTF-8" />
-        <title>PenniniCup — Logout</title>
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+        <title>{% block title %}PenniniCup - Logout{% endblock %}</title>
 
-        {% load static tailwind_tags %} {% tailwind_css %}
+        <link rel="icon" type="image/png" href="{% static 'img/favicon_penninicup.png' %}" />
+        {% tailwind_css %} {% block extra_head %} {% endblock %}
 
         <script src="https://unpkg.com/lucide@latest"></script>
     </head>

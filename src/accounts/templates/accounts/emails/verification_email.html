@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="pt-BR">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>Confirme seu e-mail - PenniniCup</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 20px;
+                background-color: #f4f4f4;
+            }
+            .container {
+                background-color: #ffffff;
+                border-radius: 8px;
+                padding: 30px;
+                box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            .header {
+                text-align: center;
+                margin-bottom: 30px;
+            }
+            .logo {
+                width: 60px;
+                height: 60px;
+                background-color: #ff6600;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 30px;
+                margin: 0 auto 15px auto;
+                text-align: center;
+                line-height: 1;
+            }
+            h1 {
+                color: #ff6600;
+                margin: 0 0 10px 0;
+                font-size: 24px;
+            }
+            .button {
+                display: inline-block;
+                background-color: #ff6600;
+                color: #ffffff !important;
+                text-decoration: none;
+                padding: 14px 30px;
+                border-radius: 6px;
+                font-weight: bold;
+                margin: 20px 0;
+                text-align: center;
+            }
+            .button:hover {
+                background-color: #e55a00;
+            }
+            .info-box {
+                background-color: #f8f9fa;
+                border-left: 4px solid #ff6600;
+                padding: 15px;
+                margin: 20px 0;
+                border-radius: 4px;
+            }
+            .footer {
+                text-align: center;
+                margin-top: 30px;
+                padding-top: 20px;
+                border-top: 1px solid #e0e0e0;
+                color: #666;
+                font-size: 12px;
+            }
+            .expiry {
+                color: #666;
+                font-size: 14px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <div class="logo">🏆</div>
+                <h1>Confirme seu E-mail</h1>
+                <p style="color: #666">PenniniCup - Bolão da Copa 2026</p>
+            </div>
+
+            <p>Olá <strong>{{ user.username }}</strong>,</p>
+
+            <p>
+                Obrigado por se cadastrar no PenniniCup! Para completar seu registro e ativar sua conta, precisamos
+                confirmar seu endereço de e-mail.
+            </p>
+
+            <div style="text-align: center">
+                <a href="{{ verification_url }}" class="button"> Confirmar E-mail </a>
+            </div>
+
+            <div class="info-box">
+                <p style="margin: 0"><strong>⏱️ Atenção:</strong></p>
+                <p class="expiry" style="margin: 5px 0 0 0">
+                    Este link de verificação expira em <strong>24 horas</strong>.
+                </p>
+            </div>
+
+            <p style="font-size: 14px; color: #666">
+                Se o botão acima não funcionar, copie e cole o seguinte link no seu navegador:
+            </p>
+            <p style="word-break: break-all; font-size: 12px; color: #0066cc">{{ verification_url }}</p>
+
+            <p style="margin-top: 30px; font-size: 14px; color: #666">
+                Se você não criou uma conta no PenniniCup, por favor ignore este e-mail.
+            </p>
+
+            <div class="footer">
+                <p>Este é um e-mail automático, por favor não responda.</p>
+                <p>&copy; 2026 PenniniCup - Bolão da Copa do Mundo</p>
+            </div>
+        </div>
+    </body>
+</html>
