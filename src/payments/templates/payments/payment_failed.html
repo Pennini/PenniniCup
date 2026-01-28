@@ -1,7 +1,53 @@
-{% extends "base.html" %} {% block content %}
-<h2>Pagamento recusado</h2>
+{% extends "pages/actions.html" %} {% block title %}PenniniCup - Pagamento Recusado{% endblock %} {% block content %}
+<div class="space-y-6 text-center">
+    <!-- Error Icon -->
+    <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-500/20">
+        <i data-lucide="x-circle" class="w-8 h-8 text-red-400"></i>
+    </div>
 
-<p>O pagamento não foi aprovado.</p>
+    <!-- Error Message -->
+    <div>
+        <h2 class="text-2xl font-bold text-white mb-2">Pagamento Recusado</h2>
+        <p class="text-neutral-400">O pagamento não foi aprovado.</p>
+    </div>
 
-<a href="{% url 'payments-start' %}">Tentar novamente</a>
-{% endblock %}
+    <!-- Error Alert -->
+    <div class="rounded-md p-4 bg-red-500/10 border border-red-500/20 text-left">
+        <div class="flex items-start gap-3">
+            <i data-lucide="alert-circle" class="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5"></i>
+            <div class="text-sm text-red-400">
+                <p class="font-medium">Não foi possível processar o pagamento</p>
+                <p class="text-red-400/80 mt-1">
+                    {% if error %} {{ error }} {% else %} Verifique os dados e tente novamente ou entre em contato com
+                    seu banco. {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="space-y-3">
+        <a
+            href="{% url 'penninicup:index' %}"
+            class="block w-full rounded-md bg-orange-500 hover:bg-orange-600 px-4 py-3 text-center font-medium text-white transition-colors"
+        >
+            <span class="flex items-center justify-center gap-2">
+                <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+                Tentar Novamente
+            </span>
+        </a>
+
+        <a
+            href="{% url 'penninicup:index' %}"
+            class="block w-full rounded-md bg-neutral-800 hover:bg-neutral-700 px-4 py-3 text-center font-medium text-neutral-300 transition-colors"
+        >
+            Voltar ao início
+        </a>
+    </div>
+</div>
+{% endblock content %} {% block footer_info %}
+<p class="mt-6 text-center text-sm text-neutral-400 flex items-center justify-center gap-1">
+    <i data-lucide="headset" class="w-4 h-4"></i>
+    Precisa de ajuda? Entre em contato com o suporte
+</p>
+{% endblock footer_info %}

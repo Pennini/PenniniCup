@@ -1,7 +1,52 @@
-{% extends "base.html" %} {% block content %}
-<h2>Pagamento pendente</h2>
+{% extends "pages/actions.html" %} {% block title %}PenniniCup - Pagamento Pendente{% endblock %} {% block content %}
+<div class="space-y-6 text-center">
+    <!-- Pending Icon -->
+    <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-orange-500/20">
+        <i data-lucide="clock" class="w-8 h-8 text-orange-400"></i>
+    </div>
 
-<p>Estamos aguardando a confirmação do pagamento.</p>
+    <!-- Pending Message -->
+    <div>
+        <h2 class="text-2xl font-bold text-white mb-2">Pagamento Pendente</h2>
+        <p class="text-neutral-400">Estamos aguardando a confirmação do pagamento.</p>
+    </div>
 
-<a href="">Atualizar página</a>
-{% endblock %}
+    <!-- Info Alert -->
+    <div class="rounded-md p-4 bg-orange-500/10 border border-orange-500/20 text-left">
+        <div class="flex items-start gap-3">
+            <i data-lucide="info" class="w-5 h-5 text-orange-400 flex-shrink-0 mt-0.5"></i>
+            <div class="text-sm text-orange-400">
+                <p class="font-medium">Processando pagamento</p>
+                <p class="text-orange-400/80 mt-1">
+                    Isso pode levar alguns minutos. Atualize a página para verificar o status.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="space-y-3">
+        <button
+            onclick="window.location.reload()"
+            class="block w-full rounded-md bg-orange-500 hover:bg-orange-600 px-4 py-3 text-center font-medium text-white transition-colors"
+        >
+            <span class="flex items-center justify-center gap-2">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                Atualizar Status
+            </span>
+        </button>
+
+        <a
+            href="{% url 'penninicup:index' %}"
+            class="block w-full rounded-md bg-neutral-800 hover:bg-neutral-700 px-4 py-3 text-center font-medium text-neutral-300 transition-colors"
+        >
+            Voltar ao início
+        </a>
+    </div>
+</div>
+{% endblock content %} {% block footer_info %}
+<p class="mt-6 text-center text-sm text-neutral-400 flex items-center justify-center gap-1">
+    <i data-lucide="shield-check" class="w-4 h-4"></i>
+    Pagamento seguro via Mercado Pago
+</p>
+{% endblock footer_info %}

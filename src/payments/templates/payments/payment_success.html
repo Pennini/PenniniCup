@@ -1,7 +1,38 @@
-{% extends "base.html" %} {% block content %}
-<h2>Pagamento aprovado 🎉</h2>
+{% extends "pages/actions.html" %} {% block title %}PenniniCup - Pagamento Aprovado{% endblock %} {% block content %}
+<div class="space-y-6 text-center">
+    <!-- Success Icon -->
+    <div class="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-green-500/20">
+        <i data-lucide="check-circle" class="w-8 h-8 text-green-400"></i>
+    </div>
 
-<p>Agora você já pode participar do bolão!</p>
+    <!-- Success Message -->
+    <div>
+        <h2 class="text-2xl font-bold text-white mb-2">Pagamento Aprovado! 🎉</h2>
+        <p class="text-neutral-400">Agora você já pode participar do bolão!</p>
+    </div>
 
-<a href="{% url 'bolao-dashboard' %}">Ir para o bolão</a>
-{% endblock %}
+    <!-- Success Alert -->
+    <div class="rounded-md p-4 bg-green-500/10 border border-green-500/20 text-left">
+        <div class="flex items-start gap-3">
+            <i data-lucide="party-popper" class="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5"></i>
+            <div class="text-sm text-green-400">
+                <p class="font-medium">Bem-vindo ao PenniniCup!</p>
+                <p class="text-green-400/80 mt-1">Sua inscrição foi confirmada com sucesso.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Action Button -->
+    <a
+        href="{% url 'penninicup:index' %}"
+        class="block w-full rounded-md bg-orange-500 hover:bg-orange-600 px-4 py-3 text-center font-medium text-white transition-colors"
+    >
+        Ir para a Página Inicial
+    </a>
+</div>
+{% endblock content %} {% block footer_info %}
+<p class="mt-6 text-center text-sm text-neutral-400 flex items-center justify-center gap-1">
+    <i data-lucide="trophy" class="w-4 h-4"></i>
+    Boa sorte no bolão!
+</p>
+{% endblock footer_info %}

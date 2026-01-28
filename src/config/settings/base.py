@@ -130,8 +130,14 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 EMAIL_TIMEOUT = 10
 
-MERCADO_PAGO_KEY = os.getenv("MERCADO_PAGO_KEY", "")
-MERCADO_PAGO_TOKEN = os.getenv("MERCADO_PAGO_TOKEN", "")
+# Mercado Pago Configuration
+MERCADO_PAGO_ACCESS_TOKEN = os.getenv("MERCADO_PAGO_ACCESS_TOKEN", "")
+MERCADO_PAGO_PUBLIC_KEY = os.getenv("MERCADO_PAGO_PUBLIC_KEY", "")
+MERCADO_PAGO_WEBHOOK_SECRET = os.getenv("MERCADO_PAGO_WEBHOOK_SECRET", "")
+
+# Validação de credenciais do Mercado Pago
+if not DEBUG and not MERCADO_PAGO_ACCESS_TOKEN:
+    raise ValueError("MERCADO_PAGO_ACCESS_TOKEN deve ser configurado em produção")
 
 # Custom User Model
 AUTH_USER_MODEL = "accounts.CustomUser"
