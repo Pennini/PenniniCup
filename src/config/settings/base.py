@@ -24,6 +24,7 @@ INSTALLED_APPS = [
     # Local apps
     "src.theme",
     "src.accounts.apps.AccountsConfig",
+    "src.payments.apps.PaymentsConfig",
     "src.penninicup.apps.PenninicupConfig",
 ]
 
@@ -128,6 +129,9 @@ EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 # DEFAULT_FROM_EMAIL usa o mesmo EMAIL_HOST_USER (Gmail exige que sejam iguais)
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
 EMAIL_TIMEOUT = 10
+
+MERCADO_PAGO_KEY = os.getenv("MERCADO_PAGO_KEY", "")
+MERCADO_PAGO_TOKEN = os.getenv("MERCADO_PAGO_TOKEN", "")
 
 # Custom User Model
 AUTH_USER_MODEL = "accounts.CustomUser"

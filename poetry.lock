@@ -566,6 +566,23 @@ files = [
 ]
 
 [[package]]
+name = "mercadopago"
+version = "2.3.0"
+description = "Mercadopago SDK module for Payments integration"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "mercadopago-2.3.0-py3-none-any.whl", hash = "sha256:2502cb005ab90343d60e577107b422daeff27511f85c45a7bf0784ac2083f2c7"},
+    {file = "mercadopago-2.3.0.tar.gz", hash = "sha256:8537e9de5d987b545841b05bb35675553b22e661b96ffc4fb178ffba846ff2d7"},
+]
+
+[package.dependencies]
+requests = "*"
+
+[package.extras]
+testing = ["unittest"]
+
+[[package]]
 name = "nodeenv"
 version = "1.10.0"
 description = "Node.js virtual environment builder"
@@ -905,4 +922,4 @@ test = ["covdefaults (>=2.3)", "coverage (>=7.2.7)", "coverage-enable-subprocess
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "dfe48fc4056d78f20dd21d12b64d615ce01febc41e8d33ac754ad20987d7f90d"
+content-hash = "cc307ae1f7636d1d78e472cc6255b939f0e83a6b9fc6aa3db8a6bb0189e42923"

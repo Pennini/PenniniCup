@@ -1,4 +1,8 @@
 {% extends "base.html" %} {% block title %}PenniniCup{% endblock %} {% block content %}
 <h2 class="text-2xl font-semibold justify-center">Welcome to the PenniniCup!</h2>
 <p>This is the home page for the PenniniCup application.</p>
+<form method="post" action="{% url 'payments:start-payment' %}">
+    {% csrf_token %}
+    <button type="submit">Pagar inscrição</button>
+</form>
 {% endblock %}

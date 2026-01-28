@@ -1,0 +1,15 @@
+{% extends "base.html" %} {% block content %}
+<h2>Pague com PIX</h2>
+
+<p>Escaneie o QR Code abaixo:</p>
+
+<img src="data:image/png;base64,{{ qr_code_base64 }}" />
+
+<p>Ou copie o código:</p>
+
+<textarea readonly>{{ qr_code }}</textarea>
+
+<p>Status do pagamento: <strong>Aguardando pagamento</strong></p>
+
+<a href="{% url 'payment-status' payment.id %}"> Já paguei </a>
+{% endblock %}
