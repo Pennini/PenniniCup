@@ -94,6 +94,12 @@ def pix_payment_view(request, payment_id):
         "debug": settings.DEBUG,
     }
 
+    logger.info(f"""
+        Exibindo página PIX com esses dados: {mp_data["id"]} |
+        Amount {mp_data["transaction_amount"]} |
+        url_sandbox={mp_data["point_of_interaction"]["transaction_data"]["ticket_url"]}
+    """)
+
     return render(request, "payments/pix_payment.html", context)
 
 
