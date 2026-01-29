@@ -1,115 +1,58 @@
-# payments/services/mercadopago.py
 import logging
-from datetime import timedelta
 
-import mercadopago
+import requests
 from django.conf import settings
-from django.core.exceptions import ImproperlyConfigured
 
 logger = logging.getLogger(__name__)
 
-MP_URL = "https://api.mercadopago.com/v1/payments"
-
-# Validação das configurações
-if not settings.MERCADO_PAGO_ACCESS_TOKEN:
-    raise ImproperlyConfigured(
-        "MERCADO_PAGO_ACCESS_TOKEN não configurado. "
-        "Adicione a variável de ambiente PENNINIBET_MERCADO_PAGO_ACCESS_TOKEN"
-    )
-
-sdk = mercadopago.SDK(settings.MERCADO_PAGO_ACCESS_TOKEN)
+MP_URL = "https://api.mercadopago.com/v1/orders/"
 
 
-def create_pix_payment(payment, notification_url: str) -> dict:
-    """
-    Cria um pagamento PIX no Mercado Pago
-
-    Args:
-        payment: Instância do modelo Payment
-        notification_url: URL para receber notificações de webhook
-
-    Returns:
-        Dict com os dados da resposta do Mercado Pago
-
-    Raises:
-        Exception: Se houver erro na criação do pagamento
-    """
+def create_pix_payment(payment) -> dict | None:
     try:
         payload = {
-            "transaction_amount": float(payment.amount),
-            "date_of_expiration": (payment.created_at + timedelta(hours=2)).isoformat(),
-            "payment_method_id": "pix",
-            "external_reference": str(payment.id),
-            "description": "Entrada no bolão",  # {payment.bolao.name}",
-            "notification_url": notification_url,
-            "payer": {
-                "email": payment.user.email,
+            "type": "online",
+            "external_reference": f"payment_{payment.id}",
+            "total_amount": str(payment.amount),
+            "payer": {"email": payment.user.email, "first_name": "APRO" if settings.DEBUG else payment.user.username},
+            "transactions": {
+                "payments": [{"amount": str(payment.amount), "payment_method": {"id": "pix", "type": "bank_transfer"}}]
             },
         }
 
-        # Configuração de idempotência para evitar pagamentos duplicados
-        request_options = mercadopago.config.RequestOptions()
         headers = {
+            "Authorization": f"Bearer {settings.MERCADO_PAGO_ACCESS_TOKEN}",
+            "Content-Type": "application/json",
             "X-Idempotency-Key": str(payment.id),
         }
-        request_options.custom_headers = headers
 
-        logger.info(
-            f"Criando pagamento PIX para payment_id={payment.id}, user={payment.user.email}, amount={payment.amount}"
-        )
+        logger.info(f"Criando PIX (Orders) payment_id={payment.id} user={payment.user.email}")
 
-        payment_response = sdk.payment().create(payload, request_options)
+        response = requests.post(MP_URL, json=payload, headers=headers, timeout=15)
 
-        # Verificar se houve erro na resposta
-        if payment_response.get("status") not in [200, 201]:
-            error_message = payment_response.get("response", {}).get("message", "Erro desconhecido")
-            status_code = payment_response.get("status")
+        if response.status_code not in (200, 201):
+            logger.error(f"Erro Mercado Pago: {response.status_code} - {response.text}")
+            raise Exception(response.text)
 
-            # Mensagens específicas para erros comuns
-            if status_code == 401 or status_code == 403:
-                error_message = (
-                    "Token do Mercado Pago inválido ou sem permissões. "
-                    "Verifique MERCADO_PAGO_ACCESS_TOKEN no arquivo .env"
-                )
+        data = response.json()
 
-            logger.error(f"Erro ao criar pagamento PIX: status={status_code}, message={error_message}")
-            raise Exception(f"Erro do Mercado Pago: {error_message}")
+        logger.info(f"PIX criado com sucesso | order_id={data.get('id')} status={data.get('status')}")
 
-        payment_data = payment_response["response"]
+        return data
 
-        logger.info(
-            f"Pagamento PIX criado com sucesso: payment_id={payment.id}, "
-            f"mp_payment_id={payment_data.get('id')}, status={payment_data.get('status')}"
-        )
-
-        return payment_data
     except Exception as e:
         logger.exception(f"Erro inesperado ao criar pagamento PIX: {str(e)}")
-
-
-def get_payment_status(mp_payment_id: str) -> dict | None:
-    """
-    Consulta o status de um pagamento no Mercado Pago
-
-    Args:
-        mp_payment_id: ID do pagamento no Mercado Pago
-
-    Returns:
-        Dict com os dados do pagamento ou None se não encontrado
-    """
-    try:
-        logger.info(f"Consultando status do pagamento mp_payment_id={mp_payment_id}")
-
-        payment_response = sdk.payment().get(mp_payment_id)
-
-        if payment_response.get("status") != 200:
-            logger.warning(
-                f"Pagamento não encontrado: mp_payment_id={mp_payment_id}, status={payment_response.get('status')}"
-            )
-            return None
-
-        return payment_response["response"]
-
-    except Exception as e:
-        logger.exception(f"Erro ao consultar pagamento {mp_payment_id}: {str(e)}")
         return None
+
+
+def get_order_status(order_id: str) -> dict | None:
+    headers = {
+        "Authorization": f"Bearer {settings.MERCADO_PAGO_ACCESS_TOKEN}",
+    }
+
+    response = requests.get(f"{MP_URL}{order_id}", headers=headers, timeout=10)
+
+    if response.status_code != 200:
+        return None
+
+    return response.json()

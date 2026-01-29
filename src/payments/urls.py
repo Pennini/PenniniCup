@@ -5,9 +5,6 @@ from . import views, webhooks
 app_name = "payments"
 
 urlpatterns = [
-    # API endpoints
-    path("api/payment-list/", views.PaymentListView.as_view(), name="payment-list"),
-    path("api/create-payment/", views.CreatePaymentIntentView.as_view(), name="create-payment"),
     # Webhook
     path("webhook/mercadopago/", webhooks.mercado_pago_webhook, name="webhook"),
     # Views HTML

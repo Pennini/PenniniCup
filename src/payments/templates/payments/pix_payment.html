@@ -1,81 +1,84 @@
-{% extends "pages/actions.html" %} {% block title %}PenniniCup - Pagamento PIX{% endblock %} {% block extra_head %}
-<script src="https://sdk.mercadopago.com/js/v2"></script>
-{% endblock extra_head %} {% block content %}
-<div id="paymentBrick_container"></div>
+{% extends "pages/actions.html" %} {% block title %}PenniniCup - Pagamento PIX{% endblock %} {% block content %}
+<div class="max-w-md mx-auto p-6 bg-neutral-900 rounded-lg shadow-lg">
+    <h2 class="text-2xl font-bold text-orange-500 mb-6 text-center">Pagamento PIX</h2>
+
+    {% if mp_data and mp_data.point_of_interaction.transaction_data.qr_code_base64 %}
+    <div class="space-y-6">
+        <div class="bg-white p-4 rounded-lg">
+            <img
+                src="data:image/png;base64,{{ mp_data.point_of_interaction.transaction_data.qr_code_base64 }}"
+                alt="QR Code PIX"
+                class="w-full max-w-xs mx-auto"
+            />
+        </div>
+
+        <div class="space-y-3">
+            <div class="bg-neutral-800 p-4 rounded-lg">
+                <p class="text-sm text-neutral-400 mb-2">Valor:</p>
+                <p class="text-2xl font-bold text-white">R$ {{ payment.amount }}</p>
+            </div>
+
+            <div class="bg-neutral-800 p-4 rounded-lg">
+                <p class="text-sm text-neutral-400 mb-2">Código PIX Copia e Cola:</p>
+                <div class="flex gap-2">
+                    <input
+                        type="text"
+                        id="pixCode"
+                        value="{{ mp_data.point_of_interaction.transaction_data.qr_code }}"
+                        readonly
+                        class="flex-1 bg-neutral-900 text-white text-xs p-2 rounded border border-neutral-700"
+                    />
+                    <button
+                        onclick="copyPixCode()"
+                        class="px-4 py-2 bg-orange-500 text-black rounded hover:bg-orange-400 transition"
+                    >
+                        <i data-lucide="copy" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+            <div class="flex items-start gap-2 text-sm text-blue-400">
+                <i data-lucide="info" class="w-4 h-4 mt-0.5 flex-shrink-0"></i>
+                <p>Abra o app do seu banco, escaneie o QR Code ou cole o código PIX para pagar.</p>
+            </div>
+        </div>
+
+        <a
+            href="{% url 'penninicup:index' %}"
+            class="block w-full text-center py-2 bg-neutral-800 text-white rounded hover:bg-neutral-700 transition"
+        >
+            Voltar
+        </a>
+    </div>
+    {% else %}
+    <div class="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
+        <div class="flex items-start gap-2 text-sm text-red-400">
+            <i data-lucide="alert-circle" class="w-4 h-4 mt-0.5 flex-shrink-0"></i>
+            <p>Não foi possível carregar os dados do pagamento PIX. Tente novamente.</p>
+        </div>
+    </div>
+    {% endif %}
+</div>
 
 <script>
-    const mp = new MercadoPago('{{ public_key }}', {
-    locale: 'pt-BR'
-    });
-    const bricksBuilder = mp.bricks();
-    const renderPaymentBrick = async (bricksBuilder) => {
-        const settings = {
-        initialization: {
-            /*
-            "amount" é a quantia total a pagar por todos os meios de pagamento com exceção da Conta Mercado Pago e Parcelas sem cartão de crédito, que têm seus valores de processamento determinados no backend através do "preferenceId"
-            }
-            */
-            amount: {{ amount }},
-            preferenceId: "{{ preference_id }}",
-            payer: {
-            email: "{{ payer_email }}",
-            },
-        },
-        customization: {
-            visual: {
-            style: {
-                theme: "dark",
-            },
-            },
-            paymentMethods: {
-            : "all",
-                                bankTransfer: "all",
-                                ticket: "all",
-                                debitCard: "all",
-            maxInstallments: 1
-            },
-        },
-        callbacks: {
-            onReady: () => {
-            /*
-                Callback chamado quando o Brick está pronto.
-                Aqui, você pode ocultar seu site, por exemplo.
-            */
-            },
-            onSubmit: ({ selectedPaymentMethod, formData }) => {
-            // callback chamado quando há click no botão de envio de dados
-            return new Promise((resolve, reject) => {
-                fetch("/process_payment", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify(formData),
-                })
-                .then((response) => response.json())
-                .then((response) => {
-                    // receber o resultado do pagamento
-                    resolve();
-                })
-                .catch((error) => {
-                    // manejar a resposta de erro ao tentar criar um pagamento
-                    reject();
-                });
-            });
-            },
-            onError: (error) => {
-            // callback chamado para todos os casos de erro do Brick
-            console.error(error);
-            },
-        },
-        };
-        window.paymentBrickController = await bricksBuilder.create(
-        "payment",
-        "paymentBrick_container",
-        settings
-        );
-    };
-    renderPaymentBrick(bricksBuilder);
+    function copyPixCode() {
+        const pixCode = document.getElementById("pixCode");
+        pixCode.select();
+        document.execCommand("copy");
+
+        // Feedback visual
+        const btn = event.target.closest("button");
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i>';
+        lucide.createIcons();
+
+        setTimeout(() => {
+            btn.innerHTML = originalHTML;
+            lucide.createIcons();
+        }, 2000);
+    }
 </script>
 
 {% endblock content %} {% block footer_info %}
