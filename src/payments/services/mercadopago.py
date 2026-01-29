@@ -1,58 +1,67 @@
 import logging
 
-import requests
+import mercadopago
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-MP_URL = "https://api.mercadopago.com/v1/orders/"
+sdk = mercadopago.SDK(settings.MERCADO_PAGO_ACCESS_TOKEN)
 
 
 def create_pix_payment(payment) -> dict | None:
+    """
+    Cria um pagamento PIX usando a API /v1/payments (Checkout Bricks backend-safe)
+
+    IMPORTANTE:
+    - NÃO usar email de usuário de teste
+    - NÃO usar first_name APRO
+    """
+
     try:
         payload = {
-            "type": "online",
+            "transaction_amount": float(payment.amount),
+            "description": "Inscrição no Bolão PenniniCup",
+            "payment_method_id": "pix",
             "external_reference": f"payment_{payment.id}",
-            "total_amount": str(payment.amount),
-            "payer": {"email": payment.user.email, "first_name": "APRO" if settings.DEBUG else payment.user.username},
-            "transactions": {
-                "payments": [{"amount": str(payment.amount), "payment_method": {"id": "pix", "type": "bank_transfer"}}]
+            "payer": {
+                # Email REAL do usuário (não pode ser test_user)
+                "email": payment.user.email,
             },
         }
 
-        headers = {
-            "Authorization": f"Bearer {settings.MERCADO_PAGO_ACCESS_TOKEN}",
-            "Content-Type": "application/json",
-            "X-Idempotency-Key": str(payment.id),
-        }
+        request_options = mercadopago.config.RequestOptions()
+        request_options.custom_headers = {"X-Idempotency-Key": str(payment.id)}
 
-        logger.info(f"Criando PIX (Orders) payment_id={payment.id} user={payment.user.email}")
+        logger.info(f"Criando pagamento PIX | payment_id={payment.id} | user={payment.user.email}")
 
-        response = requests.post(MP_URL, json=payload, headers=headers, timeout=15)
+        response = sdk.payment().create(payload, request_options)
 
-        if response.status_code not in (200, 201):
-            logger.error(f"Erro Mercado Pago: {response.status_code} - {response.text}")
-            raise Exception(response.text)
+        status = response.get("status")
+        body = response.get("response", {})
 
-        data = response.json()
+        if status not in (200, 201):
+            logger.error(f"Erro Mercado Pago | status={status} | body={body}")
+            raise Exception(body.get("message", "Erro desconhecido no Mercado Pago"))
 
-        logger.info(f"PIX criado com sucesso | order_id={data.get('id')} status={data.get('status')}")
+        logger.info(f"PIX criado com sucesso | mp_payment_id={body.get('id')} | status={body.get('status')}")
 
-        return data
+        return body
 
     except Exception as e:
-        logger.exception(f"Erro inesperado ao criar pagamento PIX: {str(e)}")
+        logger.exception(f"Erro ao criar pagamento PIX: {str(e)}")
         return None
 
 
-def get_order_status(order_id: str) -> dict | None:
-    headers = {
-        "Authorization": f"Bearer {settings.MERCADO_PAGO_ACCESS_TOKEN}",
-    }
+def get_payment_status(payment_id: str) -> dict | None:
+    try:
+        payment_response = sdk.payment().get(payment_id)
 
-    response = requests.get(f"{MP_URL}{order_id}", headers=headers, timeout=10)
+        if payment_response.get("status") != 200:
+            logger.error(f"Erro ao buscar status do pagamento: {payment_response.get('status')}")
+            return None
 
-    if response.status_code != 200:
+        return payment_response.get("response", {})
+
+    except Exception as e:
+        logger.exception(f"Erro ao buscar status do pagamento {payment_id}: {str(e)}")
         return None
-
-    return response.json()

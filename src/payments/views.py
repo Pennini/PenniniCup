@@ -6,7 +6,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 
 from .models import Payment
-from .services.mercadopago import create_pix_payment
+from .services.mercadopago import create_pix_payment, get_payment_status
 
 logger = logging.getLogger(__name__)
 
@@ -78,11 +78,20 @@ def pix_payment_view(request, payment_id):
     if payment.is_paid():
         return redirect("payments:payment-success", payment_id=payment.id)
 
+    # Busca os dados do pagamento no Mercado Pago
+    mp_data = None
+    if payment.mp_payment_id:
+        mp_data = get_payment_status(payment.mp_payment_id)
+        if not mp_data:
+            logger.error(f"Não foi possível buscar dados do pagamento MP: {payment.mp_payment_id}")
+
     context = {
         "payment": payment,
+        "mp_data": mp_data,
         "public_key": settings.PIX_KEY,
         "amount": float(payment.amount),
         "payer_email": request.user.email,
+        "debug": settings.DEBUG,
     }
 
     return render(request, "payments/pix_payment.html", context)
