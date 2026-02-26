@@ -1,0 +1,77 @@
+{% comment %} COMPONENTE: Match Card Compacto (para uso no chaveamento)
+────────────────────────────────────────────────────── Uso: {% include "components/match_card_compact.html" with
+compact_match=match compact_mode="result" %} Parâmetros: compact_match — objeto Match compact_mode — "result" |
+"bet_locked" (sem inputs, apenas leitura) compact_bet — objeto Bet (somente compact_mode="bet_locked") {% endcomment %}
+
+<div
+    class="bg-brand-darker border border-brand-border rounded-xl px-2 py-1.5 flex items-center gap-1 select-none min-w-0"
+>
+    {# — Time da casa — #}
+    <div class="flex items-center gap-1 flex-1 justify-end min-w-0">
+        <span class="font-bold text-[0.75rem] text-brand-text whitespace-nowrap leading-none"
+            >{{ compact_match.home_team.code }}</span
+        >
+        <div class="w-5 h-5 rounded-full overflow-hidden shrink-0 bg-[#2e2e2e] flex items-center justify-center">
+            {% if compact_match.home_team.crest_url %}
+            <img
+                src="{{ compact_match.home_team.crest_url }}"
+                alt="{{ compact_match.home_team.code }}"
+                class="w-full h-full object-contain"
+            />
+            {% else %}
+            <span class="text-[0.45rem] font-bold text-gray-400 uppercase"
+                >{{ compact_match.home_team.code|slice:":2" }}</span
+            >
+            {% endif %}
+        </div>
+    </div>
+
+    {# — Placar — #}
+    <div class="flex items-center gap-0.5 shrink-0">
+        {% if compact_mode == "bet_locked" and compact_bet %}
+        <div
+            class="w-6 h-6 bg-[#2a2a2a] border border-brand-border rounded flex items-center justify-center font-bold text-[0.7rem] text-brand-text leading-none"
+        >
+            {{ compact_bet.home_score|default:"—" }}
+        </div>
+        <span class="text-gray-500 font-bold text-[0.6rem] leading-none">×</span>
+        <div
+            class="w-6 h-6 bg-[#2a2a2a] border border-brand-border rounded flex items-center justify-center font-bold text-[0.7rem] text-brand-text leading-none"
+        >
+            {{ compact_bet.away_score|default:"—" }}
+        </div>
+        {% else %}
+        <div
+            class="w-6 h-6 bg-[#2a2a2a] border border-brand-border rounded flex items-center justify-center font-bold text-[0.7rem] text-brand-text leading-none"
+        >
+            {{ compact_match.home_score|default:"—" }}
+        </div>
+        <span class="text-gray-500 font-bold text-[0.6rem] leading-none">×</span>
+        <div
+            class="w-6 h-6 bg-[#2a2a2a] border border-brand-border rounded flex items-center justify-center font-bold text-[0.7rem] text-brand-text leading-none"
+        >
+            {{ compact_match.away_score|default:"—" }}
+        </div>
+        {% endif %}
+    </div>
+
+    {# — Time visitante — #}
+    <div class="flex items-center gap-1 flex-1 justify-start min-w-0">
+        <div class="w-5 h-5 rounded-full overflow-hidden shrink-0 bg-[#2e2e2e] flex items-center justify-center">
+            {% if compact_match.away_team.crest_url %}
+            <img
+                src="{{ compact_match.away_team.crest_url }}"
+                alt="{{ compact_match.away_team.code }}"
+                class="w-full h-full object-contain"
+            />
+            {% else %}
+            <span class="text-[0.45rem] font-bold text-gray-400 uppercase"
+                >{{ compact_match.away_team.code|slice:":2" }}</span
+            >
+            {% endif %}
+        </div>
+        <span class="font-bold text-[0.75rem] text-brand-text whitespace-nowrap leading-none"
+            >{{ compact_match.away_team.code }}</span
+        >
+    </div>
+</div>

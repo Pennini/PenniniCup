@@ -1,0 +1,116 @@
+{% comment %} ══════════════════════════════════════════════════════════ COMPONENTE: Match Card
+══════════════════════════════════════════════════════════ Uso via {% include "components/match_card.html" with ... %}
+Parâmetros obrigatórios: card_match — objeto Match Parâmetros de modo (escolha um): card_mode — "result" → placar real
+apenas "bet_active" → inputs de palpite + placar real abaixo "bet_locked" → palpite fixo + placar real abaixo
+Parâmetros opcionais (dependem do modo): card_form — formulário Django (obrigatório em "bet_active") espera os campos:
+home_prediction, away_prediction card_bet — objeto com .home_score e .away_score previstos (obrigatório em
+"bet_locked", opcional em "bet_active") Exemplo — resultado: {% include "components/match_card.html" with
+card_match=match card_mode="result" %} Exemplo — palpite aberto: {% include "components/match_card.html" with
+card_match=match card_mode="bet_active" card_form=form %} Exemplo — palpite encerrado: {% include
+"components/match_card.html" with card_match=match card_mode="bet_locked" card_bet=bet %}
+══════════════════════════════════════════════════════════ {% endcomment %}
+
+<div class="bg-brand-darker border border-brand-border rounded-2xl px-5 py-4 w-full select-none">
+    {# ── linha dos times ── #}
+    <div class="flex items-center justify-between gap-2">
+        {# — Time da casa — #}
+        <div class="flex items-center gap-2 flex-1 min-w-0 justify-end">
+            <span class="font-bold text-[0.95rem] text-brand-text whitespace-nowrap"
+                >{{ card_match.home_team.code }}</span
+            >
+            <div class="w-8 h-8 rounded-full overflow-hidden shrink-0 bg-[#2e2e2e] flex items-center justify-center">
+                {% if card_match.home_team.crest_url %}
+                <img
+                    src="{{ card_match.home_team.crest_url }}"
+                    alt="{{ card_match.home_team.code }}"
+                    class="w-full h-full object-contain"
+                />
+                {% else %}
+                <span class="text-[0.6rem] font-bold text-gray-400 uppercase">
+                    {{ card_match.home_team.code|slice:":2" }}
+                </span>
+                {% endif %}
+            </div>
+        </div>
+
+        {# — Placar / Inputs — #}
+        <div class="flex items-center gap-1.5 shrink-0">
+            {% if card_mode == "bet_active" %} {# ── Inputs de palpite ── #}
+            <input
+                type="number"
+                name="{{ card_form.home_prediction.html_name }}"
+                id="{{ card_form.home_prediction.id_for_label }}"
+                value="{{ card_form.home_prediction.value|default:'' }}"
+                min="0"
+                max="99"
+                placeholder="—"
+                class="w-10 h-10 bg-[#2a2a2a] border border-brand-border rounded-lg text-center font-bold text-[1.05rem] text-brand-text transition focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+            <span class="text-gray-500 font-bold text-sm">×</span>
+            <input
+                type="number"
+                name="{{ card_form.away_prediction.html_name }}"
+                id="{{ card_form.away_prediction.id_for_label }}"
+                value="{{ card_form.away_prediction.value|default:'' }}"
+                min="0"
+                max="99"
+                placeholder="—"
+                class="w-10 h-10 bg-[#2a2a2a] border border-brand-border rounded-lg text-center font-bold text-[1.05rem] text-brand-text transition focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/25 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+
+            {% elif card_mode == "bet_locked" %} {# ── Palpite encerrado (somente leitura) ── #}
+            <div
+                class="w-10 h-10 bg-[#2a2a2a] border border-brand-border rounded-lg flex items-center justify-center font-bold text-[1.05rem] text-brand-text"
+            >
+                {{ card_bet.home_score|default:"—" }}
+            </div>
+            <span class="text-gray-500 font-bold text-sm">×</span>
+            <div
+                class="w-10 h-10 bg-[#2a2a2a] border border-brand-border rounded-lg flex items-center justify-center font-bold text-[1.05rem] text-brand-text"
+            >
+                {{ card_bet.away_score|default:"—" }}
+            </div>
+
+            {% else %} {# ── Modo resultado: placar real ── #}
+            <div
+                class="w-10 h-10 bg-[#2a2a2a] border border-brand-border rounded-lg flex items-center justify-center font-bold text-[1.05rem] text-brand-text"
+            >
+                {{ card_match.home_score|default:"—" }}
+            </div>
+            <span class="text-gray-500 font-bold text-sm">×</span>
+            <div
+                class="w-10 h-10 bg-[#2a2a2a] border border-brand-border rounded-lg flex items-center justify-center font-bold text-[1.05rem] text-brand-text"
+            >
+                {{ card_match.away_score|default:"—" }}
+            </div>
+            {% endif %}
+        </div>
+
+        {# — Time visitante — #}
+        <div class="flex items-center gap-2 flex-1 min-w-0 justify-start">
+            <div class="w-8 h-8 rounded-full overflow-hidden shrink-0 bg-[#2e2e2e] flex items-center justify-center">
+                {% if card_match.away_team.crest_url %}
+                <img
+                    src="{{ card_match.away_team.crest_url }}"
+                    alt="{{ card_match.away_team.code }}"
+                    class="w-full h-full object-contain"
+                />
+                {% else %}
+                <span class="text-[0.6rem] font-bold text-gray-400 uppercase">
+                    {{ card_match.away_team.code|slice:":2" }}
+                </span>
+                {% endif %}
+            </div>
+            <span class="font-bold text-[0.95rem] text-brand-text whitespace-nowrap"
+                >{{ card_match.away_team.code }}</span
+            >
+        </div>
+    </div>
+
+    {# ── linha do placar real (apenas modos de palpite) ── #} {% if card_mode == "bet_active" or card_mode ==
+    "bet_locked" %}
+    <p class="mt-2.5 text-center text-xs text-gray-500 tracking-[0.01em]">
+        Placar: {{ card_match.home_score|default:"—" }} × {{ card_match.away_score|default:"—" }}
+    </p>
+    {% endif %}
+</div>

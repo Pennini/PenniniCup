@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "src.theme",
     "src.accounts.apps.AccountsConfig",
     "src.payments.apps.PaymentsConfig",
+    "src.matches.apps.MatchesConfig",
     "src.penninicup.apps.PenninicupConfig",
 ]
 

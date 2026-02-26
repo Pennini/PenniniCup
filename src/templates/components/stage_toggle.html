@@ -1,0 +1,19 @@
+{% comment %} COMPONENTE: Toggle de estágio ────────────────────────────────────────────────────── Uso: {% include
+"components/stage_toggle.html" %} Contexto esperado: active_tab — "group" | "knockout" Usa request.path para montar os
+links, portanto funciona em qualquer view sem parâmetros extras. {% endcomment %}
+
+<div class="flex rounded-xl bg-brand-darkest border border-brand-border p-1 gap-1">
+    <a
+        href="{{ request.path }}?tab=group"
+        class="flex-1 text-center text-sm font-semibold rounded-lg py-2.5 transition-all duration-200 {% if active_tab == 'group' %} bg-brand-darker text-primary border border-primary {% else %} text-gray-500 border border-transparent hover:text-gray-300 {% endif %}"
+    >
+        Fase de Grupos
+    </a>
+
+    <a
+        href="{{ request.path }}?tab=knockout"
+        class="flex-1 text-center text-sm font-semibold rounded-lg py-2.5 transition-all duration-200 {% if active_tab == 'knockout' %} bg-brand-darker text-primary border border-primary {% else %} text-gray-500 border border-transparent hover:text-gray-300 {% endif %}"
+    >
+        Mata-Mata
+    </a>
+</div>

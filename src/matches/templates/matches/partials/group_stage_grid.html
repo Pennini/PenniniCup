@@ -1,0 +1,29 @@
+{% comment %} Partial: Grade da Fase de Grupos Contexto esperado: groups — lista de dicts { "group": GroupStage,
+"matches": queryset<Match>
+    } page_mode — "result" | "bet_active" | "bet_locked" {% endcomment %} {% if groups %}
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {% for item in groups %}
+        <div class="bg-brand-darker border border-brand-border rounded-2xl p-4 flex flex-col gap-3">
+            {# ── Cabeçalho do grupo ── #}
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
+                    <span class="text-white font-bold text-sm">{{ item.group.name }}</span>
+                </div>
+                <span class="font-bold text-brand-text">Grupo {{ item.group.name }}</span>
+            </div>
+
+            {# ── Cards das partidas do grupo ── #} {% if item.matches %} {% for match in item.matches %} {% include
+            "components/match_card.html" with card_match=match card_mode=page_mode %} {% endfor %} {% else %}
+            <p class="text-xs text-gray-500 text-center py-4">Nenhuma partida cadastrada.</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {% else %}
+    <div class="flex flex-col items-center justify-center py-16 gap-3 text-gray-500">
+        <i data-lucide="calendar-x" class="w-10 h-10 opacity-40"></i>
+        <p class="text-sm">Nenhum grupo encontrado.</p>
+    </div>
+    {% endif %}
+</Match>

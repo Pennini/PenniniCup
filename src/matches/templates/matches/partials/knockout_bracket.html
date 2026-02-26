@@ -1,0 +1,174 @@
+{% comment %} Partial: Chaveamento Mata-Mata ───────────────────────────────────────────────────────────── Contexto
+esperado: bracket_left — lista de rounds ordenada exterior→interior cada round: { stage, label, pairs, is_outermost }
+pairs: lista de listas [[match, match], [match], ...] bracket_right — lista de rounds ordenada interior→exterior
+(espelho) cada round: { stage, label, pairs, is_outermost } final_match — Match ou None bracket_height — altura mínima
+do container em px page_mode — "result" | "bet_locked" Estrutura visual: [R32_esq] [R16_esq] [QF_esq] [SF_esq] [FINAL]
+[SF_dir] [QF_dir] [R16_dir] [R32_dir] Conectores: - Par de partidas: barra vertical à direita (esq) ou esquerda (dir)
+usando h-1/2 self-end / self-start com border-r ou border-l - Ponto médio do par: stub horizontal saindo da barra -
+Partida única (SF): stubs horizontais em ambos os lados {% endcomment %} {% if not bracket_left and not final_match %}
+
+<div class="flex flex-col items-center justify-center py-16 gap-3 text-gray-500">
+    <i data-lucide="calendar-x" class="w-10 h-10 opacity-40"></i>
+    <p class="text-sm">Nenhuma partida de mata-mata cadastrada.</p>
+</div>
+
+{% else %}
+
+<div class="overflow-x-auto -mx-4 pb-4">
+    <div class="flex items-stretch min-w-max px-4 gap-0" style="min-height: {{ bracket_height }}px">
+        {# ═══════════════════════════════════════ LADO ESQUERDO (exterior → interior)
+        ════════════════════════════════════════ #} {% for round in bracket_left %}
+        <div class="flex flex-col" style="width: 196px">
+            {# rótulo da fase #}
+            <p class="text-[0.6rem] font-semibold text-gray-500 uppercase tracking-widest text-center mb-2 shrink-0">
+                {{ round.label }}
+            </p>
+
+            {# coluna de partidas #}
+            <div class="flex-1 flex flex-col min-h-0">
+                {% for pair in round.pairs %} {% if pair|length == 2 %} {# ── Par com conector em escada ── #}
+                <div class="relative flex flex-col flex-1 min-h-0">
+                    {# partida de cima #}
+                    <div class="flex flex-1 items-center min-h-0 py-1">
+                        {% if not round.is_outermost %}
+                        <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                        {# stub entrada esq #} {% endif %}
+                        <div class="flex-1 min-w-0">
+                            {% include "components/match_card_compact.html" with compact_match=pair.0
+                            compact_mode=page_mode %}
+                        </div>
+                        {# barra vertical — metade inferior desta linha #}
+                        <div class="w-3 h-1/2 self-end border-r-2 border-brand-border/50 shrink-0"></div>
+                    </div>
+
+                    {# partida de baixo #}
+                    <div class="flex flex-1 items-center min-h-0 py-1">
+                        {% if not round.is_outermost %}
+                        <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                        {# stub entrada esq #} {% endif %}
+                        <div class="flex-1 min-w-0">
+                            {% include "components/match_card_compact.html" with compact_match=pair.1
+                            compact_mode=page_mode %}
+                        </div>
+                        {# barra vertical — metade superior desta linha #}
+                        <div class="w-3 h-1/2 self-start border-r-2 border-brand-border/50 shrink-0"></div>
+                    </div>
+
+                    {# stub horizontal saindo do ponto médio da barra, rumo à fase seguinte #}
+                    <div class="absolute -right-3 top-1/2 -translate-y-1/2 w-3 h-0.5 bg-brand-border/50 z-10"></div>
+                </div>
+
+                {% else %} {# ── Partida única (SF ou ímpar) ── #}
+                <div class="flex flex-1 items-center min-h-0 py-1">
+                    {% if not round.is_outermost %}
+                    <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                    {# stub entrada #} {% endif %}
+                    <div class="flex-1 min-w-0">
+                        {% include "components/match_card_compact.html" with compact_match=pair.0
+                        compact_mode=page_mode %}
+                    </div>
+                    {# stub saída em direção ao centro #}
+                    <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                </div>
+                {% endif %} {% endfor %}
+            </div>
+        </div>
+        {% endfor %} {# ═══════════════════════════════════════ CENTRO — Final + 3° Lugar
+        ════════════════════════════════════════ #}
+        <div class="flex flex-col justify-center items-stretch shrink-0 gap-6" style="width: 208px">
+            {# ── Final ── #}
+            <div>
+                <p class="text-[0.6rem] font-semibold text-gray-500 uppercase tracking-widest text-center mb-2">
+                    Final
+                </p>
+                <div class="flex items-center">
+                    <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                    {# entrada esq #}
+                    <div class="flex-1 min-w-0">
+                        {% if final_match %} {% include "components/match_card_compact.html" with
+                        compact_match=final_match compact_mode=page_mode %} {% else %}
+                        <div
+                            class="bg-brand-darker border border-dashed border-brand-border/40 rounded-xl px-3 py-2.5 text-center text-[0.7rem] text-gray-600"
+                        >
+                            A definir
+                        </div>
+                        {% endif %}
+                    </div>
+                    <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                    {# entrada dir #}
+                </div>
+            </div>
+
+            {# ── 3° Lugar ── #}
+            <div>
+                <p class="text-[0.6rem] font-semibold text-gray-500 uppercase tracking-widest text-center mb-2">
+                    3° Lugar
+                </p>
+                <div
+                    class="bg-brand-darker border border-dashed border-brand-border/40 rounded-xl px-3 py-2.5 text-center text-[0.7rem] text-gray-600"
+                >
+                    A definir
+                </div>
+            </div>
+        </div>
+
+        {# ═══════════════════════════════════════ LADO DIREITO (interior → exterior)
+        ════════════════════════════════════════ #} {% for round in bracket_right %}
+        <div class="flex flex-col" style="width: 196px">
+            <p class="text-[0.6rem] font-semibold text-gray-500 uppercase tracking-widest text-center mb-2 shrink-0">
+                {{ round.label }}
+            </p>
+
+            <div class="flex-1 flex flex-col min-h-0">
+                {% for pair in round.pairs %} {% if pair|length == 2 %} {# ── Par com conector em escada (espelho) ──
+                #}
+                <div class="relative flex flex-col flex-1 min-h-0">
+                    {# partida de cima #}
+                    <div class="flex flex-1 items-center min-h-0 py-1">
+                        {# barra vertical — metade inferior desta linha #}
+                        <div class="w-3 h-1/2 self-end border-l-2 border-brand-border/50 shrink-0"></div>
+                        <div class="flex-1 min-w-0">
+                            {% include "components/match_card_compact.html" with compact_match=pair.0
+                            compact_mode=page_mode %}
+                        </div>
+                        {% if not round.is_outermost %}
+                        <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                        {# stub saída dir #} {% endif %}
+                    </div>
+
+                    {# partida de baixo #}
+                    <div class="flex flex-1 items-center min-h-0 py-1">
+                        {# barra vertical — metade superior desta linha #}
+                        <div class="w-3 h-1/2 self-start border-l-2 border-brand-border/50 shrink-0"></div>
+                        <div class="flex-1 min-w-0">
+                            {% include "components/match_card_compact.html" with compact_match=pair.1
+                            compact_mode=page_mode %}
+                        </div>
+                        {% if not round.is_outermost %}
+                        <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                        {# stub saída dir #} {% endif %}
+                    </div>
+
+                    {# stub horizontal saindo do ponto médio, rumo à fase seguinte (esquerda) #}
+                    <div class="absolute -left-3 top-1/2 -translate-y-1/2 w-3 h-0.5 bg-brand-border/50 z-10"></div>
+                </div>
+
+                {% else %} {# ── Partida única ── #}
+                <div class="flex flex-1 items-center min-h-0 py-1">
+                    {# stub saída em direção ao centro #}
+                    <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                    <div class="flex-1 min-w-0">
+                        {% include "components/match_card_compact.html" with compact_match=pair.0
+                        compact_mode=page_mode %}
+                    </div>
+                    {% if not round.is_outermost %}
+                    <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                    {# stub saída #} {% endif %}
+                </div>
+                {% endif %} {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
