@@ -1,13 +1,13 @@
-{% extends "base.html" %} {% block title %} {% if page_mode == "result" %}Partidas{% else %}Palpites{% endif %} —
-PenniniCup {% endblock %} {% block content %}
+{% extends "base.html" %} {% block title %} {% if page_mode == "result" %} Partidas {% else %} Palpites {% endif %} —
+PenniniCup {% endblock title %} {% block content %}
 <div class="flex flex-col gap-4">
     {# ── Cabeçalho ── #}
     <h1 class="text-xl font-bold text-brand-text">
-        {% if page_mode == "result" %}Partidas{% else %}Meus Palpites{% endif %}
+        {% if page_mode == "result" %} Partidas {% else %} Meus Palpites {% endif %}
     </h1>
 
-    {# ── Toggle ── #} {% include "components/stage_toggle.html" %} {# ── Conteúdo da aba ── #} {% if active_tab ==
-    "group" %} {% include "matches/partials/group_stage_grid.html" %} {% else %} {% include
-    "matches/partials/knockout_bracket.html" %} {% endif %}
+    {% include "components/stage_toggle.html" %} {% if active_tab == "group" %} {% include
+    "matches/partials/group_stage_grid.html" %} {% else %} {% include "matches/partials/knockout_bracket.html" %} {%
+    endif %}
 </div>
-{% endblock %}
+{% endblock content %}

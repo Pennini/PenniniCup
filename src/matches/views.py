@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 
 from src.matches.models import GroupStage, Match
 
@@ -10,7 +10,12 @@ def _make_pairs(lst):
 
 def match_list(request):
     """Página de resultados das partidas."""
-    tab = request.GET.get("tab", "group")
+    if "tab" not in request.GET:
+        return redirect(f"{request.path}?tab=group")
+
+    tab = request.GET["tab"]
+    if tab not in ("group", "knockout"):
+        return redirect(f"{request.path}?tab=group")
 
     if tab == "knockout":
         stage_order = ["R32", "R16", "QF", "SF"]

@@ -1,4 +1,5 @@
 import logging
+import uuid
 
 import mercadopago
 from django.conf import settings
@@ -30,7 +31,8 @@ def create_pix_payment(payment) -> dict | None:
         }
 
         request_options = mercadopago.config.RequestOptions()
-        request_options.custom_headers = {"X-Idempotency-Key": str(payment.id)}
+        # UUID garante unicidade mesmo em retentativas de um mesmo payment
+        request_options.custom_headers = {"X-Idempotency-Key": f"payment-{payment.id}-{uuid.uuid4()}"}
 
         logger.info(f"Criando pagamento PIX | payment_id={payment.id} | user={payment.user.email}")
 
