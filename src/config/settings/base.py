@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     "src.accounts.apps.AccountsConfig",
     "src.payments.apps.PaymentsConfig",
     "src.matches.apps.MatchesConfig",
+    "src.football.apps.FootballConfig",
     "src.penninicup.apps.PenninicupConfig",
 ]
 
