@@ -8,7 +8,6 @@ urlpatterns = [
     path("", include("src.penninicup.urls")),
     path("accounts/", include("src.accounts.urls")),
     path("payments/", include("src.payments.urls")),
-    path("matches/", include("src.matches.urls")),
     path("football/", include("src.football.urls")),
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 

@@ -25,7 +25,6 @@ INSTALLED_APPS = [
     "src.theme",
     "src.accounts.apps.AccountsConfig",
     "src.payments.apps.PaymentsConfig",
-    "src.matches.apps.MatchesConfig",
     "src.football.apps.FootballConfig",
     "src.penninicup.apps.PenninicupConfig",
 ]
@@ -67,7 +66,7 @@ WSGI_APPLICATION = "src.config.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
-        "NAME": r"C:\Users\Andre\OneDrive\Documentos\Github\PenniniBet\db.sqlite3",
+        "NAME": BASE_DIR / "db.sqlite3",  # type: ignore # noqa
     }
 }
 
@@ -143,6 +142,9 @@ MERCADO_PAGO_TEST_USER = os.getenv("MERCADO_PAGO_TEST_USER", "")
 MERCADO_PAGO_TEST_USER_ID = os.getenv("MERCADO_PAGO_TEST_USER_ID", "")
 MERCADO_PAGO_TEST_USER_PASSWORD = os.getenv("MERCADO_PAGO_TEST_USER_PASSWORD", "")
 PIX_KEY = os.getenv("PIX_KEY", "")
+
+FIFA_API_COMPETITION = 17
+FIFA_API_SEASON = 285023
 
 # Validação de credenciais do Mercado Pago
 if not DEBUG and not MERCADO_PAGO_ACCESS_TOKEN:

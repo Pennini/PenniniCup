@@ -19,6 +19,8 @@ python-dotenv = "^1.2.1"
 djangorestframework = "^3.16.1"
 django-tailwind = {extras = ["cookiecutter", "honcho", "reload"], version = "^4.4.2"}
 mercadopago = "^2.3.0"
+curl-cffi = "^0.14.0"
+fake-useragent = "^2.2.0"
 
 
 [tool.poetry.group.dev.dependencies]
