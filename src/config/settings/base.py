@@ -145,6 +145,7 @@ PIX_KEY = os.getenv("PIX_KEY", "")
 
 FIFA_API_COMPETITION = 17
 FIFA_API_SEASON = 285023
+FIFA_API_STAGE = 289273
 
 # Validação de credenciais do Mercado Pago
 if not DEBUG and not MERCADO_PAGO_ACCESS_TOKEN:

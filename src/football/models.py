@@ -110,6 +110,25 @@ class Player(models.Model):
         return f"{self.name} - {self.team.code}"
 
 
+class Official(models.Model):
+    fifa_id = models.CharField(max_length=20, unique=True)
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="officials")
+    name = models.CharField(max_length=255)
+    short_name = models.CharField(max_length=100, blank=True)
+    role_code = models.IntegerField()
+    role_description = models.CharField(max_length=255, blank=True, null=True)
+    sync_status = models.BooleanField(default=True)
+
+    create_date = models.DateTimeField(auto_now_add=True)
+    update_date = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} - {self.team.code}"
+
+
 # =========================
 # STADIUMS
 # =========================

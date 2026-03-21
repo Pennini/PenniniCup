@@ -16,10 +16,11 @@ def sync_groups():
         )
         return
 
-    stage = Stage.objects.filter(order=1, season=season).first()
+    stage = Stage.objects.filter(fifa_id=settings.FIFA_API_STAGE, season=season).first()
     if not stage:
         logger.error(
-            f"Stage order=1 não encontrada para season={season.fifa_id}. Crie a stage antes de rodar este comando."
+            f"Stage com fifa_id={settings.FIFA_API_STAGE} não encontrada para season={season.fifa_id}.\
+            Crie a stage antes de rodar este comando."
         )
         return
 

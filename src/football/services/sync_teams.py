@@ -34,6 +34,8 @@ def sync_teams():
     client = FootballDataClient()
     teams_json = client.get_teams()
 
+    existing_flags = {str(team.fifa_id): team.flag_local for team in Team.objects.only("fifa_id", "flag_local")}
+
     # Pré-carrega todos os grupos em memória (evita N+1)
     groups = {g.name: g for g in Group.objects.all()}
 
@@ -90,7 +92,8 @@ def sync_teams():
     # 2. Depois baixa as bandeiras (se uma falhar, os times já estão salvos)
     for team in rows:
         try:
-            if team.flag_url and team.flag_local:
+            already_downloaded = bool(existing_flags.get(str(team.fifa_id)))
+            if team.flag_url and team.flag_local and not already_downloaded:
                 download_flag(team.flag_url, team.flag_local)
                 logger.info(f"Bandeira baixada: {team.name}")
         except Exception as e:
