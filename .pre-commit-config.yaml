@@ -85,8 +85,8 @@ repos:
     rev: v4.0.0-alpha.8
     hooks:
       - id: prettier
-        name: "✨ misc-files · Format misc web files"
-        types_or: [yaml, html, scss]
+        name: "✨ misc-files · Format YAML/SCSS"
+        types_or: [yaml, scss]
         exclude: ^src/matches/templates/matches/match_list\.html$
         additional_dependencies:
           - prettier@3.4.2

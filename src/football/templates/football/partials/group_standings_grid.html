@@ -1,0 +1,27 @@
+{% comment %}
+Partial: Grade de Classificação por Grupo
+Contexto esperado:
+- groups: lista de dicts {"group": Group, "standings": queryset<Standing>}
+{% endcomment %}
+
+{% if groups %}
+<div class="grid grid-cols-1 gap-4">
+    {% for item in groups %}
+    <div class="bg-brand-darker border border-brand-border rounded-2xl p-4 flex flex-col gap-3">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0">
+                <span class="text-white font-bold text-sm">{{ item.group.name }}</span>
+            </div>
+            <span class="font-bold text-brand-text">Grupo {{ item.group.name }}</span>
+        </div>
+
+        {% include "football/partials/group_standings_table.html" with standings=item.standings %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="flex flex-col items-center justify-center py-16 gap-3 text-gray-500">
+    <i data-lucide="table" class="w-10 h-10 opacity-40"></i>
+    <p class="text-sm">Nenhuma classificação encontrada.</p>
+</div>
+{% endif %}

@@ -3,7 +3,7 @@ import logging
 from django.db.models import Prefetch
 from django.shortcuts import redirect, render
 
-from src.football.models import Group, Match
+from src.football.models import Group, Match, Standing
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ def _normalize_stage_key(stage):
 def _resolve_tab_or_redirect(request):
     """Valida tab e retorna redirect para fallback quando necessário."""
     tab = request.GET.get("tab")
-    if tab not in ("group", "knockout"):
+    if tab not in ("classification", "group", "knockout"):
         return None, redirect(f"{request.path}?tab=group")
     return tab, None
 
@@ -78,14 +78,20 @@ def _build_group_payload(all_matches):
             "matches",
             queryset=_base_matches_queryset(),
             to_attr="prefetched_matches",
-        )
+        ),
+        Prefetch(
+            "standings",
+            queryset=Standing.objects.select_related("team").order_by("position", "team__name"),
+            to_attr="prefetched_standings",
+        ),
     ).order_by("name")
 
     groups = []
     for group in all_groups:
         matches = [match for match in getattr(group, "prefetched_matches", [])]
         matches.sort(key=lambda m: (m.match_number, m.match_date_brasilia))
-        groups.append({"group": group, "matches": matches})
+        standings = [standing for standing in getattr(group, "prefetched_standings", [])]
+        groups.append({"group": group, "matches": matches, "standings": standings})
 
     return groups
 
@@ -154,6 +160,18 @@ def _build_match_page_context(tab):
     all_matches = list(_base_matches_queryset())
     knockout_data = _build_knockout_payload(all_matches)
     groups = _build_group_payload(all_matches)
+
+    if tab == "classification":
+        return {
+            "groups": groups,
+            "bracket_left": [],
+            "bracket_right": [],
+            "final_match": None,
+            "third_place_match": None,
+            "bracket_height": 320,
+            "active_tab": "classification",
+            "page_mode": "result",
+        }
 
     if tab == "knockout":
         return {

@@ -1,10 +1,21 @@
-{% extends "base.html" %} {% block title %} Partidas — PenniniCup {% endblock title %} {% block content %}
+{% extends "base.html" %}
+
+{% block title %}
+Partidas — PenniniCup
+{% endblock title %}
+
+{% block content %}
 <div class="flex flex-col gap-4">
     {# ── Cabeçalho ── #}
     <h1 class="text-xl font-bold text-brand-text">Partidas</h1>
 
-    {% include "components/stage_toggle.html" %} {% if active_tab == "group" %} {% include
-    "football/partials/group_stage_grid.html" %} {% else %} {% include "football/partials/knockout_bracket.html" %} {%
-    endif %}
+    {% include "components/stage_toggle_three_tabs.html" %}
+    {% if active_tab == "classification" %}
+    {% include "football/partials/group_standings_grid.html" %}
+    {% elif active_tab == "group" %}
+    {% include "football/partials/group_stage_grid.html" %}
+    {% else %}
+    {% include "football/partials/knockout_bracket.html" %}
+    {% endif %}
 </div>
 {% endblock content %}

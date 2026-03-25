@@ -1,0 +1,57 @@
+{% load static %}
+
+{% if standings %}
+<div class="overflow-x-auto rounded-xl border border-brand-border/60">
+	<table class="w-full text-sm text-brand-text">
+		<thead class="bg-brand-darkest/70 text-gray-400 uppercase tracking-wide text-[0.72rem]">
+			<tr>
+				<th class="text-left px-2 py-2 w-8">#</th>
+				<th class="text-left px-2 py-2 min-w-[160px]">Time</th>
+				<th class="text-center px-2 py-2">PJ</th>
+				<th class="text-center px-2 py-2">V</th>
+				<th class="text-center px-2 py-2">E</th>
+				<th class="text-center px-2 py-2">D</th>
+				<th class="text-center px-2 py-2">GP</th>
+				<th class="text-center px-2 py-2">GC</th>
+				<th class="text-center px-2 py-2">SG</th>
+				<th class="text-center px-2 py-2 font-semibold text-primary">PTS</th>
+			</tr>
+		</thead>
+		<tbody>
+			{% for row in standings %}
+			<tr class="border-t border-brand-border/40">
+				<td class="px-2.5 py-3 font-bold tabular-nums text-[1.02rem]">{{ row.position }}</td>
+				<td class="px-2 py-2.5">
+					<div class="flex items-center gap-2 min-w-0">
+						<div
+							class="w-4 h-4 rounded-full overflow-hidden shrink-0 border border-brand-border/50 flex items-center justify-center"
+						>
+							{% if row.team.flag_local %}
+							<img
+								src="{% static row.team.flag_local %}"
+								alt="{{ row.team.name|default:row.team.code }}"
+								class="w-full h-full object-cover"
+							/>
+							{% endif %}
+						</div>
+						<span class="truncate font-semibold text-[0.98rem]">{{ row.team.name|default:row.team.code }}</span>
+					</div>
+				</td>
+				<td class="text-center px-2.5 py-3 tabular-nums text-[1.02rem] font-semibold">{{ row.played }}</td>
+				<td class="text-center px-2.5 py-3 tabular-nums text-[1.02rem] font-semibold">{{ row.won }}</td>
+				<td class="text-center px-2.5 py-3 tabular-nums text-[1.02rem] font-semibold">{{ row.drawn }}</td>
+				<td class="text-center px-2.5 py-3 tabular-nums text-[1.02rem] font-semibold">{{ row.lost }}</td>
+				<td class="text-center px-2.5 py-3 tabular-nums text-[1.02rem] font-semibold">{{ row.goals_for }}</td>
+				<td class="text-center px-2.5 py-3 tabular-nums text-[1.02rem] font-semibold">{{ row.goals_against }}</td>
+				<td class="text-center px-2.5 py-3 tabular-nums text-[1.02rem] font-semibold">
+					{% if row.goal_difference > 0 %}+{% endif %}{{ row.goal_difference }}
+				</td>
+				<td class="text-center px-2.5 py-3 font-bold text-primary tabular-nums text-[1.1rem]">{{ row.points }}</td>
+			</tr>
+			{% endfor %}
+		</tbody>
+	</table>
+</div>
+{% else %}
+<p class="text-sm text-gray-500 text-center py-4">Classificação indisponível para este grupo.</p>
+{% endif %}

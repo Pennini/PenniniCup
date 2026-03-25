@@ -1,0 +1,28 @@
+{% comment %}
+COMPONENTE: Toggle de estágio (3 abas)
+Uso: {% include "components/stage_toggle_three_tabs.html" %}
+Contexto esperado: active_tab — "classification" | "group" | "knockout"
+{% endcomment %}
+
+<div class="flex rounded-xl bg-brand-darkest border border-brand-border p-1 gap-1">
+    <a
+        href="{{ request.path }}?tab=classification"
+        class="flex-1 text-center text-sm font-semibold rounded-lg py-2.5 transition-all duration-200 {% if active_tab == 'classification' %} bg-brand-darker text-primary border border-primary {% else %} text-gray-500 border border-transparent hover:text-gray-300 {% endif %}"
+    >
+        Classificação
+    </a>
+
+    <a
+        href="{{ request.path }}?tab=group"
+        class="flex-1 text-center text-sm font-semibold rounded-lg py-2.5 transition-all duration-200 {% if active_tab == 'group' %} bg-brand-darker text-primary border border-primary {% else %} text-gray-500 border border-transparent hover:text-gray-300 {% endif %}"
+    >
+        Fase de Grupos
+    </a>
+
+    <a
+        href="{{ request.path }}?tab=knockout"
+        class="flex-1 text-center text-sm font-semibold rounded-lg py-2.5 transition-all duration-200 {% if active_tab == 'knockout' %} bg-brand-darker text-primary border border-primary {% else %} text-gray-500 border border-transparent hover:text-gray-300 {% endif %}"
+    >
+        Mata-Mata
+    </a>
+</div>

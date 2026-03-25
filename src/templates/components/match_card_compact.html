@@ -1,14 +1,19 @@
-{% load static %} {% comment %} COMPONENTE: Match Card Compacto (para uso no chaveamento)
-────────────────────────────────────────────────────── Uso: {% include "components/match_card_compact.html" with
-compact_match=match compact_mode="result" %} Parâmetros: compact_match — objeto Match compact_mode — "result" |
-"bet_locked" (sem inputs, apenas leitura) compact_bet — objeto Bet (somente compact_mode="bet_locked") {% endcomment %}
+{% load static %}
+{% comment %}
+COMPONENTE: Match Card Compacto (para uso no chaveamento)
+Uso: {% include "components/match_card_compact.html" with compact_match=match compact_mode="result" %}
+Parâmetros:
+- compact_match — objeto Match
+- compact_mode — "result" | "bet_locked" (sem inputs, apenas leitura)
+- compact_bet — objeto Bet (somente compact_mode="bet_locked")
+{% endcomment %}
 
-<div class="bg-brand-darker border border-brand-border rounded-xl px-2 py-1.5 select-none min-w-0 w-fit mx-auto">
+<div class="bg-brand-darker border border-brand-border rounded-xl px-2.5 py-2 select-none min-w-0 w-full mx-auto overflow-hidden">
     {# — Time da casa — #}
-    <div class="grid grid-cols-[1fr_auto] items-center gap-2 min-w-0">
-        <div class="flex items-center justify-center gap-3 min-w-0">
+    <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 min-w-0">
+        <div class="flex items-center justify-start gap-2.5 min-w-0">
             <div
-                class="w-4 h-4 rounded-full overflow-hidden shrink-0 border border-brand-border/50 flex items-center justify-center"
+                class="w-5 h-5 rounded-full overflow-hidden shrink-0 border border-brand-border/50 flex items-center justify-center"
             >
                 {% if compact_match.home_team and compact_match.home_team.flag_local %}
                 <img
@@ -18,33 +23,45 @@ compact_match=match compact_mode="result" %} Parâmetros: compact_match — obje
                 />
                 {% endif %}
             </div>
-            <span class="font-bold text-[0.78rem] text-brand-text whitespace-nowrap leading-none truncate">
-                {% if compact_match.home_team and compact_match.home_team.code %} {{ compact_match.home_team.code }} {%
-                else %} - {% endif %} {% if compact_match.home_penalty_score or compact_match.away_penalty_score %}
-                <span class="text-[0.75rem]">({{ compact_match.home_penalty_score|default:"0" }})</span>
+            <div class="grid grid-cols-[auto_auto] items-center gap-1 min-w-0">
+                <span
+                    class="font-bold text-[0.86rem] leading-none shrink-0 {% if compact_match.winner_id == compact_match.home_team_id %}text-primary{% else %}text-brand-text{% endif %}"
+                >
+                    {% if compact_match.home_team and compact_match.home_team.code %}
+                        {{ compact_match.home_team.code }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </span>
+                {% if compact_match.home_penalty_score or compact_match.away_penalty_score %}
+                <span class="inline-flex items-center text-[0.78rem] leading-none text-gray-300 shrink-0">({{ compact_match.home_penalty_score|default:"0" }})</span>
                 {% endif %}
-            </span>
+            </div>
         </div>
 
-        <div class="flex flex-col items-end leading-none">
-            <span class="font-bold text-[0.88rem] text-brand-text">
-                {% if compact_mode == "bet_locked" and compact_bet %} {{ compact_bet.home_score|default:"—" }} {% else
-                %} {{ compact_match.home_score|default:"—" }} {% endif %}
+        <div class="flex flex-col items-end leading-none shrink-0">
+            <span class="font-bold text-[1.02rem] text-brand-text text-right min-w-[1rem]">
+                {% if compact_mode == "bet_locked" and compact_bet %}
+                    {{ compact_bet.home_score|default:"—" }}
+                {% else %}
+                    {{ compact_match.home_score|default:"—" }}
+                {% endif %}
             </span>
-            {% if compact_match.home_score != None and compact_match.away_score != None %} {% if
-            compact_match.home_score > compact_match.away_score %}
-            <span class="mt-0.5 w-5 h-0.5 rounded-full bg-primary"></span>
-            {% else %}
-            <span class="mt-0.5 w-5 h-0.5 rounded-full bg-transparent"></span>
-            {% endif %} {% endif %}
+            {% if compact_match.winner_id %}
+                {% if compact_match.winner_id == compact_match.home_team_id %}
+                <span class="mt-0.5 w-5 h-0.5 rounded-full bg-primary"></span>
+                {% else %}
+                <span class="mt-0.5 w-5 h-0.5 rounded-full bg-transparent"></span>
+                {% endif %}
+            {% endif %}
         </div>
     </div>
 
     {# — Time visitante — #}
-    <div class="grid grid-cols-[1fr_auto] items-center gap-2 min-w-0 mt-1.5">
-        <div class="flex items-center justify-center gap-3 min-w-0">
+    <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 min-w-0 mt-2">
+        <div class="flex items-center justify-start gap-2.5 min-w-0">
             <div
-                class="w-4 h-4 rounded-full overflow-hidden shrink-0 border border-brand-border/50 flex items-center justify-center"
+                class="w-5 h-5 rounded-full overflow-hidden shrink-0 border border-brand-border/50 flex items-center justify-center"
             >
                 {% if compact_match.away_team and compact_match.away_team.flag_local %}
                 <img
@@ -54,25 +71,37 @@ compact_match=match compact_mode="result" %} Parâmetros: compact_match — obje
                 />
                 {% endif %}
             </div>
-            <span class="font-bold text-[0.78rem] text-brand-text whitespace-nowrap leading-none truncate">
-                {% if compact_match.away_team and compact_match.away_team.code %} {{ compact_match.away_team.code }} {%
-                else %} - {% endif %} {% if compact_match.home_penalty_score or compact_match.away_penalty_score %}
-                <span class="text-[0.75rem]">({{ compact_match.away_penalty_score|default:"0" }})</span>
+            <div class="grid grid-cols-[auto_auto] items-center gap-1 min-w-0">
+                <span
+                    class="font-bold text-[0.86rem] leading-none shrink-0 {% if compact_match.winner_id == compact_match.away_team_id %}text-primary{% else %}text-brand-text{% endif %}"
+                >
+                    {% if compact_match.away_team and compact_match.away_team.code %}
+                        {{ compact_match.away_team.code }}
+                    {% else %}
+                        -
+                    {% endif %}
+                </span>
+                {% if compact_match.home_penalty_score or compact_match.away_penalty_score %}
+                <span class="inline-flex items-center text-[0.78rem] leading-none text-gray-300 shrink-0">({{ compact_match.away_penalty_score|default:"0" }})</span>
                 {% endif %}
-            </span>
+            </div>
         </div>
 
-        <div class="flex flex-col items-end leading-none">
-            <span class="font-bold text-[0.88rem] text-brand-text">
-                {% if compact_mode == "bet_locked" and compact_bet %} {{ compact_bet.away_score|default:"—" }} {% else
-                %} {{ compact_match.away_score|default:"—" }} {% endif %}
+        <div class="flex flex-col items-end leading-none shrink-0">
+            <span class="font-bold text-[1.02rem] text-brand-text text-right min-w-[1rem]">
+                {% if compact_mode == "bet_locked" and compact_bet %}
+                    {{ compact_bet.away_score|default:"—" }}
+                {% else %}
+                    {{ compact_match.away_score|default:"—" }}
+                {% endif %}
             </span>
-            {% if compact_match.home_score != None and compact_match.away_score != None %} {% if
-            compact_match.away_score > compact_match.home_score %}
-            <span class="mt-0.5 w-5 h-0.5 rounded-full bg-primary"></span>
-            {% else %}
-            <span class="mt-0.5 w-5 h-0.5 rounded-full bg-transparent"></span>
-            {% endif %} {% endif %}
+            {% if compact_match.winner_id %}
+                {% if compact_match.winner_id == compact_match.away_team_id %}
+                <span class="mt-0.5 w-5 h-0.5 rounded-full bg-primary"></span>
+                {% else %}
+                <span class="mt-0.5 w-5 h-0.5 rounded-full bg-transparent"></span>
+                {% endif %}
+            {% endif %}
         </div>
     </div>
 </div>

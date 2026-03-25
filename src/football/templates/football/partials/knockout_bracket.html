@@ -1,16 +1,25 @@
-{% comment %} Partial: Chaveamento Mata-Mata Contexto esperado: - bracket_left: rounds ordenados exterior → interior -
-bracket_right: rounds ordenados interior → exterior (espelho) - final_match: Match ou None - bracket_height: altura
-mínima do container em px - page_mode: "result" | "bet_locked" {% endcomment %} {% if not bracket_left and not
-final_match %}
+{% comment %}
+Partial: Chaveamento Mata-Mata
+Contexto esperado:
+- bracket_left: rounds ordenados exterior → interior
+- bracket_right: rounds ordenados interior → exterior (espelho)
+- final_match: Match ou None
+- bracket_height: altura mínima do container em px
+- page_mode: "result" | "bet_locked"
+{% endcomment %}
+{% if not bracket_left and not final_match %}
 <div class="flex flex-col items-center justify-center py-16 gap-3 text-gray-500">
     <i data-lucide="calendar-x" class="w-10 h-10 opacity-40"></i>
     <p class="text-sm">Nenhuma partida de mata-mata cadastrada.</p>
 </div>
 {% else %}
-<div class="overflow-x-auto -mx-2 pb-4">
-    <div class="flex items-stretch w-max mx-auto px-2 gap-3" style="min-height: {{ bracket_height }}px">
+<div class="overflow-x-auto overflow-y-hidden -mx-2 pb-12">
+    <div
+        class="flex items-stretch w-max mx-auto px-2 gap-0.5"
+        style="min-height: {{ bracket_height }}px"
+    >
         {% for round in bracket_left %}
-        <div class="flex flex-col" style="width: 156px">
+        <div class="flex flex-col" style="width: 124px">
             <p
                 class="text-[0.55rem] font-semibold text-gray-500 uppercase tracking-widest text-center mb-1.5 shrink-0"
             >
@@ -18,44 +27,43 @@ final_match %}
             </p>
 
             <div class="flex-1 flex flex-col min-h-0">
-                {% for pair in round.pairs %} {% if pair|length == 2 %}
+                {% for pair in round.pairs %}
+                {% if pair|length == 2 %}
                 <div class="relative flex flex-col flex-1 min-h-0">
                     <div class="flex flex-1 items-center min-h-0 py-0.5">
                         {% if not round.is_outermost %}
-                        <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                        <div class="w-0.5 h-0.5 bg-brand-border/50 shrink-0"></div>
                         {% endif %}
                         <div class="flex-1 min-w-0">
-                            {% include "components/match_card_compact.html" with compact_match=pair.0
-                            compact_mode=page_mode %}
+                            {% include "components/match_card_compact.html" with compact_match=pair.0 compact_mode=page_mode %}
                         </div>
-                        <div class="w-3 h-1/2 self-end border-r-2 border-brand-border/50 shrink-0"></div>
+                        <div class="w-0.5 h-1/2 self-end border-r-2 border-brand-border/50 shrink-0"></div>
                     </div>
 
                     <div class="flex flex-1 items-center min-h-0 py-0.5">
                         {% if not round.is_outermost %}
-                        <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                        <div class="w-0.5 h-0.5 bg-brand-border/50 shrink-0"></div>
                         {% endif %}
                         <div class="flex-1 min-w-0">
-                            {% include "components/match_card_compact.html" with compact_match=pair.1
-                            compact_mode=page_mode %}
+                            {% include "components/match_card_compact.html" with compact_match=pair.1 compact_mode=page_mode %}
                         </div>
-                        <div class="w-3 h-1/2 self-start border-r-2 border-brand-border/50 shrink-0"></div>
+                        <div class="w-0.5 h-1/2 self-start border-r-2 border-brand-border/50 shrink-0"></div>
                     </div>
 
-                    <div class="absolute -right-3 top-1/2 -translate-y-1/2 w-3 h-0.5 bg-brand-border/50 z-10"></div>
+                    <div class="absolute -right-1.5 top-1/2 -translate-y-1/2 w-0.5 h-0.5 bg-brand-border/50 z-10"></div>
                 </div>
                 {% else %}
                 <div class="flex flex-1 items-center min-h-0 py-0.5">
                     {% if not round.is_outermost %}
-                    <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                    <div class="w-0.5 h-0.5 bg-brand-border/50 shrink-0"></div>
                     {% endif %}
                     <div class="flex-1 min-w-0">
-                        {% include "components/match_card_compact.html" with compact_match=pair.0
-                        compact_mode=page_mode %}
+                        {% include "components/match_card_compact.html" with compact_match=pair.0 compact_mode=page_mode %}
                     </div>
-                    <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                    <div class="w-0.5 h-0.5 bg-brand-border/50 shrink-0"></div>
                 </div>
-                {% endif %} {% endfor %}
+                {% endif %}
+                {% endfor %}
             </div>
         </div>
         {% endfor %}
@@ -66,10 +74,11 @@ final_match %}
                     Final
                 </p>
                 <div class="flex items-center">
-                    <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                    <div class="w-0.5 h-0.5 bg-brand-border/50 shrink-0"></div>
                     <div class="flex-1 min-w-0">
-                        {% if final_match %} {% include "components/match_card_compact.html" with
-                        compact_match=final_match compact_mode=page_mode %} {% else %}
+                        {% if final_match %}
+                        {% include "components/match_card_compact.html" with compact_match=final_match compact_mode=page_mode %}
+                        {% else %}
                         <div
                             class="bg-brand-darker border border-dashed border-brand-border/40 rounded-xl px-3 py-2.5 text-center text-[0.7rem] text-gray-600"
                         >
@@ -77,7 +86,7 @@ final_match %}
                         </div>
                         {% endif %}
                     </div>
-                    <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                    <div class="w-0.5 h-0.5 bg-brand-border/50 shrink-0"></div>
                 </div>
             </div>
 
@@ -85,8 +94,9 @@ final_match %}
                 <p class="text-[0.55rem] font-semibold text-gray-500 uppercase tracking-widest text-center mb-1.5">
                     3° Lugar
                 </p>
-                {% if third_place_match %} {% include "components/match_card_compact.html" with
-                compact_match=third_place_match compact_mode=page_mode %} {% else %}
+                {% if third_place_match %}
+                {% include "components/match_card_compact.html" with compact_match=third_place_match compact_mode=page_mode %}
+                {% else %}
                 <div
                     class="bg-brand-darker border border-dashed border-brand-border/40 rounded-xl px-3 py-2.5 text-center text-[0.7rem] text-gray-600"
                 >
@@ -97,7 +107,7 @@ final_match %}
         </div>
 
         {% for round in bracket_right %}
-        <div class="flex flex-col" style="width: 156px">
+        <div class="flex flex-col" style="width: 124px">
             <p
                 class="text-[0.55rem] font-semibold text-gray-500 uppercase tracking-widest text-center mb-1.5 shrink-0"
             >
@@ -105,44 +115,43 @@ final_match %}
             </p>
 
             <div class="flex-1 flex flex-col min-h-0">
-                {% for pair in round.pairs %} {% if pair|length == 2 %}
+                {% for pair in round.pairs %}
+                {% if pair|length == 2 %}
                 <div class="relative flex flex-col flex-1 min-h-0">
                     <div class="flex flex-1 items-center min-h-0 py-0.5">
-                        <div class="w-3 h-1/2 self-end border-l-2 border-brand-border/50 shrink-0"></div>
+                        <div class="w-0.5 h-1/2 self-end border-l-2 border-brand-border/50 shrink-0"></div>
                         <div class="flex-1 min-w-0">
-                            {% include "components/match_card_compact.html" with compact_match=pair.0
-                            compact_mode=page_mode %}
+                            {% include "components/match_card_compact.html" with compact_match=pair.0 compact_mode=page_mode %}
                         </div>
                         {% if not round.is_outermost %}
-                        <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                        <div class="w-0.5 h-0.5 bg-brand-border/50 shrink-0"></div>
                         {% endif %}
                     </div>
 
                     <div class="flex flex-1 items-center min-h-0 py-0.5">
-                        <div class="w-3 h-1/2 self-start border-l-2 border-brand-border/50 shrink-0"></div>
+                        <div class="w-0.5 h-1/2 self-start border-l-2 border-brand-border/50 shrink-0"></div>
                         <div class="flex-1 min-w-0">
-                            {% include "components/match_card_compact.html" with compact_match=pair.1
-                            compact_mode=page_mode %}
+                            {% include "components/match_card_compact.html" with compact_match=pair.1 compact_mode=page_mode %}
                         </div>
                         {% if not round.is_outermost %}
-                        <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                        <div class="w-0.5 h-0.5 bg-brand-border/50 shrink-0"></div>
                         {% endif %}
                     </div>
 
-                    <div class="absolute -left-3 top-1/2 -translate-y-1/2 w-3 h-0.5 bg-brand-border/50 z-10"></div>
+                    <div class="absolute -left-1.5 top-1/2 -translate-y-1/2 w-0.5 h-0.5 bg-brand-border/50 z-10"></div>
                 </div>
                 {% else %}
                 <div class="flex flex-1 items-center min-h-0 py-0.5">
-                    <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                    <div class="w-0.5 h-0.5 bg-brand-border/50 shrink-0"></div>
                     <div class="flex-1 min-w-0">
-                        {% include "components/match_card_compact.html" with compact_match=pair.0
-                        compact_mode=page_mode %}
+                        {% include "components/match_card_compact.html" with compact_match=pair.0 compact_mode=page_mode %}
                     </div>
                     {% if not round.is_outermost %}
-                    <div class="w-3 h-0.5 bg-brand-border/50 shrink-0"></div>
+                    <div class="w-0.5 h-0.5 bg-brand-border/50 shrink-0"></div>
                     {% endif %}
                 </div>
-                {% endif %} {% endfor %}
+                {% endif %}
+                {% endfor %}
             </div>
         </div>
         {% endfor %}
