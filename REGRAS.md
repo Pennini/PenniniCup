@@ -90,20 +90,20 @@ ______________________________________________________________________
 
 ## Bônus de Pontos
 
-| Situação                       | Pontos        |
-| ------------------------------ | ------------- |
-| Acertar o campeão da Copa      | +15           |
-| Acertar o vice-campeão da Copa | +10           |
-| Acertar o terceiro lugar       | +5            |
-| Acertar o artilheiro da Copa   | +10           |
-| **Total máximo de bônus**      | **40 pontos** |
+| Situação                       | Pontos         |
+| ------------------------------ | -------------- |
+| Acertar o campeão da Copa      | +50            |
+| Acertar o vice-campeão da Copa | +30            |
+| Acertar o terceiro lugar       | +20            |
+| Acertar o artilheiro da Copa   | +50            |
+| **Total máximo de bônus**      | **150 pontos** |
 
 ## 🎯 Critérios de Desempate
 
 Em caso de empate na pontuação total, os critérios de desempate são aplicados na seguinte ordem:
 
-1. Maior número de acertos de placares exatos
 1. Acerto do campeão da Copa
+1. Maior número de acertos de placares exatos
 1. Acerto do artilheiro da Copa
 1. Maior número de acertos de vencedores/empates
 1. Maior pontuação na fase de mata-mata

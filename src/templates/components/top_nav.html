@@ -58,12 +58,12 @@
                 Home
             </a>
             <a
-                href="#"
-                class="nav-link flex items-center h-16 px-3 border-b-2 -mb-[1px] transition-colors {% if current_view == 'matches:list' %}nav-link-active{% endif %}"
+                href="{% url 'football:matches' %}"
+                class="nav-link flex items-center h-16 px-3 border-b-2 -mb-[1px] transition-colors {% if current_view == 'football:matches' %}nav-link-active{% endif %}"
                 {%
                 if
                 current_view=""
-                ="matches:list"
+                ="football:matches"
                 %}aria-current="page"
                 {%
                 endif

@@ -1,4 +1,4 @@
-{% comment %} ══════════════════════════════════════════════════════════ COMPONENTE: Match Card
+{% load static %} {% comment %} ══════════════════════════════════════════════════════════ COMPONENTE: Match Card
 ══════════════════════════════════════════════════════════ Uso via {% include "components/match_card.html" with ... %}
 Parâmetros obrigatórios: card_match — objeto Match Parâmetros de modo (escolha um): card_mode — "result" → placar real
 apenas "bet_active" → inputs de palpite + placar real abaixo "bet_locked" → palpite fixo + placar real abaixo
@@ -18,12 +18,12 @@ card_match=match card_mode="bet_active" card_form=form %} Exemplo — palpite en
             <span class="font-bold text-[0.95rem] text-brand-text whitespace-nowrap"
                 >{{ card_match.home_team.code }}</span
             >
-            <div class="w-8 h-8 rounded-full overflow-hidden shrink-0 bg-[#2e2e2e] flex items-center justify-center">
-                {% if card_match.home_team.crest_url %}
+            <div class="w-8 h-8 rounded-full overflow-hidden shrink-0 flex items-center justify-center">
+                {% if card_match.home_team.flag_local %}
                 <img
-                    src="{{ card_match.home_team.crest_url }}"
+                    src="{% static card_match.home_team.flag_local %}"
                     alt="{{ card_match.home_team.code }}"
-                    class="w-full h-full object-contain"
+                    class="w-full h-full object-cover"
                 />
                 {% else %}
                 <span class="text-[0.6rem] font-bold text-gray-400 uppercase">
@@ -88,12 +88,12 @@ card_match=match card_mode="bet_active" card_form=form %} Exemplo — palpite en
 
         {# — Time visitante — #}
         <div class="flex items-center gap-2 flex-1 min-w-0 justify-start">
-            <div class="w-8 h-8 rounded-full overflow-hidden shrink-0 bg-[#2e2e2e] flex items-center justify-center">
-                {% if card_match.away_team.crest_url %}
+            <div class="w-8 h-8 rounded-full overflow-hidden shrink-0 flex items-center justify-center">
+                {% if card_match.away_team.flag_local %}
                 <img
-                    src="{{ card_match.away_team.crest_url }}"
+                    src="{% static card_match.away_team.flag_local %}"
                     alt="{{ card_match.away_team.code }}"
-                    class="w-full h-full object-contain"
+                    class="w-full h-full object-cover"
                 />
                 {% else %}
                 <span class="text-[0.6rem] font-bold text-gray-400 uppercase">
@@ -106,11 +106,4 @@ card_match=match card_mode="bet_active" card_form=form %} Exemplo — palpite en
             >
         </div>
     </div>
-
-    {# ── linha do placar real (apenas modos de palpite) ── #} {% if card_mode == "bet_active" or card_mode ==
-    "bet_locked" %}
-    <p class="mt-2.5 text-center text-xs text-gray-500 tracking-[0.01em]">
-        Placar: {{ card_match.home_score|default:"—" }} × {{ card_match.away_score|default:"—" }}
-    </p>
-    {% endif %}
 </div>
