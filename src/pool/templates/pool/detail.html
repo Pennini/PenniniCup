@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{{ pool.name }}{% endblock %}
+
+{% block content %}
+<section class="space-y-4">
+    <header class="flex flex-wrap gap-3 items-start justify-between">
+        <div>
+            <h1 class="text-2xl font-semibold">{{ pool.name }}</h1>
+            <p class="text-sm text-neutral-400">{{ pool.season.name }}</p>
+        </div>
+        <a href="{% url 'pool:list' %}" class="px-3 py-2 rounded-md border border-neutral-600 text-sm">Voltar</a>
+    </header>
+
+    {% if not can_bet %}
+    <div class="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-amber-200 text-sm">
+        Seu usuario participa do bolao, mas ainda nao esta apto para palpitar. Confirme o pagamento da inscricao.
+        <form method="post" action="{% url 'payments:create-subscription' %}" class="mt-3">
+            {% csrf_token %}
+            <input type="hidden" name="pool_id" value="{{ pool.id }}" />
+            <input type="hidden" name="amount" value="{{ pool.entry_fee }}" />
+            <button type="submit" class="px-3 py-2 rounded-md bg-orange-500 text-black font-semibold">Pagar inscricao</button>
+        </form>
+    </div>
+    {% endif %}
+
+    <form method="post" action="{% url 'pool:save-bets-bulk' pool.slug %}" class="space-y-3">
+        {% csrf_token %}
+        {% for row in group_rows %}
+        <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900">
+            <div class="flex flex-wrap gap-3 items-center justify-between">
+                <div>
+                    <p class="text-xs uppercase tracking-wide text-neutral-400">
+                        {% if row.phase == "GROUP" %}Fase de Grupos{% else %}Mata-mata{% endif %}
+                    </p>
+                    <h2 class="text-lg font-semibold flex flex-wrap items-center gap-2">
+                        <span class="inline-flex items-center gap-2">
+                            {% if row.home_team and row.home_team.flag_local %}
+                            <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
+                                <img
+                                    src="{% static row.home_team.flag_local %}"
+                                    alt="Bandeira {{ row.home_team.name }}"
+                                    class="h-full w-full object-cover"
+                                    loading="lazy"
+                                />
+                            </span>
+                            {% endif %}
+                            <span>{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
+                        </span>
+                        <span>x</span>
+                        <span class="inline-flex items-center gap-2">
+                            {% if row.away_team and row.away_team.flag_local %}
+                            <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
+                                <img
+                                    src="{% static row.away_team.flag_local %}"
+                                    alt="Bandeira {{ row.away_team.name }}"
+                                    class="h-full w-full object-cover"
+                                    loading="lazy"
+                                />
+                            </span>
+                            {% endif %}
+                            <span>{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
+                        </span>
+                    </h2>
+                    <p class="text-xs text-neutral-400">{{ row.match.match_date_brasilia }}</p>
+                </div>
+                {% if row.locked %}
+                <span class="text-xs px-2 py-1 rounded-full border border-red-400 text-red-300">Fechado</span>
+                {% else %}
+                <span class="text-xs px-2 py-1 rounded-full border border-emerald-400 text-emerald-300">Aberto</span>
+                {% endif %}
+            </div>
+
+            <div class="mt-4 grid md:grid-cols-5 gap-2">
+                <input
+                    type="number"
+                    min="0"
+                    name="match_{{ row.match.id }}_home_score_pred"
+                    value="{% if row.bet %}{{ row.bet.home_score_pred }}{% endif %}"
+                    class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
+                    placeholder="Gols casa"
+                    {% if row.locked or not can_bet %}disabled{% endif %}
+                />
+                <input
+                    type="number"
+                    min="0"
+                    name="match_{{ row.match.id }}_away_score_pred"
+                    value="{% if row.bet %}{{ row.bet.away_score_pred }}{% endif %}"
+                    class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
+                    placeholder="Gols fora"
+                    {% if row.locked or not can_bet %}disabled{% endif %}
+                />
+
+                {% if row.phase == "KNOCKOUT" %}
+                <select
+                    name="match_{{ row.match.id }}_winner_pred"
+                    class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2 md:col-span-2"
+                    {% if row.locked or not can_bet %}disabled{% endif %}
+                >
+                    <option value="">Classificado</option>
+                    {% if row.home_team %}
+                    <option value="{{ row.home_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.home_team.id %}selected{% endif %}>{{ row.home_team.name }}</option>
+                    {% endif %}
+                    {% if row.away_team %}
+                    <option value="{{ row.away_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.away_team.id %}selected{% endif %}>{{ row.away_team.name }}</option>
+                    {% endif %}
+                </select>
+                {% endif %}
+            </div>
+        </article>
+        {% endfor %}
+
+        {% if knockout_rows %}
+        <div class="rounded-lg border border-neutral-700 bg-neutral-900/60 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <p class="text-sm text-neutral-300">Calcule os classificados projetados para preencher os confrontos do mata-mata com base nos palpites da fase de grupos.</p>
+            <button
+                type="submit"
+                name="submit_action"
+                value="calculate_knockout"
+                class="px-4 py-2 rounded-md border border-neutral-500 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                {% if not can_bet or group_locked %}disabled{% endif %}
+            >
+                Calcular mata-mata
+            </button>
+        </div>
+        {% endif %}
+
+        {% for row in knockout_rows %}
+        <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900">
+            <div class="flex flex-wrap gap-3 items-center justify-between">
+                <div>
+                    <p class="text-xs uppercase tracking-wide text-neutral-400">
+                        {% if row.phase == "GROUP" %}Fase de Grupos{% else %}Mata-mata{% endif %}
+                    </p>
+                    <h2 class="text-lg font-semibold flex flex-wrap items-center gap-2">
+                        <span class="inline-flex items-center gap-2">
+                            {% if row.home_team and row.home_team.flag_local %}
+                            <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
+                                <img
+                                    src="{% static row.home_team.flag_local %}"
+                                    alt="Bandeira {{ row.home_team.name }}"
+                                    class="h-full w-full object-cover"
+                                    loading="lazy"
+                                />
+                            </span>
+                            {% endif %}
+                            <span>{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
+                        </span>
+                        <span>x</span>
+                        <span class="inline-flex items-center gap-2">
+                            {% if row.away_team and row.away_team.flag_local %}
+                            <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
+                                <img
+                                    src="{% static row.away_team.flag_local %}"
+                                    alt="Bandeira {{ row.away_team.name }}"
+                                    class="h-full w-full object-cover"
+                                    loading="lazy"
+                                />
+                            </span>
+                            {% endif %}
+                            <span>{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
+                        </span>
+                    </h2>
+                    <p class="text-xs text-neutral-400">{{ row.match.match_date_brasilia }}</p>
+                </div>
+                {% if row.locked %}
+                <span class="text-xs px-2 py-1 rounded-full border border-red-400 text-red-300">Fechado</span>
+                {% else %}
+                <span class="text-xs px-2 py-1 rounded-full border border-emerald-400 text-emerald-300">Aberto</span>
+                {% endif %}
+            </div>
+
+            <div class="mt-4 grid md:grid-cols-5 gap-2">
+                <input
+                    type="number"
+                    min="0"
+                    name="match_{{ row.match.id }}_home_score_pred"
+                    value="{% if row.bet %}{{ row.bet.home_score_pred }}{% endif %}"
+                    class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
+                    placeholder="Gols casa"
+                    {% if row.locked or not can_bet %}disabled{% endif %}
+                />
+                <input
+                    type="number"
+                    min="0"
+                    name="match_{{ row.match.id }}_away_score_pred"
+                    value="{% if row.bet %}{{ row.bet.away_score_pred }}{% endif %}"
+                    class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
+                    placeholder="Gols fora"
+                    {% if row.locked or not can_bet %}disabled{% endif %}
+                />
+
+                {% if row.phase == "KNOCKOUT" %}
+                <select
+                    name="match_{{ row.match.id }}_winner_pred"
+                    class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2 md:col-span-2"
+                    {% if row.locked or not can_bet %}disabled{% endif %}
+                >
+                    <option value="">Classificado</option>
+                    {% if row.home_team %}
+                    <option value="{{ row.home_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.home_team.id %}selected{% endif %}>{{ row.home_team.name }}</option>
+                    {% endif %}
+                    {% if row.away_team %}
+                    <option value="{{ row.away_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.away_team.id %}selected{% endif %}>{{ row.away_team.name }}</option>
+                    {% endif %}
+                </select>
+                {% endif %}
+            </div>
+        </article>
+        {% endfor %}
+
+        <div class="flex justify-end pt-2">
+            <button
+                type="submit"
+                name="submit_action"
+                value="save_all"
+                class="px-4 py-2 rounded-md bg-orange-500 text-black font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                {% if not can_bet or group_locked and knockout_locked %}disabled{% endif %}
+            >
+                Salvar todos os palpites
+            </button>
+        </div>
+    </form>
+</section>
+{% endblock %}

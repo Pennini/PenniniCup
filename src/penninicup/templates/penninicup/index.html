@@ -1,16 +1,43 @@
-{% extends "base.html" %} {% block title %}PenniniCup{% endblock %} {% block content %}
-<h2 class="text-2xl font-semibold justify-center">Welcome to the PenniniCup!</h2>
-<p>This is the home page for the PenniniCup application.</p>
+{% extends "base.html" %}
 
-{% if user.is_authenticated %}
-<form method="post" action="{% url 'payments:create-subscription' %}">
-    {% csrf_token %}
-    <input type="hidden" name="amount" value="50.00" />
-    <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">
-        Pagar inscrição - R$ 50,00
-    </button>
-</form>
-{% else %}
-<p class="text-red-500">Você precisa estar logado para fazer a inscrição.</p>
-<a href="{% url 'accounts:login' %}" class="text-blue-500 hover:underline">Fazer login</a>
-{% endif %} {% endblock %}
+{% block title %}PenniniCup{% endblock %}
+
+{% block content %}
+<section class="space-y-6">
+    <header class="space-y-2">
+        <h1 class="text-3xl font-semibold">PenniniCup</h1>
+        <p class="text-neutral-300">Escolha um bolao, registre seus palpites e acompanhe o ranking em tempo real.</p>
+    </header>
+
+    {% if user.is_authenticated %}
+    <div class="flex flex-wrap gap-3">
+        <a href="{% url 'pool:list' %}" class="px-4 py-2 rounded-md bg-orange-500 text-black font-semibold">Ver boloes</a>
+        <a href="{% url 'football:matches' %}" class="px-4 py-2 rounded-md border border-neutral-600">Ver partidas</a>
+    </div>
+
+    <article class="rounded-xl border border-neutral-700 bg-neutral-900 p-5 max-w-2xl">
+        <h2 class="text-xl font-semibold">Entrar em bolao por token</h2>
+        <p class="text-sm text-neutral-400 mt-1">
+            Recebeu um token de convite? Cole abaixo para entrar no bolao correspondente.
+        </p>
+
+        <form method="post" action="{% url 'pool:join-by-token' %}" class="mt-4 flex flex-col sm:flex-row gap-2">
+            {% csrf_token %}
+            <input
+                type="text"
+                name="invite_token"
+                placeholder="Cole seu token de convite"
+                class="flex-1 px-3 py-2 rounded-md bg-neutral-950 border border-neutral-700"
+                required
+            />
+            <button type="submit" class="px-4 py-2 rounded-md bg-orange-500 text-black font-semibold">Entrar</button>
+        </form>
+    </article>
+    {% else %}
+    <div class="space-y-3">
+        <p class="text-neutral-300">Entre na sua conta para escolher um bolao e comecar a palpitar.</p>
+        <a href="{% url 'accounts:login' %}" class="px-4 py-2 rounded-md bg-orange-500 text-black font-semibold inline-block">Entrar</a>
+    </div>
+    {% endif %}
+</section>
+{% endblock %}

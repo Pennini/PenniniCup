@@ -60,10 +60,9 @@ class InviteToken(models.Model):
     created_by = models.ForeignKey(
         "accounts.CustomUser", on_delete=models.CASCADE, related_name="invite_tokens_created"
     )
-    # bolao = models.ForeignKey(
-    # 'bolao.Bolao', on_delete=models.CASCADE,
-    # related_name='invite_tokens')
-    # TODO: Adicionar quando criar app bolao
+    pool = models.ForeignKey(
+        "pool.Pool", on_delete=models.SET_NULL, null=True, blank=True, related_name="invite_tokens"
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(null=True, blank=True)
     max_uses = models.IntegerField(default=10, help_text="Número máximo de usos (0 = ilimitado)")

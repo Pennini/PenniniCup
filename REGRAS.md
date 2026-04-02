@@ -40,8 +40,7 @@ ______________________________________________________________________
 
 ### 🟢 3. Fase de Mata-Mata – Palpites Abertos
 
-- Após o término da fase de grupos:
-  - Abre-se uma **nova janela de palpites** para o mata-mata
+- Fecha-se a janela de palpites para o mata-mata quando começar o primeiro jogo dessa fase
 - Os participantes devem palpitar:
   - Confrontos das 32 avos, oitavas, quartas, semifinais e final
   - Classificado do confronto
@@ -50,7 +49,6 @@ ______________________________________________________________________
 📌 Importante:
 
 - Os confrontos do mata-mata são definidos **com base nos resultados reais da fase de grupos**
-- Nenhum palpite do mata-mata pode ser feito antes dessa fase
 
 ______________________________________________________________________
 
@@ -80,9 +78,9 @@ ______________________________________________________________________
 | Situação                            | Pontos        |
 | ----------------------------------- | ------------- |
 | Acertar o classificado do confronto | +8            |
-| Acertar o placar exato              | +4            |
+| Acertar o placar exato              | +6            |
 | Acertar o placar de um dos times    | +2            |
-| **Total máximo por jogo**           | **12 pontos** |
+| **Total máximo por jogo**           | **14 pontos** |
 
 📌 Em caso de pênaltis:
 

@@ -1,9 +1,12 @@
 import logging
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
+
+from src.pool.models import Pool
 
 from .models import Payment
 from .services.mercadopago import create_pix_payment, get_payment_status
@@ -19,19 +22,39 @@ def create_subscription_payment(request):
     Chamado quando o usuário clica em "Pagar inscrição".
     """
     try:
-        # Valor da inscrição (pode vir do POST ou ser fixo)
-        amount = request.POST.get("amount", "50.00")  # Valor padrão: R$ 50,00
+        # Valor da inscrição deve vir no POST.
+        raw_amount = (request.POST.get("amount") or "").strip()
+        pool_id = request.POST.get("pool_id")
+        pool = None
+
+        if pool_id:
+            pool = get_object_or_404(Pool, id=pool_id, is_active=True)
+
+        if not raw_amount:
+            logger.error("Valor inválido: amount ausente")
+            return render(request, "payments/payment_failed.html", {"error": "Valor de inscrição inválido."})
 
         try:
-            amount = float(amount)
+            normalized_amount = raw_amount.replace(" ", "")
+            if "," in normalized_amount:
+                # Formato pt-BR: remove separador de milhar e troca vírgula por ponto decimal.
+                normalized_amount = normalized_amount.replace(".", "").replace(",", ".")
+
+            amount = Decimal(normalized_amount)
             if amount <= 0:
                 raise ValueError("Valor deve ser positivo")
-        except (ValueError, TypeError):
-            logger.error(f"Valor inválido: {amount}")
+        except (InvalidOperation, ValueError, TypeError):
+            logger.error(f"Valor inválido: {raw_amount}")
             return render(request, "payments/payment_failed.html", {"error": "Valor de inscrição inválido."})
 
         # Cria o pagamento no banco de dados
-        payment = Payment.objects.create(user=request.user, amount=amount, status="pending", payment_method="pix")
+        payment = Payment.objects.create(
+            user=request.user,
+            pool=pool,
+            amount=amount,
+            status="pending",
+            payment_method="pix",
+        )
 
         logger.info(f"Pagamento criado: id={payment.id}, user={request.user.email}, amount={amount}")
 

@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     "src.payments.apps.PaymentsConfig",
     "src.football.apps.FootballConfig",
     "src.penninicup.apps.PenninicupConfig",
+    "src.pool.apps.PoolConfig",
 ]
 
 MIDDLEWARE = [

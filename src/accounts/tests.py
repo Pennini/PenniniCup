@@ -10,6 +10,9 @@ from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from src.football.models import Competition, Season
+from src.pool.models import Pool, PoolParticipant
+
 from .forms import CustomPasswordResetForm, CustomUserCreationForm
 from .models import InviteToken, UserProfile
 
@@ -348,7 +351,22 @@ class RegisterViewTest(TestCase):
             email="creator@example.com",
             password="testpass123",
         )
-        self.token = InviteToken.objects.create(created_by=self.creator, max_uses=5)
+        self.competition = Competition.objects.create(fifa_id=990, name="Comp Teste")
+        self.season = Season.objects.create(
+            fifa_id=990,
+            competition=self.competition,
+            name="Season Teste",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-20",
+        )
+        self.pool = Pool.objects.create(
+            name="Bolao Registro",
+            slug="bolao-registro",
+            season=self.season,
+            created_by=self.creator,
+        )
+        self.token = InviteToken.objects.create(created_by=self.creator, pool=self.pool, max_uses=5)
         self.register_url = reverse("accounts:register")
 
     def test_register_page_loads(self):
@@ -398,6 +416,9 @@ class RegisterViewTest(TestCase):
         # Verificar token usado
         self.token.refresh_from_db()
         self.assertEqual(self.token.uses_count, 1)
+
+        # Verificar auto-participacao no bolao ligado ao token
+        self.assertTrue(PoolParticipant.objects.filter(pool=self.pool, user=user, is_active=True).exists())
 
         # Verificar email enviado
         mock_send_mail.assert_called_once()

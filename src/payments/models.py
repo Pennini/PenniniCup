@@ -7,7 +7,7 @@ User = settings.AUTH_USER_MODEL
 
 class Payment(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
-    # bolao = models.ForeignKey("bolao.Bolao", on_delete=models.CASCADE)
+    pool = models.ForeignKey("pool.Pool", on_delete=models.SET_NULL, null=True, blank=True, related_name="payments")
 
     mp_payment_id = models.CharField(max_length=100, blank=True, null=True)
     status = models.CharField(max_length=50)

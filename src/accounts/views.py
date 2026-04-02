@@ -100,6 +100,16 @@ class RegisterView(CreateView):
                     messages.error(self.request, "Este token de convite expirou ou já foi usado.")
                     return self.form_invalid(form)
 
+                # Se o token estiver vinculado a um bolao, o usuario entra automaticamente nele.
+                if self.invite_token.pool_id:
+                    from src.pool.models import PoolParticipant
+
+                    PoolParticipant.objects.get_or_create(
+                        pool_id=self.invite_token.pool_id,
+                        user=self.object,
+                        defaults={"is_active": True},
+                    )
+
                 # Enviar e-mail de verificação
                 verification_url = self.request.build_absolute_uri(
                     reverse("accounts:verify_email", kwargs={"token": str(profile.verification_token)})
@@ -111,7 +121,7 @@ class RegisterView(CreateView):
                     {
                         "user": self.object,
                         "verification_url": verification_url,
-                        # "bolao_name": self.invite_token.bolao.name,  # TODO: Quando criar app bolao
+                        "bolao_name": self.invite_token.pool.name if self.invite_token.pool_id else None,
                     },
                 )
 
