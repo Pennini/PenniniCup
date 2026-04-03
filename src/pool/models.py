@@ -171,3 +171,28 @@ class PoolBetScore(models.Model):
 
     def __str__(self):
         return f"Score bet {self.bet_id}: {self.points}"
+
+
+class PoolParticipantStanding(models.Model):
+    participant = models.ForeignKey(PoolParticipant, on_delete=models.CASCADE, related_name="projected_standings")
+    group = models.ForeignKey("football.Group", on_delete=models.CASCADE, related_name="participant_standings")
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="participant_standings")
+
+    position = models.PositiveSmallIntegerField()
+    played = models.PositiveSmallIntegerField(default=0)
+    won = models.PositiveSmallIntegerField(default=0)
+    drawn = models.PositiveSmallIntegerField(default=0)
+    lost = models.PositiveSmallIntegerField(default=0)
+    goals_for = models.PositiveSmallIntegerField(default=0)
+    goals_against = models.PositiveSmallIntegerField(default=0)
+    goal_difference = models.SmallIntegerField(default=0)
+    points = models.PositiveSmallIntegerField(default=0)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("participant", "group", "team")
+        ordering = ["group__name", "position", "team__code"]
+
+    def __str__(self):
+        return f"Standing {self.participant_id}:{self.group.name}:{self.team.code}"

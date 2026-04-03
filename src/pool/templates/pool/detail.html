@@ -25,6 +25,14 @@
     </div>
     {% endif %}
 
+    {% include "components/pool_bet_toggle_three_tabs.html" %}
+
+    {% if active_tab == "classification" %}
+    {% include "football/partials/group_standings_grid.html" with groups=projected_groups %}
+    {% elif active_tab == "knockout" %}
+    {% include "football/partials/knockout_bracket.html" %}
+    {% else %}
+
     <form method="post" action="{% url 'pool:save-bets-bulk' pool.slug %}" class="space-y-3">
         {% csrf_token %}
         {% for row in group_rows %}
@@ -222,5 +230,6 @@
             </button>
         </div>
     </form>
+    {% endif %}
 </section>
 {% endblock %}

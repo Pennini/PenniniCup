@@ -1,4 +1,5 @@
 import logging
+from types import SimpleNamespace
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -9,10 +10,132 @@ from django.views.decorators.http import require_http_methods
 from src.football.models import Match
 from src.pool.forms import PoolBetForm
 from src.pool.models import Pool, PoolBet, PoolParticipant
-from src.pool.services.projection import projected_group_top2, resolve_knockout_placeholder_team
+from src.pool.services.projection import (
+    load_persisted_group_standings,
+    projected_group_top2_from_groups,
+    resolve_knockout_placeholder_team,
+    sync_persisted_group_standings,
+)
 from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, phase_for_match
 
 logger = logging.getLogger(__name__)
+
+STAGE_R32 = "R32"
+STAGE_R16 = "R16"
+STAGE_QF = "QF"
+STAGE_SF = "SF"
+STAGE_FINAL = "FINAL"
+STAGE_THIRD = "THIRD"
+
+KNOCKOUT_STAGE_ORDER = [STAGE_R32, STAGE_R16, STAGE_QF, STAGE_SF]
+KNOCKOUT_LABELS = {
+    STAGE_R32: "32 Avos",
+    STAGE_R16: "Oitavas",
+    STAGE_QF: "Quartas",
+    STAGE_SF: "Semifinal",
+}
+
+
+def _make_pairs(items):
+    return [items[index : index + 2] for index in range(0, len(items), 2)]
+
+
+def _normalize_stage_key(stage):
+    if not stage:
+        return ""
+
+    stage_name = (stage.name or "").upper().replace("-", " ").strip()
+
+    if "SEMI" in stage_name or "SF" in stage_name:
+        return STAGE_SF
+    if "QUART" in stage_name or "QF" in stage_name:
+        return STAGE_QF
+    if "R16" in stage_name or "OITAV" in stage_name or "ROUND OF 16" in stage_name:
+        return STAGE_R16
+    if "R32" in stage_name or "32 AVOS" in stage_name or "SEGUNDAS DE FINAL" in stage_name:
+        return STAGE_R32
+    if "DECIS" in stage_name and "3" in stage_name:
+        return STAGE_THIRD
+    if "TERCE" in stage_name and "LUGAR" in stage_name:
+        return STAGE_THIRD
+    if stage_name == "FINAL":
+        return STAGE_FINAL
+    if "FINAL" in stage_name and "SEMI" not in stage_name and "QUART" not in stage_name and "OITAV" not in stage_name:
+        return STAGE_FINAL
+
+    return ""
+
+
+def _build_projected_knockout_payload(knockout_rows):
+    grouped_matches = {stage_key: [] for stage_key in KNOCKOUT_STAGE_ORDER}
+    final_match = None
+    third_place_match = None
+
+    for row in knockout_rows:
+        stage_key = _normalize_stage_key(row["match"].stage)
+        projected_match = SimpleNamespace(
+            home_team=row["home_team"],
+            away_team=row["away_team"],
+            home_team_id=row["home_team"].id if row["home_team"] else None,
+            away_team_id=row["away_team"].id if row["away_team"] else None,
+            home_score=row["bet"].home_score_pred if row["bet"] else None,
+            away_score=row["bet"].away_score_pred if row["bet"] else None,
+            winner_id=row["bet"].winner_pred_id if row["bet"] else None,
+            home_penalty_score=None,
+            away_penalty_score=None,
+        )
+
+        if stage_key in grouped_matches:
+            grouped_matches[stage_key].append(projected_match)
+        elif stage_key == STAGE_FINAL and final_match is None:
+            final_match = projected_match
+        elif stage_key == STAGE_THIRD and third_place_match is None:
+            third_place_match = projected_match
+
+    active_stages = [stage_key for stage_key in KNOCKOUT_STAGE_ORDER if grouped_matches[stage_key]]
+    bracket_left = []
+    bracket_right = []
+
+    for stage_key in active_stages:
+        stage_matches = grouped_matches[stage_key]
+        half = len(stage_matches) // 2
+        left_matches = stage_matches[:half]
+        right_matches = stage_matches[half:]
+
+        bracket_left.append(
+            {
+                "stage": stage_key,
+                "label": KNOCKOUT_LABELS[stage_key],
+                "pairs": _make_pairs(left_matches),
+                "is_outermost": False,
+            }
+        )
+        bracket_right.append(
+            {
+                "stage": stage_key,
+                "label": KNOCKOUT_LABELS[stage_key],
+                "pairs": _make_pairs(right_matches),
+                "is_outermost": False,
+            }
+        )
+
+    if bracket_left:
+        bracket_left[0]["is_outermost"] = True
+
+    bracket_right = list(reversed(bracket_right))
+    if bracket_right:
+        bracket_right[-1]["is_outermost"] = True
+
+    max_matches_side = max((sum(len(pair) for pair in round_data["pairs"]) for round_data in bracket_left), default=2)
+    bracket_height = max(max_matches_side * 78, 280)
+
+    return {
+        "bracket_left": bracket_left,
+        "bracket_right": bracket_right,
+        "final_match": final_match,
+        "third_place_match": third_place_match,
+        "bracket_height": bracket_height,
+    }
 
 
 def _join_pool_with_token(request, pool, invite_token_value):
@@ -88,6 +211,9 @@ def open_pool(request):
 def pool_detail(request, slug):
     pool = get_object_or_404(Pool.objects.select_related("season"), slug=slug, is_active=True)
     participant = get_object_or_404(PoolParticipant, pool=pool, user=request.user)
+    active_tab = (request.GET.get("tab") or "bets").strip()
+    if active_tab not in ("bets", "classification", "knockout"):
+        return redirect(f"{request.path}?tab=bets")
 
     matches = list(
         Match.objects.filter(season=pool.season)
@@ -96,7 +222,10 @@ def pool_detail(request, slug):
     )
     bets_by_match_id = {bet.match_id: bet for bet in PoolBet.objects.filter(participant=participant).all()}
 
-    projected = projected_group_top2(participant=participant, season=pool.season)
+    projected_groups = load_persisted_group_standings(participant=participant)
+    if not projected_groups and participant.bets.exists():
+        projected_groups = sync_persisted_group_standings(participant=participant)
+    projected = projected_group_top2_from_groups(projected_groups=projected_groups)
 
     match_rows = []
     group_rows = []
@@ -127,15 +256,21 @@ def pool_detail(request, slug):
         else:
             knockout_rows.append(row)
 
+    projected_knockout = _build_projected_knockout_payload(knockout_rows=knockout_rows)
+
     context = {
         "pool": pool,
         "participant": participant,
+        "active_tab": active_tab,
         "match_rows": match_rows,
         "group_rows": group_rows,
         "knockout_rows": knockout_rows,
+        "projected_groups": projected_groups,
         "can_bet": participant.can_bet(),
         "group_locked": pool.is_phase_locked(PHASE_GROUP),
         "knockout_locked": pool.is_phase_locked(PHASE_KNOCKOUT),
+        "page_mode": "result",
+        **projected_knockout,
     }
     return render(request, "pool/detail.html", context)
 
@@ -211,6 +346,8 @@ def save_bet(request, slug, match_id):
         with transaction.atomic():
             bet.full_clean()
             bet.save()
+            if phase_for_match(match) == PHASE_GROUP:
+                sync_persisted_group_standings(participant=participant)
     except Exception as exc:
         logger.warning("Falha ao salvar palpite: participant=%s match=%s error=%s", participant.id, match.id, str(exc))
         messages.error(request, str(exc))
@@ -239,6 +376,7 @@ def save_bets_bulk(request, slug):
     existing_bets = {bet.match_id: bet for bet in PoolBet.objects.filter(participant=participant).all()}
 
     saved_count = 0
+    saved_group_count = 0
     error_count = 0
 
     for match in matches:
@@ -289,6 +427,8 @@ def save_bets_bulk(request, slug):
                 bet_obj.full_clean()
                 bet_obj.save()
             saved_count += 1
+            if phase == PHASE_GROUP:
+                saved_group_count += 1
         except Exception as exc:
             logger.warning(
                 "Falha ao salvar palpite em lote: participant=%s match=%s error=%s",
@@ -298,6 +438,9 @@ def save_bets_bulk(request, slug):
             )
             messages.error(request, f"Jogo {match.match_number}: {str(exc)}")
             error_count += 1
+
+    if saved_group_count:
+        sync_persisted_group_standings(participant=participant)
 
     if saved_count:
         if submit_action == "calculate_knockout":

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from src.pool.models import Pool, PoolBet, PoolBetScore, PoolLockWindow, PoolParticipant
+from src.pool.models import Pool, PoolBet, PoolBetScore, PoolLockWindow, PoolParticipant, PoolParticipantStanding
 
 
 @admin.register(Pool)
@@ -33,3 +33,23 @@ class PoolBetScoreAdmin(admin.ModelAdmin):
 class PoolLockWindowAdmin(admin.ModelAdmin):
     list_display = ("pool", "phase", "lock_at")
     list_filter = ("phase", "pool")
+
+
+@admin.register(PoolParticipantStanding)
+class PoolParticipantStandingAdmin(admin.ModelAdmin):
+    list_display = (
+        "participant",
+        "group",
+        "team",
+        "position",
+        "played",
+        "won",
+        "drawn",
+        "lost",
+        "goals_for",
+        "goals_against",
+        "goal_difference",
+        "points",
+    )
+    list_filter = ("group__stage__season",)
+    search_fields = ("participant__user__username", "team__name")
