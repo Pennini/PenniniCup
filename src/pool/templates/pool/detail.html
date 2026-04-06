@@ -36,12 +36,13 @@
     <form method="post" action="{% url 'pool:save-bets-bulk' pool.slug %}" class="space-y-3">
         {% csrf_token %}
         {% for row in group_rows %}
-        <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900">
+        <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900" data-match-card data-phase="{{ row.phase }}" data-save-url="{% url 'pool:save-bet' pool.slug row.match.id %}">
             <div class="flex flex-wrap gap-3 items-center justify-between">
                 <div>
                     <p class="text-xs uppercase tracking-wide text-neutral-400">
                         {% if row.phase == "GROUP" %}Fase de Grupos{% else %}Mata-mata{% endif %}
                     </p>
+                    <p class="text-xs text-neutral-500">Jogo #{{ row.match.match_number }}</p>
                     <h2 class="text-lg font-semibold flex flex-wrap items-center gap-2">
                         <span class="inline-flex items-center gap-2">
                             {% if row.home_team and row.home_team.flag_local %}
@@ -86,6 +87,7 @@
                     min="0"
                     name="match_{{ row.match.id }}_home_score_pred"
                     value="{% if row.bet %}{{ row.bet.home_score_pred }}{% endif %}"
+                    data-score-home
                     class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
                     placeholder="Gols casa"
                     {% if row.locked or not can_bet %}disabled{% endif %}
@@ -95,52 +97,52 @@
                     min="0"
                     name="match_{{ row.match.id }}_away_score_pred"
                     value="{% if row.bet %}{{ row.bet.away_score_pred }}{% endif %}"
+                    data-score-away
                     class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
                     placeholder="Gols fora"
                     {% if row.locked or not can_bet %}disabled{% endif %}
                 />
 
                 {% if row.phase == "KNOCKOUT" %}
-                <select
-                    name="match_{{ row.match.id }}_winner_pred"
-                    class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2 md:col-span-2"
-                    {% if row.locked or not can_bet %}disabled{% endif %}
-                >
-                    <option value="">Classificado</option>
-                    {% if row.home_team %}
-                    <option value="{{ row.home_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.home_team.id %}selected{% endif %}>{{ row.home_team.name }}</option>
-                    {% endif %}
-                    {% if row.away_team %}
-                    <option value="{{ row.away_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.away_team.id %}selected{% endif %}>{{ row.away_team.name }}</option>
-                    {% endif %}
-                </select>
+                <div data-winner-wrapper class="md:col-span-2">
+                    <select
+                        name="match_{{ row.match.id }}_winner_pred"
+                        data-winner-select
+                        data-base-disabled="{% if row.locked or not can_bet %}1{% else %}0{% endif %}"
+                        class="w-full rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
+                        {% if row.locked or not can_bet %}disabled{% endif %}
+                    >
+                        <option value="">Classificado</option>
+                        {% if row.home_team %}
+                        <option value="{{ row.home_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.home_team.id %}selected{% endif %}>{{ row.home_team.name }}</option>
+                        {% endif %}
+                        {% if row.away_team %}
+                        <option value="{{ row.away_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.away_team.id %}selected{% endif %}>{{ row.away_team.name }}</option>
+                        {% endif %}
+                    </select>
+                </div>
                 {% endif %}
             </div>
         </article>
         {% endfor %}
 
         {% if knockout_rows %}
-        <div class="rounded-lg border border-neutral-700 bg-neutral-900/60 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <p class="text-sm text-neutral-300">Calcule os classificados projetados para preencher os confrontos do mata-mata com base nos palpites da fase de grupos.</p>
-            <button
-                type="submit"
-                name="submit_action"
-                value="calculate_knockout"
-                class="px-4 py-2 rounded-md border border-neutral-500 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                {% if not can_bet or group_locked %}disabled{% endif %}
-            >
-                Calcular mata-mata
-            </button>
+        <div class="rounded-lg border border-neutral-700 bg-neutral-900/60 px-4 py-3">
+            <p class="text-sm text-neutral-300">Os classificados projetados do mata-mata sao atualizados automaticamente apos salvar os palpites da fase de grupos.</p>
+            {% if projection_pending %}
+            <p class="text-xs text-amber-300 mt-2">Recalculo em processamento. A projecao do mata-mata pode levar alguns segundos para refletir os ultimos palpites.</p>
+            {% endif %}
         </div>
         {% endif %}
 
         {% for row in knockout_rows %}
-        <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900">
+        <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900" data-match-card data-phase="{{ row.phase }}" data-save-url="{% url 'pool:save-bet' pool.slug row.match.id %}">
             <div class="flex flex-wrap gap-3 items-center justify-between">
                 <div>
                     <p class="text-xs uppercase tracking-wide text-neutral-400">
                         {% if row.phase == "GROUP" %}Fase de Grupos{% else %}Mata-mata{% endif %}
                     </p>
+                    <p class="text-xs text-neutral-500">Jogo #{{ row.match.match_number }}</p>
                     <h2 class="text-lg font-semibold flex flex-wrap items-center gap-2">
                         <span class="inline-flex items-center gap-2">
                             {% if row.home_team and row.home_team.flag_local %}
@@ -171,6 +173,9 @@
                         </span>
                     </h2>
                     <p class="text-xs text-neutral-400">{{ row.match.match_date_brasilia }}</p>
+                    <p class="text-xs text-amber-300/80">
+                        Debug placeholders: A={{ row.match.home_placeholder|default:"-" }} | B={{ row.match.away_placeholder|default:"-" }}
+                    </p>
                 </div>
                 {% if row.locked %}
                 <span class="text-xs px-2 py-1 rounded-full border border-red-400 text-red-300">Fechado</span>
@@ -185,6 +190,7 @@
                     min="0"
                     name="match_{{ row.match.id }}_home_score_pred"
                     value="{% if row.bet %}{{ row.bet.home_score_pred }}{% endif %}"
+                    data-score-home
                     class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
                     placeholder="Gols casa"
                     {% if row.locked or not can_bet %}disabled{% endif %}
@@ -194,25 +200,30 @@
                     min="0"
                     name="match_{{ row.match.id }}_away_score_pred"
                     value="{% if row.bet %}{{ row.bet.away_score_pred }}{% endif %}"
+                    data-score-away
                     class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
                     placeholder="Gols fora"
                     {% if row.locked or not can_bet %}disabled{% endif %}
                 />
 
                 {% if row.phase == "KNOCKOUT" %}
-                <select
-                    name="match_{{ row.match.id }}_winner_pred"
-                    class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2 md:col-span-2"
-                    {% if row.locked or not can_bet %}disabled{% endif %}
-                >
-                    <option value="">Classificado</option>
-                    {% if row.home_team %}
-                    <option value="{{ row.home_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.home_team.id %}selected{% endif %}>{{ row.home_team.name }}</option>
-                    {% endif %}
-                    {% if row.away_team %}
-                    <option value="{{ row.away_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.away_team.id %}selected{% endif %}>{{ row.away_team.name }}</option>
-                    {% endif %}
-                </select>
+                <div data-winner-wrapper class="md:col-span-2">
+                    <select
+                        name="match_{{ row.match.id }}_winner_pred"
+                        data-winner-select
+                        data-base-disabled="{% if row.locked or not can_bet %}1{% else %}0{% endif %}"
+                        class="w-full rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
+                        {% if row.locked or not can_bet %}disabled{% endif %}
+                    >
+                        <option value="">Classificado</option>
+                        {% if row.home_team %}
+                        <option value="{{ row.home_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.home_team.id %}selected{% endif %}>{{ row.home_team.name }}</option>
+                        {% endif %}
+                        {% if row.away_team %}
+                        <option value="{{ row.away_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.away_team.id %}selected{% endif %}>{{ row.away_team.name }}</option>
+                        {% endif %}
+                    </select>
+                </div>
                 {% endif %}
             </div>
         </article>
@@ -230,6 +241,236 @@
             </button>
         </div>
     </form>
+    <script>
+        (function () {
+            const cards = document.querySelectorAll('[data-match-card]');
+            const csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
+            const csrfToken = csrfInput ? csrfInput.value : '';
+            const poolId = '{{ pool.id }}';
+            const timers = new Map();
+            const inflight = new Set();
+            const dirtyCards = new Set();
+            const controllers = new Map();
+            const lastSubmittedPayload = new Map();
+
+            function getMatchId(card) {
+                const homeInput = card.querySelector('[data-score-home]');
+                if (!homeInput || !homeInput.name) return null;
+                const match = homeInput.name.match(/^match_(\d+)_/);
+                return match ? match[1] : null;
+            }
+
+            function draftKey(card) {
+                const matchId = getMatchId(card);
+                return matchId ? `poolBetDraft:${poolId}:${matchId}` : null;
+            }
+
+            function hasPendingChanges() {
+                return dirtyCards.size > 0 || inflight.size > 0;
+            }
+
+            function payloadKeyFromValues(home, away, winner) {
+                return `${home}::${away}::${winner}`;
+            }
+
+            function currentPayloadKey(card) {
+                const homeInput = card.querySelector('[data-score-home]');
+                const awayInput = card.querySelector('[data-score-away]');
+                const winnerSelect = card.querySelector('[data-winner-select]');
+                const winnerValue = winnerSelect && !winnerSelect.disabled ? winnerSelect.value : '';
+                return payloadKeyFromValues(homeInput ? homeInput.value : '', awayInput ? awayInput.value : '', winnerValue);
+            }
+
+            function persistDraft(card) {
+                const key = draftKey(card);
+                if (!key) return;
+
+                const homeInput = card.querySelector('[data-score-home]');
+                const awayInput = card.querySelector('[data-score-away]');
+                const winnerSelect = card.querySelector('[data-winner-select]');
+
+                const draft = {
+                    home: homeInput ? homeInput.value : '',
+                    away: awayInput ? awayInput.value : '',
+                    winner: winnerSelect ? winnerSelect.value : '',
+                };
+                sessionStorage.setItem(key, JSON.stringify(draft));
+            }
+
+            function restoreDraft(card) {
+                const key = draftKey(card);
+                if (!key) return;
+                const raw = sessionStorage.getItem(key);
+                if (!raw) return;
+
+                try {
+                    const draft = JSON.parse(raw);
+                    const homeInput = card.querySelector('[data-score-home]');
+                    const awayInput = card.querySelector('[data-score-away]');
+                    const winnerSelect = card.querySelector('[data-winner-select]');
+
+                    if (homeInput && !homeInput.disabled && typeof draft.home === 'string') {
+                        homeInput.value = draft.home;
+                    }
+                    if (awayInput && !awayInput.disabled && typeof draft.away === 'string') {
+                        awayInput.value = draft.away;
+                    }
+                    if (winnerSelect && !winnerSelect.disabled && typeof draft.winner === 'string') {
+                        winnerSelect.value = draft.winner;
+                    }
+
+                    dirtyCards.add(card);
+                } catch (_) {
+                    sessionStorage.removeItem(key);
+                }
+            }
+
+            function clearDraft(card) {
+                const key = draftKey(card);
+                if (!key) return;
+                sessionStorage.removeItem(key);
+            }
+
+            function isDraw(homeValue, awayValue) {
+                if (homeValue === '' || awayValue === '') return false;
+                return Number(homeValue) === Number(awayValue);
+            }
+
+            function applyWinnerVisibility(card) {
+                const phase = card.dataset.phase;
+                const homeInput = card.querySelector('[data-score-home]');
+                const awayInput = card.querySelector('[data-score-away]');
+                const wrapper = card.querySelector('[data-winner-wrapper]');
+                const select = card.querySelector('[data-winner-select]');
+                if (!wrapper || !select) return;
+
+                const show = phase === 'KNOCKOUT' && isDraw(homeInput.value, awayInput.value);
+                const baseDisabled = select.dataset.baseDisabled === '1';
+
+                if (!show) {
+                    wrapper.classList.add('hidden');
+                    select.value = '';
+                    select.disabled = true;
+                    return;
+                }
+
+                wrapper.classList.remove('hidden');
+                select.disabled = baseDisabled;
+            }
+
+            async function saveCard(card) {
+                const saveUrl = card.dataset.saveUrl;
+                if (!saveUrl || !csrfToken) return;
+
+                const homeInput = card.querySelector('[data-score-home]');
+                const awayInput = card.querySelector('[data-score-away]');
+                const winnerSelect = card.querySelector('[data-winner-select]');
+
+                const payload = new FormData();
+                payload.append('csrfmiddlewaretoken', csrfToken);
+                payload.append('home_score_pred', homeInput.value);
+                payload.append('away_score_pred', awayInput.value);
+                if (winnerSelect) {
+                    payload.append('winner_pred', winnerSelect.disabled ? '' : winnerSelect.value);
+                }
+
+                const payloadKey = currentPayloadKey(card);
+                if (lastSubmittedPayload.get(card) === payloadKey) {
+                    dirtyCards.delete(card);
+                    clearDraft(card);
+                    return;
+                }
+
+                inflight.add(card);
+                try {
+                    const previousController = controllers.get(card);
+                    if (previousController) {
+                        previousController.abort();
+                    }
+                    const controller = new AbortController();
+                    controllers.set(card, controller);
+
+                    const response = await fetch(saveUrl, {
+                        method: 'POST',
+                        credentials: 'same-origin',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        signal: controller.signal,
+                        body: payload,
+                    });
+
+                    if (!response.ok) {
+                        return;
+                    }
+
+                    lastSubmittedPayload.set(card, payloadKey);
+                    dirtyCards.delete(card);
+                    clearDraft(card);
+                } catch (_) {
+                    // Falha de rede: rascunho permanece em sessionStorage
+                } finally {
+                    inflight.delete(card);
+                }
+            }
+
+            function scheduleSave(card) {
+                dirtyCards.add(card);
+                persistDraft(card);
+
+                const previous = timers.get(card);
+                if (previous) window.clearTimeout(previous);
+                const timer = window.setTimeout(() => saveCard(card), 1200);
+                timers.set(card, timer);
+            }
+
+            cards.forEach((card) => {
+                const homeInput = card.querySelector('[data-score-home]');
+                const awayInput = card.querySelector('[data-score-away]');
+                const winnerSelect = card.querySelector('[data-winner-select]');
+                if (!homeInput || !awayInput) return;
+
+                restoreDraft(card);
+                applyWinnerVisibility(card);
+                lastSubmittedPayload.set(card, currentPayloadKey(card));
+
+                [homeInput, awayInput].forEach((input) => {
+                    if (input.disabled) return;
+                    input.addEventListener('change', () => {
+                        applyWinnerVisibility(card);
+                        scheduleSave(card);
+                    });
+                    input.addEventListener('blur', () => {
+                        applyWinnerVisibility(card);
+                        scheduleSave(card);
+                    });
+                });
+
+                if (winnerSelect) {
+                    winnerSelect.addEventListener('change', () => {
+                        scheduleSave(card);
+                    });
+                }
+            });
+
+            window.addEventListener('beforeunload', (event) => {
+                if (!hasPendingChanges()) return;
+                event.preventDefault();
+                event.returnValue = '';
+            });
+
+            document.addEventListener('click', (event) => {
+                const link = event.target.closest('a[href]');
+                if (!link) return;
+                if (!hasPendingChanges()) return;
+
+                const keepPage = window.confirm('Existem alteracoes pendentes. Deseja sair sem confirmar o salvamento?');
+                if (!keepPage) {
+                    event.preventDefault();
+                }
+            });
+        })();
+    </script>
     {% endif %}
 </section>
 {% endblock %}

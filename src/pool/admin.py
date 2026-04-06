@@ -1,6 +1,15 @@
 from django.contrib import admin
 
-from src.pool.models import Pool, PoolBet, PoolBetScore, PoolLockWindow, PoolParticipant, PoolParticipantStanding
+from src.pool.models import (
+    Pool,
+    PoolBet,
+    PoolBetScore,
+    PoolLockWindow,
+    PoolParticipant,
+    PoolParticipantStanding,
+    PoolParticipantThirdPlace,
+    PoolProjectionRecalc,
+)
 
 
 @admin.register(Pool)
@@ -19,7 +28,15 @@ class PoolParticipantAdmin(admin.ModelAdmin):
 
 @admin.register(PoolBet)
 class PoolBetAdmin(admin.ModelAdmin):
-    list_display = ("participant", "match", "home_score_pred", "away_score_pred", "winner_pred", "updated_at")
+    list_display = (
+        "participant",
+        "match",
+        "home_score_pred",
+        "away_score_pred",
+        "winner_pred",
+        "is_active",
+        "updated_at",
+    )
     list_filter = ("participant__pool",)
     search_fields = ("participant__user__username",)
 
@@ -53,3 +70,34 @@ class PoolParticipantStandingAdmin(admin.ModelAdmin):
     )
     list_filter = ("group__stage__season",)
     search_fields = ("participant__user__username", "team__name")
+
+
+@admin.register(PoolParticipantThirdPlace)
+class PoolParticipantThirdPlaceAdmin(admin.ModelAdmin):
+    list_display = (
+        "participant",
+        "group",
+        "team",
+        "position_global",
+        "points",
+        "goal_difference",
+        "goals_for",
+        "score",
+        "is_qualified",
+    )
+    list_filter = ("group__stage__season", "is_qualified")
+    search_fields = ("participant__user__username", "team__name", "group__name")
+
+
+@admin.register(PoolProjectionRecalc)
+class PoolProjectionRecalcAdmin(admin.ModelAdmin):
+    list_display = (
+        "participant",
+        "status",
+        "requested_at",
+        "last_started_at",
+        "last_finished_at",
+        "attempts",
+    )
+    list_filter = ("status", "participant__pool")
+    search_fields = ("participant__user__username", "participant__pool__name")

@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
 
-from src.football.models import Match, Season, Team
+from src.football.models import Group, Match, Season, Team
 from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, phase_for_match
 
 
@@ -124,11 +124,12 @@ class PoolBet(models.Model):
     participant = models.ForeignKey(PoolParticipant, on_delete=models.CASCADE, related_name="bets")
     match = models.ForeignKey(Match, on_delete=models.CASCADE, related_name="pool_bets")
 
-    home_score_pred = models.PositiveSmallIntegerField()
-    away_score_pred = models.PositiveSmallIntegerField()
+    home_score_pred = models.PositiveSmallIntegerField(null=True, blank=True)
+    away_score_pred = models.PositiveSmallIntegerField(null=True, blank=True)
     winner_pred = models.ForeignKey(
         Team, null=True, blank=True, on_delete=models.SET_NULL, related_name="predicted_wins"
     )
+    is_active = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -140,9 +141,36 @@ class PoolBet(models.Model):
     def __str__(self):
         return f"Palpite {self.participant_id}:{self.match_id}"
 
+    def _has_scores(self):
+        return self.home_score_pred is not None and self.away_score_pred is not None
+
+    def _is_empty_prediction(self):
+        return self.home_score_pred is None and self.away_score_pred is None and self.winner_pred_id is None
+
+    def refresh_is_active(self):
+        phase = phase_for_match(self.match)
+        if phase == PHASE_KNOCKOUT:
+            if not self._has_scores():
+                self.is_active = False
+            elif self.home_score_pred == self.away_score_pred:
+                self.is_active = self.winner_pred_id is not None
+            else:
+                self.is_active = True
+        else:
+            self.is_active = self._has_scores()
+
+    def save(self, *args, **kwargs):
+        if self.match_id:
+            self.refresh_is_active()
+        super().save(*args, **kwargs)
+
     def clean(self):
         if self.match.season_id != self.participant.pool.season_id:
             raise ValidationError("Partida fora da temporada do bolao.")
+
+        if self._is_empty_prediction():
+            self.is_active = False
+            return
 
         phase = phase_for_match(self.match)
         if self.participant.pool.is_phase_locked(phase):
@@ -151,13 +179,25 @@ class PoolBet(models.Model):
         if not self.participant.can_bet():
             raise ValidationError("Participante sem permissao para palpitar.")
 
-        if phase == PHASE_KNOCKOUT and self.winner_pred is None:
-            raise ValidationError("No mata-mata e obrigatorio informar o classificado.")
+        if self.home_score_pred is None or self.away_score_pred is None:
+            raise ValidationError("Informe o placar completo da partida.")
+
+        if phase == PHASE_KNOCKOUT:
+            if self.home_score_pred == self.away_score_pred and self.winner_pred is None:
+                self.is_active = False
+                return
+
+            if self.home_score_pred > self.away_score_pred and self.match.home_team_id:
+                self.winner_pred = self.match.home_team
+            elif self.away_score_pred > self.home_score_pred and self.match.away_team_id:
+                self.winner_pred = self.match.away_team
 
         if self.match.home_team_id and self.match.away_team_id and self.winner_pred_id:
             valid_winners = {self.match.home_team_id, self.match.away_team_id}
             if self.winner_pred_id not in valid_winners:
                 raise ValidationError("Classificado deve ser um dos times da partida.")
+
+        self.refresh_is_active()
 
 
 class PoolBetScore(models.Model):
@@ -196,3 +236,57 @@ class PoolParticipantStanding(models.Model):
 
     def __str__(self):
         return f"Standing {self.participant_id}:{self.group.name}:{self.team.code}"
+
+
+class PoolParticipantThirdPlace(models.Model):
+    participant = models.ForeignKey(PoolParticipant, on_delete=models.CASCADE, related_name="projected_third_places")
+    group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="participant_third_places")
+    team = models.ForeignKey(Team, on_delete=models.CASCADE, related_name="participant_third_places")
+
+    position_global = models.PositiveSmallIntegerField()
+    points = models.PositiveSmallIntegerField(default=0)
+    goal_difference = models.SmallIntegerField(default=0)
+    goals_for = models.PositiveSmallIntegerField(default=0)
+    score = models.IntegerField(default=0)
+    is_qualified = models.BooleanField(default=False)
+
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("participant", "group")
+        ordering = ["position_global", "group__name", "team__code"]
+
+    def __str__(self):
+        return f"Third {self.participant_id}:{self.group.name}:{self.team.code}"
+
+
+class PoolProjectionRecalc(models.Model):
+    STATUS_PENDING = "PENDING"
+    STATUS_PROCESSING = "PROCESSING"
+    STATUS_FAILED = "FAILED"
+    STATUS_IDLE = "IDLE"
+
+    STATUS_CHOICES = (
+        (STATUS_PENDING, "Pending"),
+        (STATUS_PROCESSING, "Processing"),
+        (STATUS_FAILED, "Failed"),
+        (STATUS_IDLE, "Idle"),
+    )
+
+    participant = models.OneToOneField(
+        PoolParticipant,
+        on_delete=models.CASCADE,
+        related_name="projection_recalc",
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
+    requested_at = models.DateTimeField(auto_now=True)
+    last_started_at = models.DateTimeField(null=True, blank=True)
+    last_finished_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-requested_at"]
+
+    def __str__(self):
+        return f"ProjectionQueue {self.participant_id} ({self.status})"

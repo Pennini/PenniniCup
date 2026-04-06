@@ -22,8 +22,24 @@ class PoolBetForm(forms.ModelForm):
         cleaned_data = super().clean()
         phase = phase_for_match(self.match)
         winner_pred = cleaned_data.get("winner_pred")
+        home_score_pred = cleaned_data.get("home_score_pred")
+        away_score_pred = cleaned_data.get("away_score_pred")
 
-        if phase == PHASE_KNOCKOUT and winner_pred is None:
+        has_any_value = home_score_pred is not None or away_score_pred is not None or winner_pred is not None
+        if not has_any_value:
+            return cleaned_data
+
+        if home_score_pred is None or away_score_pred is None:
+            self.add_error("home_score_pred", "Informe o placar completo da partida.")
+            self.add_error("away_score_pred", "Informe o placar completo da partida.")
+
+        if (
+            phase == PHASE_KNOCKOUT
+            and home_score_pred is not None
+            and away_score_pred is not None
+            and home_score_pred == away_score_pred
+            and winner_pred is None
+        ):
             self.add_error("winner_pred", "Informe o classificado no mata-mata.")
 
         return cleaned_data

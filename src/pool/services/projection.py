@@ -1,8 +1,11 @@
 from collections import defaultdict
 from itertools import groupby
 
-from src.football.models import Group, Match
+from src.football.models import AssignThird, Group, Match
 from src.pool.services.rules import PHASE_GROUP, phase_for_match
+
+GROUP_SCORE_WEIGHT = 1_000_000
+GOAL_DIFF_SCORE_WEIGHT = 1_000
 
 
 class GroupTableLine:
@@ -19,17 +22,24 @@ class GroupTableLine:
         self.goals_for = 0
 
 
-def _sort_group_lines(lines):
-    return sorted(
-        lines,
-        key=lambda line: (
-            line.points,
-            line.goal_difference,
-            line.goals_for,
-            line.team.code,
-        ),
-        reverse=True,
+def calculate_ranking_score(points, goal_difference, goals_for):
+    return (points * GROUP_SCORE_WEIGHT) + (goal_difference * GOAL_DIFF_SCORE_WEIGHT) + goals_for
+
+
+def _sort_key_with_official_tiebreakers(line):
+    # Official extra criteria can be incrementally added here without changing callers.
+    world_ranking = line.team.world_ranking if line.team.world_ranking else 9999
+    return (
+        -line.points,
+        -line.goal_difference,
+        -line.goals_for,
+        world_ranking,
+        line.team.code,
     )
+
+
+def _sort_group_lines(lines):
+    return sorted(lines, key=_sort_key_with_official_tiebreakers)
 
 
 def projected_group_top2(participant, season):
@@ -70,11 +80,13 @@ def projected_group_standings(participant, season):
             table[group_id][match.away_team_id] = GroupTableLine(match.away_team)
 
         bet = bets_by_match_id.get(match.id)
-        if not bet:
+        if not bet or not bet.is_active:
             continue
 
         home = bet.home_score_pred
         away = bet.away_score_pred
+        if home is None or away is None:
+            continue
 
         home_line = table[group_id][match.home_team_id]
         away_line = table[group_id][match.away_team_id]
@@ -145,6 +157,73 @@ def projected_group_top2_from_groups(projected_groups):
     return group_map
 
 
+def select_projected_best_thirds(projected_groups, limit=8):
+    candidates = []
+    for group_data in projected_groups:
+        standings = group_data["standings"]
+        if len(standings) < 3:
+            continue
+
+        third_line = standings[2]
+        candidates.append(
+            {
+                "group": group_data["group"],
+                "line": third_line,
+                "score": calculate_ranking_score(
+                    points=third_line.points,
+                    goal_difference=third_line.goal_difference,
+                    goals_for=third_line.goals_for,
+                ),
+            }
+        )
+
+    ranked = sorted(
+        candidates,
+        key=lambda row: (
+            _sort_key_with_official_tiebreakers(row["line"]),
+            row["group"].name,
+        ),
+    )
+
+    qualified_group_names = {row["group"].name for row in ranked[:limit]}
+    for position, row in enumerate(ranked, start=1):
+        row["position_global"] = position
+        row["is_qualified"] = row["group"].name in qualified_group_names
+
+    qualified_groups_sorted = sorted(qualified_group_names)
+    return {
+        "ranked": ranked,
+        "qualified": [row for row in ranked if row["is_qualified"]],
+        "qualified_groups": qualified_groups_sorted,
+        "groups_key": ",".join(qualified_groups_sorted),
+    }
+
+
+def build_projected_placeholder_map(projected_groups, third_rows):
+    projected = projected_group_top2_from_groups(projected_groups=projected_groups)
+
+    for row in third_rows:
+        if not row["is_qualified"]:
+            continue
+        projected[f"{row['group'].name}3"] = row["line"].team
+
+    return projected
+
+
+def _normalize_placeholder(placeholder):
+    normalized = (placeholder or "").upper()
+    return "".join(ch for ch in normalized if ch.isalnum())
+
+
+def load_assign_third_map(season, qualified_groups):
+    if not qualified_groups:
+        return {}
+
+    groups_key = ",".join(sorted(qualified_groups))
+    rows = AssignThird.objects.filter(season=season, groups_key=groups_key)
+    return {_normalize_placeholder(row.placeholder): row.third_group.upper() for row in rows}
+
+
 def sync_persisted_group_standings(participant):
     from src.pool.models import PoolParticipantStanding
 
@@ -178,9 +257,78 @@ def sync_persisted_group_standings(participant):
     return projected_groups
 
 
-def resolve_knockout_placeholder_team(placeholder, projected_top2):
+def load_persisted_third_places(participant):
+    persisted_rows = list(
+        participant.projected_third_places.select_related("group", "team").order_by(
+            "position_global", "group__name", "team__code"
+        )
+    )
+
+    return [
+        {
+            "group": row.group,
+            "line": row,
+            "score": row.score,
+            "position_global": row.position_global,
+            "is_qualified": row.is_qualified,
+        }
+        for row in persisted_rows
+    ]
+
+
+def sync_persisted_third_places(participant, projected_groups=None):
+    from src.pool.models import PoolParticipantThirdPlace
+
+    if projected_groups is None:
+        projected_groups = projected_group_standings(participant=participant, season=participant.pool.season)
+
+    selection = select_projected_best_thirds(projected_groups=projected_groups)
+    rows_to_save = []
+
+    for row in selection["ranked"]:
+        line = row["line"]
+        rows_to_save.append(
+            PoolParticipantThirdPlace(
+                participant=participant,
+                group=row["group"],
+                team=line.team,
+                position_global=row["position_global"],
+                points=line.points,
+                goal_difference=line.goal_difference,
+                goals_for=line.goals_for,
+                score=row["score"],
+                is_qualified=row["is_qualified"],
+            )
+        )
+
+    PoolParticipantThirdPlace.objects.filter(participant=participant).delete()
+    if rows_to_save:
+        PoolParticipantThirdPlace.objects.bulk_create(rows_to_save)
+
+    return selection
+
+
+def resolve_knockout_placeholder_team(placeholder, projected_slots, assign_third_map=None):
     if not placeholder:
         return None
 
-    normalized = placeholder.replace(" ", "").upper()
-    return projected_top2.get(normalized)
+    normalized = _normalize_placeholder(placeholder)
+    direct = projected_slots.get(normalized)
+    if direct:
+        return direct
+
+    if len(normalized) == 2 and normalized[0].isalpha() and normalized[1] == "3":
+        return projected_slots.get(normalized)
+
+    if len(normalized) == 2 and normalized[0].isdigit() and normalized[1].isalpha():
+        return projected_slots.get(f"{normalized[1]}{normalized[0]}")
+
+    if len(normalized) == 2 and normalized[0] == "3" and normalized[1].isalpha():
+        return projected_slots.get(f"{normalized[1]}3")
+
+    if assign_third_map:
+        mapped_group = assign_third_map.get(normalized)
+        if mapped_group:
+            return projected_slots.get(f"{mapped_group}3")
+
+    return None

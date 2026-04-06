@@ -139,3 +139,12 @@ class StandingAdmin(admin.ModelAdmin):
     search_fields = ("team__name", "group__name", "season__name")
     ordering = ("group", "position")
     autocomplete_fields = ("season", "group", "team")
+
+
+@admin.register(models.AssignThird)
+class AssignThirdAdmin(admin.ModelAdmin):
+    list_display = ("season", "groups_key", "placeholder", "third_group")
+    list_filter = ("season",)
+    search_fields = ("groups_key", "placeholder", "third_group")
+    ordering = ("season", "groups_key", "placeholder")
+    autocomplete_fields = ("season",)

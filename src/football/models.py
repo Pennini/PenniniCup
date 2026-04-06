@@ -234,3 +234,20 @@ class Standing(models.Model):
 
     def __str__(self):
         return f"{self.team} - {self.group}"
+
+
+class AssignThird(models.Model):
+    season = models.ForeignKey(Season, on_delete=models.CASCADE, related_name="assign_third_rules")
+    groups_key = models.CharField(max_length=64)
+    placeholder = models.CharField(max_length=50)
+    third_group = models.CharField(max_length=5)
+
+    create_date = models.DateTimeField(auto_now_add=True)
+    update_date = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ("season", "groups_key", "placeholder")
+        ordering = ["season", "groups_key", "placeholder"]
+
+    def __str__(self):
+        return f"{self.season.year}:{self.groups_key}:{self.placeholder}->{self.third_group}"

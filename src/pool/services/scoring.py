@@ -11,7 +11,13 @@ def _winner_from_score(home_score, away_score):
 
 def calculate_bet_points(bet):
     match = bet.match
-    if match.home_score is None or match.away_score is None:
+    if (
+        not bet.is_active
+        or bet.home_score_pred is None
+        or bet.away_score_pred is None
+        or match.home_score is None
+        or match.away_score is None
+    ):
         return {
             "points": 0,
             "exact_score": False,

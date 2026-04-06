@@ -1,9 +1,12 @@
 import logging
+import re
 from types import SimpleNamespace
+from uuid import UUID
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 
@@ -11,10 +14,16 @@ from src.football.models import Match
 from src.pool.forms import PoolBetForm
 from src.pool.models import Pool, PoolBet, PoolParticipant
 from src.pool.services.projection import (
+    build_projected_placeholder_map,
+    load_assign_third_map,
     load_persisted_group_standings,
-    projected_group_top2_from_groups,
+    load_persisted_third_places,
     resolve_knockout_placeholder_team,
-    sync_persisted_group_standings,
+)
+from src.pool.services.projection_queue import (
+    enqueue_projection_recalc,
+    has_pending_projection_recalc,
+    projection_is_stale,
 )
 from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, phase_for_match
 
@@ -34,6 +43,45 @@ KNOCKOUT_LABELS = {
     STAGE_QF: "Quartas",
     STAGE_SF: "Semifinal",
 }
+
+
+def _ensure_participant_bets(participant, matches):
+    if not participant.can_bet():
+        return {}
+
+    existing = {bet.match_id: bet for bet in participant.bets.select_related("match").all()}
+    missing_rows = [
+        PoolBet(participant=participant, match=match, is_active=False) for match in matches if match.id not in existing
+    ]
+
+    if missing_rows:
+        PoolBet.objects.bulk_create(missing_rows)
+        existing = {bet.match_id: bet for bet in participant.bets.select_related("match").all()}
+
+    return existing
+
+
+_WINNER_PLACEHOLDER_PATTERN = re.compile(r"^W(\d+)$")
+
+
+def _build_winners_map(matches, bets_by_match_id):
+    winners_map = {}
+    for match in matches:
+        bet = bets_by_match_id.get(match.id)
+        if bet and bet.is_active and bet.winner_pred_id:
+            winners_map[match.match_number] = bet.winner_pred
+            continue
+        if match.winner_id:
+            winners_map[match.match_number] = match.winner
+    return winners_map
+
+
+def _resolve_match_team_from_placeholder(placeholder, projected_slots, assign_third_map, winners_map):
+    normalized = (placeholder or "").replace(" ", "").upper()
+    winner_match = _WINNER_PLACEHOLDER_PATTERN.match(normalized)
+    if winner_match:
+        return winners_map.get(int(winner_match.group(1)))
+    return resolve_knockout_placeholder_team(normalized, projected_slots, assign_third_map)
 
 
 def _make_pairs(items):
@@ -70,10 +118,15 @@ def _build_projected_knockout_payload(knockout_rows):
     grouped_matches = {stage_key: [] for stage_key in KNOCKOUT_STAGE_ORDER}
     final_match = None
     third_place_match = None
+    knockout_by_number = {}
 
     for row in knockout_rows:
         stage_key = _normalize_stage_key(row["match"].stage)
         projected_match = SimpleNamespace(
+            source_match_number=row["match"].match_number,
+            source_stage=row["match"].stage,
+            source_home_placeholder=row["match"].home_placeholder,
+            source_away_placeholder=row["match"].away_placeholder,
             home_team=row["home_team"],
             away_team=row["away_team"],
             home_team_id=row["home_team"].id if row["home_team"] else None,
@@ -87,10 +140,92 @@ def _build_projected_knockout_payload(knockout_rows):
 
         if stage_key in grouped_matches:
             grouped_matches[stage_key].append(projected_match)
+            knockout_by_number[row["match"].match_number] = projected_match
         elif stage_key == STAGE_FINAL and final_match is None:
             final_match = projected_match
         elif stage_key == STAGE_THIRD and third_place_match is None:
             third_place_match = projected_match
+
+    def _winner_source(placeholder):
+        normalized = (placeholder or "").replace(" ", "").upper()
+        winner_match = _WINNER_PLACEHOLDER_PATTERN.match(normalized)
+        if not winner_match:
+            return None
+        return int(winner_match.group(1))
+
+    children_by_number = {}
+    for number, match in knockout_by_number.items():
+        children = []
+        for placeholder in (match.source_home_placeholder, match.source_away_placeholder):
+            child_number = _winner_source(placeholder)
+            if child_number is not None and child_number in knockout_by_number:
+                children.append(child_number)
+        children_by_number[number] = tuple(children)
+
+    def _collect_descendants(root_number):
+        if root_number is None:
+            return set()
+
+        collected = set()
+        stack = [root_number]
+        while stack:
+            current = stack.pop()
+            if current in collected:
+                continue
+            if current not in knockout_by_number:
+                continue
+            collected.add(current)
+            stack.extend(children_by_number.get(current, ()))
+        return collected
+
+    left_root = _winner_source(final_match.source_home_placeholder) if final_match else None
+    right_root = _winner_source(final_match.source_away_placeholder) if final_match else None
+
+    left_numbers = _collect_descendants(left_root)
+    right_numbers = _collect_descendants(right_root)
+
+    fallback_order = {
+        match.source_match_number: idx
+        for idx, match in enumerate(sorted(knockout_by_number.values(), key=lambda m: m.source_match_number))
+    }
+
+    def _sort_side(side_numbers, root_number):
+        if not side_numbers:
+            return []
+
+        leaf_order = {}
+        counter = [0]
+
+        def _walk(number):
+            if number in leaf_order:
+                return leaf_order[number]
+
+            children = [child for child in children_by_number.get(number, ()) if child in side_numbers]
+            if not children:
+                leaf_order[number] = counter[0]
+                counter[0] += 1
+                return leaf_order[number]
+
+            child_positions = [_walk(child) for child in children]
+            leaf_order[number] = min(child_positions)
+            return leaf_order[number]
+
+        if root_number in side_numbers:
+            _walk(root_number)
+
+        for number in sorted(side_numbers):
+            if number not in leaf_order:
+                leaf_order[number] = counter[0]
+                counter[0] += 1
+
+        sorted_numbers = sorted(
+            side_numbers,
+            key=lambda number: (leaf_order[number], fallback_order.get(number, 9999)),
+        )
+        return [knockout_by_number[number] for number in sorted_numbers]
+
+    left_sorted = _sort_side(left_numbers, left_root)
+    right_sorted = _sort_side(right_numbers, right_root)
 
     active_stages = [stage_key for stage_key in KNOCKOUT_STAGE_ORDER if grouped_matches[stage_key]]
     bracket_left = []
@@ -98,9 +233,14 @@ def _build_projected_knockout_payload(knockout_rows):
 
     for stage_key in active_stages:
         stage_matches = grouped_matches[stage_key]
-        half = len(stage_matches) // 2
-        left_matches = stage_matches[:half]
-        right_matches = stage_matches[half:]
+        left_matches = [match for match in left_sorted if _normalize_stage_key(match.source_stage) == stage_key]
+        right_matches = [match for match in right_sorted if _normalize_stage_key(match.source_stage) == stage_key]
+
+        if not left_matches and not right_matches:
+            stage_matches_sorted = sorted(stage_matches, key=lambda match: match.source_match_number)
+            half = len(stage_matches_sorted) // 2
+            left_matches = stage_matches_sorted[:half]
+            right_matches = stage_matches_sorted[half:]
 
         bracket_left.append(
             {
@@ -220,12 +360,18 @@ def pool_detail(request, slug):
         .select_related("stage", "group", "home_team", "away_team")
         .order_by("match_date_brasilia", "match_number")
     )
-    bets_by_match_id = {bet.match_id: bet for bet in PoolBet.objects.filter(participant=participant).all()}
+    bets_by_match_id = _ensure_participant_bets(participant=participant, matches=matches)
+
+    if projection_is_stale(participant):
+        enqueue_projection_recalc(participant)
 
     projected_groups = load_persisted_group_standings(participant=participant)
-    if not projected_groups and participant.bets.exists():
-        projected_groups = sync_persisted_group_standings(participant=participant)
-    projected = projected_group_top2_from_groups(projected_groups=projected_groups)
+    third_rows = load_persisted_third_places(participant=participant)
+
+    projected = build_projected_placeholder_map(projected_groups=projected_groups, third_rows=third_rows)
+    qualified_groups = sorted([row["group"].name for row in third_rows if row["is_qualified"]])
+    assign_third_map = load_assign_third_map(season=pool.season, qualified_groups=qualified_groups)
+    winners_map = _build_winners_map(matches=matches, bets_by_match_id=bets_by_match_id)
 
     match_rows = []
     group_rows = []
@@ -237,9 +383,19 @@ def pool_detail(request, slug):
 
         if phase == PHASE_KNOCKOUT:
             if home_team is None:
-                home_team = resolve_knockout_placeholder_team(match.home_placeholder, projected)
+                home_team = _resolve_match_team_from_placeholder(
+                    placeholder=match.home_placeholder,
+                    projected_slots=projected,
+                    assign_third_map=assign_third_map,
+                    winners_map=winners_map,
+                )
             if away_team is None:
-                away_team = resolve_knockout_placeholder_team(match.away_placeholder, projected)
+                away_team = _resolve_match_team_from_placeholder(
+                    placeholder=match.away_placeholder,
+                    projected_slots=projected,
+                    assign_third_map=assign_third_map,
+                    winners_map=winners_map,
+                )
 
         row = {
             "match": match,
@@ -269,6 +425,7 @@ def pool_detail(request, slug):
         "can_bet": participant.can_bet(),
         "group_locked": pool.is_phase_locked(PHASE_GROUP),
         "knockout_locked": pool.is_phase_locked(PHASE_KNOCKOUT),
+        "projection_pending": has_pending_projection_recalc(participant),
         "page_mode": "result",
         **projected_knockout,
     }
@@ -300,6 +457,12 @@ def join_pool_by_token(request):
         messages.error(request, "Informe um token de convite para entrar em um bolao.")
         return redirect("penninicup:index")
 
+    try:
+        UUID(invite_token_value)
+    except (TypeError, ValueError):
+        messages.error(request, "Token invalido ou sem bolao associado.")
+        return redirect("penninicup:index")
+
     from src.accounts.models import InviteToken
 
     token_obj = InviteToken.objects.filter(token=invite_token_value).select_related("pool").first()
@@ -326,13 +489,18 @@ def save_bet(request, slug, match_id):
     participant = get_object_or_404(PoolParticipant, pool=pool, user=request.user, is_active=True)
     match = get_object_or_404(Match.objects.select_related("stage"), id=match_id, season=pool.season)
 
+    _ensure_participant_bets(participant=participant, matches=[match])
+
     existing_bet = PoolBet.objects.filter(participant=participant, match=match).first()
     if existing_bet is None:
         existing_bet = PoolBet(participant=participant, match=match)
 
     form = PoolBetForm(request.POST, instance=existing_bet, match=match)
+    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
 
     if not form.is_valid():
+        if is_ajax:
+            return JsonResponse({"ok": False, "errors": form.errors.get_json_data()}, status=400)
         for _, errors in form.errors.items():
             for error in errors:
                 messages.error(request, error)
@@ -347,11 +515,25 @@ def save_bet(request, slug, match_id):
             bet.full_clean()
             bet.save()
             if phase_for_match(match) == PHASE_GROUP:
-                sync_persisted_group_standings(participant=participant)
+                enqueue_projection_recalc(participant)
     except Exception as exc:
         logger.warning("Falha ao salvar palpite: participant=%s match=%s error=%s", participant.id, match.id, str(exc))
+        if is_ajax:
+            return JsonResponse({"ok": False, "error": str(exc)}, status=400)
         messages.error(request, str(exc))
         return redirect("pool:detail", slug=pool.slug)
+
+    if is_ajax:
+        return JsonResponse(
+            {
+                "ok": True,
+                "is_active": bet.is_active,
+                "winner_pred_id": bet.winner_pred_id,
+                "home_score_pred": bet.home_score_pred,
+                "away_score_pred": bet.away_score_pred,
+                "projection_pending": has_pending_projection_recalc(participant),
+            }
+        )
 
     messages.success(request, "Palpite salvo com sucesso.")
     return redirect("pool:detail", slug=pool.slug)
@@ -362,7 +544,6 @@ def save_bet(request, slug, match_id):
 def save_bets_bulk(request, slug):
     pool = get_object_or_404(Pool, slug=slug, is_active=True)
     participant = get_object_or_404(PoolParticipant, pool=pool, user=request.user, is_active=True)
-    submit_action = (request.POST.get("submit_action") or "save_all").strip()
 
     if not participant.can_bet():
         messages.error(request, "Participante sem permissao para palpitar.")
@@ -373,7 +554,7 @@ def save_bets_bulk(request, slug):
         .select_related("stage")
         .order_by("match_date_brasilia", "match_number")
     )
-    existing_bets = {bet.match_id: bet for bet in PoolBet.objects.filter(participant=participant).all()}
+    existing_bets = _ensure_participant_bets(participant=participant, matches=matches)
 
     saved_count = 0
     saved_group_count = 0
@@ -384,9 +565,6 @@ def save_bets_bulk(request, slug):
         if pool.is_phase_locked(phase):
             continue
 
-        if submit_action == "calculate_knockout" and phase != PHASE_GROUP:
-            continue
-
         home_key = f"match_{match.id}_home_score_pred"
         away_key = f"match_{match.id}_away_score_pred"
         winner_key = f"match_{match.id}_winner_pred"
@@ -394,10 +572,6 @@ def save_bets_bulk(request, slug):
         home_value = (request.POST.get(home_key) or "").strip()
         away_value = (request.POST.get(away_key) or "").strip()
         winner_value = (request.POST.get(winner_key) or "").strip()
-
-        has_any_value = bool(home_value or away_value or winner_value)
-        if not has_any_value:
-            continue
 
         payload = {
             "home_score_pred": home_value,
@@ -422,13 +596,27 @@ def save_bets_bulk(request, slug):
         bet_obj.participant = participant
         bet_obj.match = match
 
+        before_state = (
+            bet.home_score_pred,
+            bet.away_score_pred,
+            bet.winner_pred_id,
+            bet.is_active,
+        )
+
         try:
             with transaction.atomic():
                 bet_obj.full_clean()
                 bet_obj.save()
-            saved_count += 1
-            if phase == PHASE_GROUP:
-                saved_group_count += 1
+            after_state = (
+                bet_obj.home_score_pred,
+                bet_obj.away_score_pred,
+                bet_obj.winner_pred_id,
+                bet_obj.is_active,
+            )
+            if after_state != before_state:
+                saved_count += 1
+                if phase == PHASE_GROUP:
+                    saved_group_count += 1
         except Exception as exc:
             logger.warning(
                 "Falha ao salvar palpite em lote: participant=%s match=%s error=%s",
@@ -440,17 +628,11 @@ def save_bets_bulk(request, slug):
             error_count += 1
 
     if saved_group_count:
-        sync_persisted_group_standings(participant=participant)
+        enqueue_projection_recalc(participant)
 
     if saved_count:
-        if submit_action == "calculate_knockout":
-            messages.success(request, "Palpites da fase de grupos salvos. Projecao do mata-mata atualizada.")
-        else:
-            messages.success(request, f"{saved_count} palpite(s) salvo(s) com sucesso.")
+        messages.success(request, f"{saved_count} palpite(s) salvo(s) com sucesso.")
     if not saved_count and not error_count:
-        if submit_action == "calculate_knockout":
-            messages.info(request, "Nenhum palpite de grupos foi alterado.")
-        else:
-            messages.info(request, "Nenhuma alteracao para salvar.")
+        messages.info(request, "Nenhuma alteracao para salvar.")
 
     return redirect("pool:detail", slug=pool.slug)
