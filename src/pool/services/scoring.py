@@ -9,7 +9,7 @@ def _winner_from_score(home_score, away_score):
     return "DRAW"
 
 
-def calculate_bet_points(bet):
+def calculate_bet_points(bet, scoring_config):
     match = bet.match
     if (
         not bet.is_active
@@ -41,21 +41,22 @@ def calculate_bet_points(bet):
     phase = phase_for_match(match)
     if phase == PHASE_GROUP:
         if exact_score:
-            points = 10
+            points += scoring_config.group_winner_or_draw_points
+            points += scoring_config.group_exact_score_points
         else:
             if winner_or_draw:
-                points += 6
+                points += scoring_config.group_winner_or_draw_points
             if one_team_score:
-                points += 2
+                points += scoring_config.group_one_team_score_points
     else:
         if match.winner_id and bet.winner_pred_id == match.winner_id:
             winner_advancing = True
-            points += 8
+            points += scoring_config.knockout_winner_advancing_points
 
         if exact_score:
-            points += 6
+            points += scoring_config.knockout_exact_score_points
         elif one_team_score:
-            points += 2
+            points += scoring_config.knockout_one_team_score_points
 
     return {
         "points": points,

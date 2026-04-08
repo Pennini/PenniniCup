@@ -5,10 +5,12 @@ from src.pool.models import (
     PoolBet,
     PoolBetScore,
     PoolLockWindow,
+    PoolOfficialResult,
     PoolParticipant,
     PoolParticipantStanding,
     PoolParticipantThirdPlace,
     PoolProjectionRecalc,
+    PoolScoringConfig,
 )
 
 
@@ -21,7 +23,17 @@ class PoolAdmin(admin.ModelAdmin):
 
 @admin.register(PoolParticipant)
 class PoolParticipantAdmin(admin.ModelAdmin):
-    list_display = ("pool", "user", "is_active", "total_points", "group_points", "knockout_points")
+    list_display = (
+        "pool",
+        "user",
+        "is_active",
+        "total_points",
+        "group_points",
+        "knockout_points",
+        "bonus_points",
+        "champion_hit",
+        "top_scorer_hit",
+    )
     list_filter = ("pool", "is_active")
     search_fields = ("user__username", "user__email", "pool__name")
 
@@ -101,3 +113,23 @@ class PoolProjectionRecalcAdmin(admin.ModelAdmin):
     )
     list_filter = ("status", "participant__pool")
     search_fields = ("participant__user__username", "participant__pool__name")
+
+
+@admin.register(PoolScoringConfig)
+class PoolScoringConfigAdmin(admin.ModelAdmin):
+    list_display = (
+        "pool",
+        "group_winner_or_draw_points",
+        "group_exact_score_points",
+        "group_one_team_score_points",
+        "knockout_winner_advancing_points",
+        "knockout_exact_score_points",
+        "knockout_one_team_score_points",
+    )
+    search_fields = ("pool__name", "pool__slug")
+
+
+@admin.register(PoolOfficialResult)
+class PoolOfficialResultAdmin(admin.ModelAdmin):
+    list_display = ("pool", "champion", "runner_up", "third_place", "top_scorer", "updated_at")
+    search_fields = ("pool__name", "pool__slug", "champion__name", "top_scorer__name")

@@ -6,4 +6,5 @@ app_name = "penninicup"
 
 urlpatterns = [
     path("", views.index, name="index"),
+    path("regras/", views.rules, name="rules"),
 ]

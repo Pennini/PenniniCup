@@ -25,6 +25,7 @@ KNOCKOUT_LABELS = {
 }
 
 WINNER_PLACEHOLDER_PATTERN = re.compile(r"^W(\d+)$")
+LOSER_PLACEHOLDER_PATTERN = re.compile(r"^RU(\d+)$")
 
 
 def _make_pairs(items):
@@ -100,6 +101,60 @@ def _build_group_payload(all_matches):
 
 
 def _build_knockout_payload(all_matches):
+    def _winner_source(placeholder):
+        normalized = (placeholder or "").replace(" ", "").upper()
+        winner_match = WINNER_PLACEHOLDER_PATTERN.match(normalized)
+        if not winner_match:
+            return None
+        return int(winner_match.group(1))
+
+    def _loser_source(placeholder):
+        normalized = (placeholder or "").replace(" ", "").upper()
+        loser_match = LOSER_PLACEHOLDER_PATTERN.match(normalized)
+        if not loser_match:
+            return None
+        return int(loser_match.group(1))
+
+    winners_map = {}
+    losers_map = {}
+    for match in sorted(all_matches, key=lambda current: current.match_number):
+        home_team = match.home_team
+        away_team = match.away_team
+
+        if home_team is None:
+            home_ref = _winner_source(match.home_placeholder)
+            away_ref = _loser_source(match.home_placeholder)
+            home_team = winners_map.get(home_ref) if home_ref is not None else losers_map.get(away_ref)
+            if home_team is not None:
+                match.home_team = home_team
+                match.home_team_id = home_team.id
+
+        if away_team is None:
+            home_ref = _winner_source(match.away_placeholder)
+            away_ref = _loser_source(match.away_placeholder)
+            away_team = winners_map.get(home_ref) if home_ref is not None else losers_map.get(away_ref)
+            if away_team is not None:
+                match.away_team = away_team
+                match.away_team_id = away_team.id
+
+        winner = match.winner if match.winner_id and match.winner else None
+        loser = None
+
+        if winner is not None and home_team is not None and away_team is not None:
+            loser = away_team if winner.id == home_team.id else home_team
+        elif home_team and away_team and match.home_score is not None and match.away_score is not None:
+            if match.home_score > match.away_score:
+                winner = home_team
+                loser = away_team
+            elif match.away_score > match.home_score:
+                winner = away_team
+                loser = home_team
+
+        if winner is not None:
+            winners_map[match.match_number] = winner
+        if loser is not None:
+            losers_map[match.match_number] = loser
+
     grouped_matches = {stage_key: [] for stage_key in KNOCKOUT_STAGE_ORDER}
     final_match = None
     third_place_match = None
@@ -114,13 +169,6 @@ def _build_knockout_payload(all_matches):
             final_match = match
         elif stage_key == STAGE_THIRD and third_place_match is None:
             third_place_match = match
-
-    def _winner_source(placeholder):
-        normalized = (placeholder or "").replace(" ", "").upper()
-        winner_match = WINNER_PLACEHOLDER_PATTERN.match(normalized)
-        if not winner_match:
-            return None
-        return int(winner_match.group(1))
 
     children_by_number = {}
     for number, match in knockout_by_number.items():

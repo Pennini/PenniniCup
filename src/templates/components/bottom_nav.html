@@ -35,6 +35,22 @@
         </a>
 
         <a
+            href="{% url 'penninicup:rules' %}"
+            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'penninicup:rules' %}nav-link-active{% else %}text-neutral-400{% endif %}"
+            {%
+            if
+            current_view=""
+            ="penninicup:rules"
+            %}aria-current="page"
+            {%
+            endif
+            %}
+        >
+            <i data-lucide="book-open" class="w-4 h-4"></i>
+            <span>Regras</span>
+        </a>
+
+        <a
             href="{% url 'pool:list' %}"
             class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'pool:list' or current_view == 'pool:detail' %}nav-link-active{% else %}text-neutral-400{% endif %}"
             {%

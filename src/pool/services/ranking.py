@@ -5,7 +5,45 @@ from src.pool.services.rules import PHASE_GROUP, phase_for_match
 from src.pool.services.scoring import calculate_bet_points
 
 
-def recalculate_participant_scores(participant):
+def _calculate_bonus(participant, scoring_config, official_result):
+    bonus_points = 0
+    champion_hit = bool(
+        participant.champion_pred_id
+        and official_result.champion_id
+        and participant.champion_pred_id == official_result.champion_id
+    )
+    runner_up_hit = bool(
+        participant.runner_up_pred_id
+        and official_result.runner_up_id
+        and participant.runner_up_pred_id == official_result.runner_up_id
+    )
+    third_place_hit = bool(
+        participant.third_place_pred_id
+        and official_result.third_place_id
+        and participant.third_place_pred_id == official_result.third_place_id
+    )
+    top_scorer_hit = bool(
+        participant.top_scorer_pred_id
+        and official_result.top_scorer_id
+        and participant.top_scorer_pred_id == official_result.top_scorer_id
+    )
+
+    if champion_hit:
+        bonus_points += scoring_config.bonus_champion_points
+    if runner_up_hit:
+        bonus_points += scoring_config.bonus_runner_up_points
+    if third_place_hit:
+        bonus_points += scoring_config.bonus_third_place_points
+    if top_scorer_hit:
+        bonus_points += scoring_config.bonus_top_scorer_points
+
+    return bonus_points, champion_hit, top_scorer_hit
+
+
+def recalculate_participant_scores(participant, scoring_config=None, official_result=None):
+    scoring_config = scoring_config or participant.pool.get_scoring_config()
+    official_result = official_result or participant.pool.get_official_results()
+
     total_points = 0
     group_points = 0
     knockout_points = 0
@@ -14,7 +52,7 @@ def recalculate_participant_scores(participant):
 
     bets = participant.bets.select_related("match", "match__stage").all()
     for bet in bets:
-        score_data = calculate_bet_points(bet)
+        score_data = calculate_bet_points(bet, scoring_config=scoring_config)
 
         PoolBetScore.objects.update_or_create(
             bet=bet,
@@ -38,27 +76,47 @@ def recalculate_participant_scores(participant):
         if score_data["winner_or_draw"]:
             winner_or_draw_hits += 1
 
+    bonus_points, champion_hit, top_scorer_hit = _calculate_bonus(
+        participant=participant,
+        scoring_config=scoring_config,
+        official_result=official_result,
+    )
+
+    total_points += bonus_points
+
     participant.total_points = total_points
     participant.group_points = group_points
     participant.knockout_points = knockout_points
+    participant.bonus_points = bonus_points
     participant.exact_score_hits = exact_score_hits
     participant.winner_or_draw_hits = winner_or_draw_hits
+    participant.champion_hit = champion_hit
+    participant.top_scorer_hit = top_scorer_hit
     participant.save(
         update_fields=[
             "total_points",
             "group_points",
             "knockout_points",
+            "bonus_points",
             "exact_score_hits",
             "winner_or_draw_hits",
+            "champion_hit",
+            "top_scorer_hit",
         ]
     )
 
 
 @transaction.atomic
 def recalculate_pool_scores(pool):
+    scoring_config = pool.get_scoring_config()
+    official_result = pool.get_official_results()
     participants = PoolParticipant.objects.filter(pool=pool, is_active=True).all()
     for participant in participants:
-        recalculate_participant_scores(participant)
+        recalculate_participant_scores(
+            participant,
+            scoring_config=scoring_config,
+            official_result=official_result,
+        )
 
 
 def recalculate_all_pools(season=None):

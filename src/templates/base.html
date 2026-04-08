@@ -15,12 +15,12 @@
     <body>
         {% include "components/top_nav.html" %}
 
-        <main class="min-h-screen pb-20 lg:pb-0 max-w-7xl mx-auto px-4 py-6">
+        <main class="min-h-screen pt-20 lg:pt-24 pb-20 lg:pb-0 max-w-7xl mx-auto px-4">
             {% if messages %}
             <div class="mb-4">
                 {% for message in messages %}
                 <div
-                    class="alert {% if message.tags %}alert-{{ message.tags }}{% else %}alert-info{% endif %} mb-2"
+                    class="mb-2 rounded-md border px-4 py-3 text-sm {% if 'success' in message.tags %}border-green-500/30 bg-green-500/10 text-green-300{% elif 'warning' in message.tags %}border-amber-500/30 bg-amber-500/10 text-amber-300{% elif 'error' in message.tags %}border-red-500/30 bg-red-500/10 text-red-300{% else %}border-blue-500/30 bg-blue-500/10 text-blue-300{% endif %}"
                     role="alert"
                 >
                     {{ message }}

@@ -69,6 +69,14 @@ class Pool(models.Model):
 
         return InviteToken.use_token(token_obj.token)
 
+    def get_scoring_config(self):
+        config, _ = PoolScoringConfig.objects.get_or_create(pool=self)
+        return config
+
+    def get_official_results(self):
+        results, _ = PoolOfficialResult.objects.get_or_create(pool=self)
+        return results
+
 
 class PoolLockWindow(models.Model):
     PHASE_CHOICES = (
@@ -100,8 +108,37 @@ class PoolParticipant(models.Model):
     knockout_points = models.IntegerField(default=0)
     exact_score_hits = models.IntegerField(default=0)
     winner_or_draw_hits = models.IntegerField(default=0)
+    bonus_points = models.IntegerField(default=0)
     champion_hit = models.BooleanField(default=False)
     top_scorer_hit = models.BooleanField(default=False)
+    champion_pred = models.ForeignKey(
+        Team,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="participant_champion_predictions",
+    )
+    runner_up_pred = models.ForeignKey(
+        Team,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="participant_runner_up_predictions",
+    )
+    third_place_pred = models.ForeignKey(
+        Team,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="participant_third_place_predictions",
+    )
+    top_scorer_pred = models.ForeignKey(
+        "football.Player",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="participant_top_scorer_predictions",
+    )
 
     class Meta:
         unique_together = ("pool", "user")
@@ -290,3 +327,70 @@ class PoolProjectionRecalc(models.Model):
 
     def __str__(self):
         return f"ProjectionQueue {self.participant_id} ({self.status})"
+
+
+class PoolScoringConfig(models.Model):
+    pool = models.OneToOneField(Pool, on_delete=models.CASCADE, related_name="scoring_config")
+
+    group_winner_or_draw_points = models.PositiveSmallIntegerField(default=6)
+    group_exact_score_points = models.PositiveSmallIntegerField(default=4)
+    group_one_team_score_points = models.PositiveSmallIntegerField(default=2)
+
+    knockout_winner_advancing_points = models.PositiveSmallIntegerField(default=8)
+    knockout_exact_score_points = models.PositiveSmallIntegerField(default=6)
+    knockout_one_team_score_points = models.PositiveSmallIntegerField(default=2)
+
+    bonus_champion_points = models.PositiveSmallIntegerField(default=50)
+    bonus_runner_up_points = models.PositiveSmallIntegerField(default=30)
+    bonus_third_place_points = models.PositiveSmallIntegerField(default=20)
+    bonus_top_scorer_points = models.PositiveSmallIntegerField(default=50)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Configuracao de pontuacao"
+        verbose_name_plural = "Configuracoes de pontuacao"
+
+    def __str__(self):
+        return f"Pontuacao {self.pool.slug}"
+
+
+class PoolOfficialResult(models.Model):
+    pool = models.OneToOneField(Pool, on_delete=models.CASCADE, related_name="official_result")
+    champion = models.ForeignKey(
+        Team,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="official_champion_pools",
+    )
+    runner_up = models.ForeignKey(
+        Team,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="official_runner_up_pools",
+    )
+    third_place = models.ForeignKey(
+        Team,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="official_third_place_pools",
+    )
+    top_scorer = models.ForeignKey(
+        "football.Player",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="official_top_scorer_pools",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Resultado oficial do bolao"
+        verbose_name_plural = "Resultados oficiais do bolao"
+
+    def __str__(self):
+        return f"Resultado oficial {self.pool.slug}"

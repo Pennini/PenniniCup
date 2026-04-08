@@ -40,6 +40,30 @@
 
 # Status: ⭐⭐⭐⭐⭐
 
+# Ranking por bolao - desempate manual (MVP)
+
+## Quando usar
+
+- Use apenas quando dois ou mais participantes seguirem empatados em todos os criterios automaticos do ranking.
+
+## Como aplicar no admin
+
+1. Abra Admin > Rankings > Ranking tie break overrides.
+1. Crie um registro para cada participante empatado que precisa de ordem manual.
+1. Preencha:
+   - Pool: bolao correto.
+   - Participant: participante do mesmo bolao.
+   - Manual position: prioridade manual (1 = primeiro entre os empatados).
+   - Reason: justificativa do sorteio manual.
+   - Updated by: usuario admin responsavel.
+1. Salve e recarregue a pagina do dashboard de ranking.
+
+## Regras operacionais
+
+- Nao usar override para participantes que nao estejam no mesmo empate tecnico.
+- Registrar sempre uma justificativa curta no campo Reason.
+- Se o sorteio for refeito, atualizar os registros existentes (nao duplicar posicoes no mesmo bolao).
+
 # 🟨 Sprint 2 (Semana 3–4) — Core do jogo
 
 # 🔨 predictions

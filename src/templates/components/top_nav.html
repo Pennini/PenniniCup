@@ -1,5 +1,7 @@
 {% load static %}
-<nav class="max-lg:hidden app-navbar top-nav flex items-center h-16 px-6 gap-4">
+
+{% with request.resolver_match.view_name as current_view %}
+<nav class="hidden lg:flex fixed inset-x-0 top-0 z-50 app-navbar top-nav items-center h-16 px-6 gap-4 backdrop-blur border-b border-neutral-800/70">
     <!-- Left -->
     <div class="flex items-center gap-4">
         <!-- Team Dropdown -->
@@ -41,7 +43,6 @@
         </div>
 
         <!-- Links -->
-        {% with request.resolver_match.view_name as current_view %}
         <div class="flex gap-4 ml-4 h-full">
             <a
                 href="{% url 'penninicup:index' %}"
@@ -72,8 +73,22 @@
                 Partidas
             </a>
             <a
+                href="{% url 'penninicup:rules' %}"
+                class="nav-link flex items-center h-16 px-3 border-b-2 -mb-[1px] transition-colors {% if current_view == 'penninicup:rules' %}nav-link-active{% endif %}"
+                {%
+                if
+                current_view=""
+                ="penninicup:rules"
+                %}aria-current="page"
+                {%
+                endif
+                %}
+            >
+                Regras
+            </a>
+            <a
                 href="{% url 'pool:list' %}"
-                class="nav-link flex items-center h-16 px-3 border-b-2 -mb-[1px] transition-colors {% if current_view == 'pool:list' or current_view == 'pool:detail' %}nav-link-active{% endif %}"
+                class="nav-link flex items-center h-16 px-3 border-b-2 -mb-[1px] transition-colors {% if current_view == 'pool:list' or current_view == 'pool:detail' or current_view == 'pool:ranking' or current_view == 'rankings:pool-dashboard' %}nav-link-active{% endif %}"
                 {%
                 if
                 current_view=""
@@ -86,7 +101,6 @@
                 Boloes
             </a>
         </div>
-        {% endwith %}
     </div>
 
     <!-- Spacer -->
@@ -95,6 +109,19 @@
     {% if user.is_authenticated %}
     <!-- Right -->
     <div class="flex items-center gap-3">
+        {% if current_view == 'pool:detail' and active_tab == 'bets' %}
+        <button
+            type="submit"
+            form="pool-bets-form"
+            name="submit_action"
+            value="save_all"
+            class="px-4 py-2 rounded-md bg-orange-500 text-black font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            {% if not can_bet or group_locked and knockout_locked %}disabled{% endif %}
+        >
+            Salvar palpites
+        </button>
+        {% endif %}
+
         <!-- Profile Dropdown -->
         <div class="relative group">
             <button class="rounded-full overflow-hidden hover:ring-2 hover:ring-orange-500 transition">
@@ -133,3 +160,23 @@
     </div>
     {% endif %}
 </nav>
+
+<nav class="lg:hidden fixed inset-x-0 top-0 z-50 h-14 px-4 border-b border-neutral-800/70 bg-neutral-950/95 backdrop-blur flex items-center justify-between">
+    <a href="{% url 'penninicup:index' %}" class="flex items-center gap-2">
+        <span class="text-base font-semibold">PenniniCup</span>
+    </a>
+
+    {% if current_view == 'pool:detail' and active_tab == 'bets' %}
+    <button
+        type="submit"
+        form="pool-bets-form"
+        name="submit_action"
+        value="save_all"
+        class="px-3 py-1.5 rounded-md bg-orange-500 text-black text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+        {% if not can_bet or group_locked and knockout_locked %}disabled{% endif %}
+    >
+        Salvar
+    </button>
+    {% endif %}
+</nav>
+{% endwith %}

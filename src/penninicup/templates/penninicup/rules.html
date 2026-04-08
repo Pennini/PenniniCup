@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+
+{% block title %}Regras do Bolao{% endblock %}
+
+{% block content %}
+<section class="space-y-6 py-6">
+    <header class="space-y-2">
+        <p class="text-xs uppercase tracking-[0.2em] text-orange-400">PenniniCup</p>
+        <h1 class="text-3xl font-semibold">Guia Oficial do Bolao</h1>
+        <p class="text-neutral-300 max-w-3xl">
+            Regras de palpites, prazos, fases e pontuacao. A estrutura segue o regulamento oficial e os valores abaixo
+            sao carregados diretamente da base de dados do bolao selecionado.
+        </p>
+    </header>
+
+    <article class="rounded-xl border border-neutral-800 bg-neutral-900 p-4 sm:p-5">
+        <form method="get" class="flex flex-col gap-2 sm:flex-row sm:items-end">
+            <label for="pool" class="text-sm text-neutral-300">Bolao</label>
+            <select id="pool" name="pool" class="sm:flex-1 rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2" onchange="this.form.submit()">
+                {% for pool in pools %}
+                <option value="{{ pool.slug }}" {% if selected_pool and selected_pool.id == pool.id %}selected{% endif %}>{{ pool.name }}</option>
+                {% empty %}
+                <option value="">Sem bolao ativo</option>
+                {% endfor %}
+            </select>
+            <noscript>
+                <button type="submit" class="px-4 py-2 rounded-md bg-orange-500 text-black font-semibold">Atualizar</button>
+            </noscript>
+        </form>
+        {% if selected_pool %}
+        <p class="mt-2 text-xs text-neutral-400">Temporada: {{ selected_pool.season.name }}</p>
+        {% endif %}
+    </article>
+
+    {% if not selected_pool or not scoring_config %}
+    <article class="rounded-xl border border-neutral-700 bg-neutral-900 p-5 text-neutral-300">
+        Nenhum bolao ativo disponivel para exibir regras dinamicas no momento.
+    </article>
+    {% else %}
+    <article class="rounded-xl border border-neutral-800 bg-neutral-900 p-5 space-y-4">
+        <h2 class="text-xl font-semibold">Etapas do Bolao</h2>
+        <div class="grid gap-3 md:grid-cols-2">
+            <div class="rounded-lg border border-neutral-800 bg-neutral-950 p-4">
+                <h3 class="font-semibold">1. Fase de Grupos</h3>
+                <p class="text-sm text-neutral-300 mt-1">Palpites de todos os jogos da fase de grupos antes do fechamento.</p>
+                <p class="text-xs text-neutral-400 mt-2">Fechamento: {{ group_lock_at|default:"nao definido" }}</p>
+            </div>
+            <div class="rounded-lg border border-neutral-800 bg-neutral-950 p-4">
+                <h3 class="font-semibold">2. Mata-Mata</h3>
+                <p class="text-sm text-neutral-300 mt-1">Palpites de classificado e placar do tempo regulamentar.</p>
+                <p class="text-xs text-neutral-400 mt-2">Fechamento: {{ knockout_lock_at|default:"nao definido" }}</p>
+            </div>
+        </div>
+    </article>
+
+    <article class="rounded-xl border border-neutral-800 bg-neutral-900 p-5 space-y-4">
+        <h2 class="text-xl font-semibold">Pontuacao</h2>
+        <div class="grid gap-4 lg:grid-cols-2">
+            <div class="rounded-lg border border-neutral-800 bg-neutral-950 p-4">
+                <h3 class="font-semibold">Fase de Grupos</h3>
+                <ul class="mt-2 text-sm text-neutral-300 space-y-1">
+                    <li>Acertar vencedor ou empate: +{{ scoring_config.group_winner_or_draw_points }}</li>
+                    <li>Acertar placar exato: +{{ scoring_config.group_exact_score_points }}</li>
+                    <li>Acertar placar de um dos times: +{{ scoring_config.group_one_team_score_points }}</li>
+                    <li class="text-neutral-200 font-semibold">Maximo por jogo: {{ group_max_points }} pontos</li>
+                </ul>
+            </div>
+
+            <div class="rounded-lg border border-neutral-800 bg-neutral-950 p-4">
+                <h3 class="font-semibold">Fase de Mata-Mata</h3>
+                <ul class="mt-2 text-sm text-neutral-300 space-y-1">
+                    <li>Acertar classificado: +{{ scoring_config.knockout_winner_advancing_points }}</li>
+                    <li>Acertar placar exato: +{{ scoring_config.knockout_exact_score_points }}</li>
+                    <li>Acertar placar de um dos times: +{{ scoring_config.knockout_one_team_score_points }}</li>
+                    <li class="text-neutral-200 font-semibold">Maximo por jogo: {{ knockout_max_points }} pontos</li>
+                </ul>
+            </div>
+        </div>
+        <p class="text-xs text-neutral-400">Em caso de penaltis, considera-se o placar do tempo regulamentar.</p>
+    </article>
+
+    <article class="rounded-xl border border-neutral-800 bg-neutral-900 p-5 space-y-4">
+        <h2 class="text-xl font-semibold">Bonus de Pontos</h2>
+        <div class="grid gap-3 sm:grid-cols-2">
+            <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3 text-sm">Campeao: +{{ scoring_config.bonus_champion_points }}</div>
+            <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3 text-sm">Vice-campeao: +{{ scoring_config.bonus_runner_up_points }}</div>
+            <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3 text-sm">Terceiro lugar: +{{ scoring_config.bonus_third_place_points }}</div>
+            <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3 text-sm">Artilheiro: +{{ scoring_config.bonus_top_scorer_points }}</div>
+        </div>
+        <p class="text-sm font-semibold text-neutral-200">Total maximo de bonus: {{ bonus_total_points }} pontos</p>
+    </article>
+
+    <article class="rounded-xl border border-neutral-800 bg-neutral-900 p-5 space-y-3">
+        <h2 class="text-xl font-semibold">Criterios de Desempate</h2>
+        <ol class="list-decimal pl-5 text-sm text-neutral-300 space-y-1">
+            <li>Acerto do campeao da Copa</li>
+            <li>Maior numero de acertos de placares exatos</li>
+            <li>Acerto do artilheiro da Copa</li>
+            <li>Maior numero de acertos de vencedores/empates</li>
+            <li>Maior pontuacao na fase de mata-mata</li>
+            <li>Maior pontuacao na fase de grupos</li>
+            <li>Sorteio (se necessario)</li>
+        </ol>
+    </article>
+    {% endif %}
+</section>
+{% endblock %}

@@ -10,7 +10,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 
-from src.football.models import Match
+from src.football.models import Match, Player
 from src.pool.forms import PoolBetForm
 from src.pool.models import Pool, PoolBet, PoolParticipant
 from src.pool.services.projection import (
@@ -62,6 +62,7 @@ def _ensure_participant_bets(participant, matches):
 
 
 _WINNER_PLACEHOLDER_PATTERN = re.compile(r"^W(\d+)$")
+_LOSER_PLACEHOLDER_PATTERN = re.compile(r"^RU(\d+)$")
 
 
 def _build_winners_map(matches, bets_by_match_id):
@@ -71,16 +72,64 @@ def _build_winners_map(matches, bets_by_match_id):
         if bet and bet.is_active and bet.winner_pred_id:
             winners_map[match.match_number] = bet.winner_pred
             continue
+        if (
+            bet
+            and bet.is_active
+            and bet.home_score_pred is not None
+            and bet.away_score_pred is not None
+            and match.home_team_id
+            and match.away_team_id
+        ):
+            if bet.home_score_pred > bet.away_score_pred:
+                winners_map[match.match_number] = match.home_team
+                continue
+            if bet.away_score_pred > bet.home_score_pred:
+                winners_map[match.match_number] = match.away_team
+                continue
         if match.winner_id:
             winners_map[match.match_number] = match.winner
     return winners_map
 
 
-def _resolve_match_team_from_placeholder(placeholder, projected_slots, assign_third_map, winners_map):
+def _infer_advancing_team(match, bet, home_team, away_team):
+    if match.winner_id and match.winner:
+        return match.winner
+
+    if not bet or not bet.is_active:
+        return None
+
+    if bet.winner_pred_id:
+        return bet.winner_pred
+
+    if home_team is None or away_team is None or bet.home_score_pred is None or bet.away_score_pred is None:
+        return None
+
+    if bet.home_score_pred > bet.away_score_pred:
+        return home_team
+    if bet.away_score_pred > bet.home_score_pred:
+        return away_team
+
+    return None
+
+
+def _infer_losing_team(winner_team, home_team, away_team):
+    if winner_team is None or home_team is None or away_team is None:
+        return None
+    if winner_team.id == home_team.id:
+        return away_team
+    if winner_team.id == away_team.id:
+        return home_team
+    return None
+
+
+def _resolve_match_team_from_placeholder(placeholder, projected_slots, assign_third_map, winners_map, losers_map):
     normalized = (placeholder or "").replace(" ", "").upper()
     winner_match = _WINNER_PLACEHOLDER_PATTERN.match(normalized)
     if winner_match:
         return winners_map.get(int(winner_match.group(1)))
+    loser_match = _LOSER_PLACEHOLDER_PATTERN.match(normalized)
+    if loser_match:
+        return losers_map.get(int(loser_match.group(1)))
     return resolve_knockout_placeholder_team(normalized, projected_slots, assign_third_map)
 
 
@@ -306,6 +355,15 @@ def _join_pool_with_token(request, pool, invite_token_value):
     return participant
 
 
+def _top_scorer_options_for_pool(pool):
+    return (
+        Player.objects.filter(team__group__stage__season=pool.season)
+        .select_related("team")
+        .order_by("name")
+        .distinct()
+    )
+
+
 @login_required
 def pool_list(request):
     participations = (
@@ -333,8 +391,9 @@ def pool_list(request):
 @require_http_methods(["POST"])
 def open_pool(request):
     pool_slug = (request.POST.get("pool_slug") or "").strip()
+    open_target = (request.POST.get("open_target") or "bets").strip().lower()
     if not pool_slug:
-        messages.error(request, "Selecione um bolao para abrir os palpites.")
+        messages.error(request, "Selecione um bolao para abrir.")
         return redirect("pool:list")
 
     participant_exists = PoolParticipant.objects.filter(
@@ -343,6 +402,9 @@ def open_pool(request):
     if not participant_exists:
         messages.error(request, "Voce nao esta inscrito neste bolao.")
         return redirect("pool:list")
+
+    if open_target == "ranking":
+        return redirect("pool:ranking", slug=pool_slug)
 
     return redirect("pool:detail", slug=pool_slug)
 
@@ -358,7 +420,7 @@ def pool_detail(request, slug):
     matches = list(
         Match.objects.filter(season=pool.season)
         .select_related("stage", "group", "home_team", "away_team")
-        .order_by("match_date_brasilia", "match_number")
+        .order_by("match_number", "match_date_brasilia")
     )
     bets_by_match_id = _ensure_participant_bets(participant=participant, matches=matches)
 
@@ -372,6 +434,7 @@ def pool_detail(request, slug):
     qualified_groups = sorted([row["group"].name for row in third_rows if row["is_qualified"]])
     assign_third_map = load_assign_third_map(season=pool.season, qualified_groups=qualified_groups)
     winners_map = _build_winners_map(matches=matches, bets_by_match_id=bets_by_match_id)
+    losers_map = {}
 
     match_rows = []
     group_rows = []
@@ -380,6 +443,7 @@ def pool_detail(request, slug):
         phase = phase_for_match(match)
         home_team = match.home_team
         away_team = match.away_team
+        bet = bets_by_match_id.get(match.id)
 
         if phase == PHASE_KNOCKOUT:
             if home_team is None:
@@ -388,6 +452,7 @@ def pool_detail(request, slug):
                     projected_slots=projected,
                     assign_third_map=assign_third_map,
                     winners_map=winners_map,
+                    losers_map=losers_map,
                 )
             if away_team is None:
                 away_team = _resolve_match_team_from_placeholder(
@@ -395,6 +460,7 @@ def pool_detail(request, slug):
                     projected_slots=projected,
                     assign_third_map=assign_third_map,
                     winners_map=winners_map,
+                    losers_map=losers_map,
                 )
 
         row = {
@@ -402,7 +468,7 @@ def pool_detail(request, slug):
             "phase": phase,
             "home_team": home_team,
             "away_team": away_team,
-            "bet": bets_by_match_id.get(match.id),
+            "bet": bet,
             "locked": pool.is_phase_locked(phase),
         }
         match_rows.append(row)
@@ -412,7 +478,26 @@ def pool_detail(request, slug):
         else:
             knockout_rows.append(row)
 
+        advancing_team = _infer_advancing_team(
+            match=match,
+            bet=bet,
+            home_team=home_team,
+            away_team=away_team,
+        )
+        if advancing_team is not None:
+            winners_map[match.match_number] = advancing_team
+            losing_team = _infer_losing_team(
+                winner_team=advancing_team,
+                home_team=home_team,
+                away_team=away_team,
+            )
+            if losing_team is not None:
+                losers_map[match.match_number] = losing_team
+
     projected_knockout = _build_projected_knockout_payload(knockout_rows=knockout_rows)
+    top_scorer_options = _top_scorer_options_for_pool(pool)
+
+    show_reprocess_notice = (request.GET.get("reprocess") or "").strip() == "1"
 
     context = {
         "pool": pool,
@@ -426,6 +511,8 @@ def pool_detail(request, slug):
         "group_locked": pool.is_phase_locked(PHASE_GROUP),
         "knockout_locked": pool.is_phase_locked(PHASE_KNOCKOUT),
         "projection_pending": has_pending_projection_recalc(participant),
+        "show_reprocess_notice": show_reprocess_notice,
+        "top_scorer_options": top_scorer_options,
         "page_mode": "result",
         **projected_knockout,
     }
@@ -552,13 +639,31 @@ def save_bets_bulk(request, slug):
     matches = list(
         Match.objects.filter(season=pool.season)
         .select_related("stage")
-        .order_by("match_date_brasilia", "match_number")
+        .order_by("match_number", "match_date_brasilia")
     )
     existing_bets = _ensure_participant_bets(participant=participant, matches=matches)
 
     saved_count = 0
     saved_group_count = 0
     error_count = 0
+    top_scorer_changed = False
+
+    if not pool.is_phase_locked(PHASE_GROUP):
+        top_scorer_value = (request.POST.get("top_scorer_pred") or "").strip()
+        top_scorer_before = participant.top_scorer_pred_id
+        if top_scorer_value:
+            selected_player = _top_scorer_options_for_pool(pool).filter(id=top_scorer_value).first()
+            if selected_player is None:
+                messages.error(request, "Artilheiro invalido para esta temporada.")
+                error_count += 1
+            else:
+                participant.top_scorer_pred = selected_player
+        else:
+            participant.top_scorer_pred = None
+
+        if participant.top_scorer_pred_id != top_scorer_before:
+            participant.save(update_fields=["top_scorer_pred"])
+            top_scorer_changed = True
 
     for match in matches:
         phase = phase_for_match(match)
@@ -580,6 +685,13 @@ def save_bets_bulk(request, slug):
         }
 
         bet = existing_bets.get(match.id)
+        before_state = (
+            bet.home_score_pred if bet else None,
+            bet.away_score_pred if bet else None,
+            bet.winner_pred_id if bet else None,
+            bet.is_active if bet else False,
+        )
+
         if bet is None:
             bet = PoolBet(participant=participant, match=match)
 
@@ -595,13 +707,6 @@ def save_bets_bulk(request, slug):
         bet_obj = form.save(commit=False)
         bet_obj.participant = participant
         bet_obj.match = match
-
-        before_state = (
-            bet.home_score_pred,
-            bet.away_score_pred,
-            bet.winner_pred_id,
-            bet.is_active,
-        )
 
         try:
             with transaction.atomic():
@@ -630,9 +735,18 @@ def save_bets_bulk(request, slug):
     if saved_group_count:
         enqueue_projection_recalc(participant)
 
-    if saved_count:
-        messages.success(request, f"{saved_count} palpite(s) salvo(s) com sucesso.")
-    if not saved_count and not error_count:
+    total_changes = saved_count + (1 if top_scorer_changed else 0)
+
+    if not total_changes and not error_count:
         messages.info(request, "Nenhuma alteracao para salvar.")
+    elif saved_group_count and not error_count:
+        messages.warning(
+            request,
+            "Palpites salvos. Revise os jogos de mata-mata: os classificados podem ter sido alterados.",
+        )
+    elif total_changes and not error_count:
+        messages.success(request, f"{total_changes} alteracao(oes) salva(s) com sucesso.")
+    elif total_changes and error_count:
+        messages.warning(request, "Alguns palpites foram salvos, mas houve erros em outros jogos.")
 
     return redirect("pool:detail", slug=pool.slug)

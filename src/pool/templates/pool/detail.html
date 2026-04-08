@@ -33,14 +33,50 @@
     {% include "football/partials/knockout_bracket.html" %}
     {% else %}
 
-    <form method="post" action="{% url 'pool:save-bets-bulk' pool.slug %}" class="space-y-3">
+    <form id="pool-bets-form" method="post" action="{% url 'pool:save-bets-bulk' pool.slug %}" class="space-y-3 pb-8">
         {% csrf_token %}
+        <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <p class="text-xs uppercase tracking-wide text-neutral-400">Bonus da Copa</p>
+                    <h2 class="text-lg font-semibold">Artilheiro da Copa</h2>
+                    <p class="text-xs text-neutral-400 mt-1">Este palpite vale bonus e segue o mesmo fechamento da fase de grupos.</p>
+                </div>
+                {% if group_locked %}
+                <span class="text-xs px-2 py-1 rounded-full border border-red-400 text-red-300">Fechado</span>
+                {% else %}
+                <span class="text-xs px-2 py-1 rounded-full border border-emerald-400 text-emerald-300">Aberto</span>
+                {% endif %}
+            </div>
+
+            <div class="mt-4 grid gap-2 sm:grid-cols-[1fr_auto]">
+                <select
+                    name="top_scorer_pred"
+                    id="top-scorer-pred"
+                    class="w-full rounded-md bg-black border border-neutral-700 px-3 py-2.5"
+                    {% if group_locked or not can_bet %}disabled{% endif %}
+                >
+                    <option value="">Selecione o artilheiro</option>
+                    {% for player in top_scorer_options %}
+                    <option value="{{ player.id }}" {% if participant.top_scorer_pred_id == player.id %}selected{% endif %}>
+                        {{ player.name }} - {{ player.team.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <span class="text-xs text-neutral-500 self-center">+{{ pool.scoring_config.bonus_top_scorer_points }} pontos</span>
+            </div>
+        </article>
+
         {% for row in group_rows %}
         <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900" data-match-card data-phase="{{ row.phase }}" data-save-url="{% url 'pool:save-bet' pool.slug row.match.id %}">
             <div class="flex flex-wrap gap-3 items-center justify-between">
                 <div>
                     <p class="text-xs uppercase tracking-wide text-neutral-400">
-                        {% if row.phase == "GROUP" %}Fase de Grupos{% else %}Mata-mata{% endif %}
+                        {% if row.phase == "GROUP" %}
+                        Fase de Grupos - Grupo {{ row.match.group.name|default:"-" }}
+                        {% else %}
+                        Mata-mata - {{ row.match.stage.name|default:"-" }}
+                        {% endif %}
                     </p>
                     <p class="text-xs text-neutral-500">Jogo #{{ row.match.match_number }}</p>
                     <h2 class="text-lg font-semibold flex flex-wrap items-center gap-2">
@@ -81,35 +117,78 @@
                 {% endif %}
             </div>
 
-            <div class="mt-4 grid md:grid-cols-5 gap-2">
-                <input
-                    type="number"
-                    min="0"
-                    name="match_{{ row.match.id }}_home_score_pred"
-                    value="{% if row.bet %}{{ row.bet.home_score_pred }}{% endif %}"
-                    data-score-home
-                    class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
-                    placeholder="Gols casa"
-                    {% if row.locked or not can_bet %}disabled{% endif %}
-                />
-                <input
-                    type="number"
-                    min="0"
-                    name="match_{{ row.match.id }}_away_score_pred"
-                    value="{% if row.bet %}{{ row.bet.away_score_pred }}{% endif %}"
-                    data-score-away
-                    class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
-                    placeholder="Gols fora"
-                    {% if row.locked or not can_bet %}disabled{% endif %}
-                />
+            <div class="mt-4 rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 space-y-3">
+                <div class="grid gap-3 min-[900px]:grid-cols-2">
+                    <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                {% if row.home_team and row.home_team.flag_local %}
+                                <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
+                                    <img
+                                        src="{% static row.home_team.flag_local %}"
+                                        alt="Bandeira {{ row.home_team.name }}"
+                                        class="h-full w-full object-cover"
+                                        loading="lazy"
+                                    />
+                                </span>
+                                {% endif %}
+                                <span class="truncate text-sm font-medium text-neutral-100">{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
+                            </div>
+                            <span class="text-[11px] uppercase tracking-wide text-neutral-500">Casa</span>
+                        </div>
+                        <label class="mt-2 mb-1 block text-xs text-neutral-400">Gols de {{ row.home_team.name|default:row.match.home_placeholder|default:"Casa" }}</label>
+                        <input
+                            type="number"
+                            min="0"
+                            name="match_{{ row.match.id }}_home_score_pred"
+                            value="{% if row.bet %}{{ row.bet.home_score_pred }}{% endif %}"
+                            data-score-home
+                            class="w-full rounded-md bg-black border border-neutral-700 px-3 py-2.5 text-center text-lg"
+                            placeholder="0"
+                            aria-label="Palpite de gols do time da casa"
+                            {% if row.locked or not can_bet %}disabled{% endif %}
+                        />
+                    </div>
+
+                    <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                {% if row.away_team and row.away_team.flag_local %}
+                                <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
+                                    <img
+                                        src="{% static row.away_team.flag_local %}"
+                                        alt="Bandeira {{ row.away_team.name }}"
+                                        class="h-full w-full object-cover"
+                                        loading="lazy"
+                                    />
+                                </span>
+                                {% endif %}
+                                <span class="truncate text-sm font-medium text-neutral-100">{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
+                            </div>
+                            <span class="text-[11px] uppercase tracking-wide text-neutral-500">Visitante</span>
+                        </div>
+                        <label class="mt-2 mb-1 block text-xs text-neutral-400">Gols de {{ row.away_team.name|default:row.match.away_placeholder|default:"Visitante" }}</label>
+                        <input
+                            type="number"
+                            min="0"
+                            name="match_{{ row.match.id }}_away_score_pred"
+                            value="{% if row.bet %}{{ row.bet.away_score_pred }}{% endif %}"
+                            data-score-away
+                            class="w-full rounded-md bg-black border border-neutral-700 px-3 py-2.5 text-center text-lg"
+                            placeholder="0"
+                            aria-label="Palpite de gols do time visitante"
+                            {% if row.locked or not can_bet %}disabled{% endif %}
+                        />
+                    </div>
+                </div>
 
                 {% if row.phase == "KNOCKOUT" %}
-                <div data-winner-wrapper class="md:col-span-2">
+                <div data-winner-wrapper class="min-[900px]:max-w-sm min-[900px]:ml-auto">
                     <select
                         name="match_{{ row.match.id }}_winner_pred"
                         data-winner-select
                         data-base-disabled="{% if row.locked or not can_bet %}1{% else %}0{% endif %}"
-                        class="w-full rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
+                        class="w-full rounded-md bg-black border border-neutral-700 px-3 py-2.5"
                         {% if row.locked or not can_bet %}disabled{% endif %}
                     >
                         <option value="">Classificado</option>
@@ -127,12 +206,29 @@
         {% endfor %}
 
         {% if knockout_rows %}
-        <div class="rounded-lg border border-neutral-700 bg-neutral-900/60 px-4 py-3">
-            <p class="text-sm text-neutral-300">Os classificados projetados do mata-mata sao atualizados automaticamente apos salvar os palpites da fase de grupos.</p>
-            {% if projection_pending %}
-            <p class="text-xs text-amber-300 mt-2">Recalculo em processamento. A projecao do mata-mata pode levar alguns segundos para refletir os ultimos palpites.</p>
+        <aside class="rounded-xl border border-sky-500/30 bg-gradient-to-r from-sky-500/10 via-blue-500/5 to-neutral-900/60 px-4 py-4 sm:px-5">
+            <div class="flex items-start gap-3">
+                <span class="mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg border border-sky-400/30 bg-sky-500/15 text-sky-300">
+                    <i data-lucide="sparkles" class="h-4 w-4"></i>
+                </span>
+                <div class="space-y-2">
+                    <p class="text-sm font-semibold text-sky-100">Atualizacao automatica de classificados do mata-mata</p>
+                    <p class="text-sm text-neutral-200">
+                        Ao clicar em <span class="font-semibold text-white">Salvar palpites</span>, o sistema
+                        <span class="font-semibold text-white">reprocessa os resultados da fase de grupos</span>
+                        para recalcular os confrontos e carregar os times classificados no mata-mata.
+                    </p>
+                    <p class="text-xs text-sky-100/90">Dica: salve primeiro os jogos da fase de grupos para visualizar a chave atualizada com mais precisao.</p>
+                </div>
+            </div>
+
+            {% if show_reprocess_notice and projection_pending %}
+            <div class="mt-3 rounded-lg border border-amber-400/30 bg-amber-500/10 px-3 py-2.5 text-xs text-amber-100">
+                <span class="font-semibold">Reprocessamento em andamento:</span>
+                aguarde alguns segundos e recarregue a pagina para ver os classificados atualizados.
+            </div>
             {% endif %}
-        </div>
+        </aside>
         {% endif %}
 
         {% for row in knockout_rows %}
@@ -140,7 +236,11 @@
             <div class="flex flex-wrap gap-3 items-center justify-between">
                 <div>
                     <p class="text-xs uppercase tracking-wide text-neutral-400">
-                        {% if row.phase == "GROUP" %}Fase de Grupos{% else %}Mata-mata{% endif %}
+                        {% if row.phase == "GROUP" %}
+                        Fase de Grupos - Grupo {{ row.match.group.name|default:"-" }}
+                        {% else %}
+                        Mata-mata - {{ row.match.stage.name|default:"-" }}
+                        {% endif %}
                     </p>
                     <p class="text-xs text-neutral-500">Jogo #{{ row.match.match_number }}</p>
                     <h2 class="text-lg font-semibold flex flex-wrap items-center gap-2">
@@ -173,9 +273,6 @@
                         </span>
                     </h2>
                     <p class="text-xs text-neutral-400">{{ row.match.match_date_brasilia }}</p>
-                    <p class="text-xs text-amber-300/80">
-                        Debug placeholders: A={{ row.match.home_placeholder|default:"-" }} | B={{ row.match.away_placeholder|default:"-" }}
-                    </p>
                 </div>
                 {% if row.locked %}
                 <span class="text-xs px-2 py-1 rounded-full border border-red-400 text-red-300">Fechado</span>
@@ -184,35 +281,78 @@
                 {% endif %}
             </div>
 
-            <div class="mt-4 grid md:grid-cols-5 gap-2">
-                <input
-                    type="number"
-                    min="0"
-                    name="match_{{ row.match.id }}_home_score_pred"
-                    value="{% if row.bet %}{{ row.bet.home_score_pred }}{% endif %}"
-                    data-score-home
-                    class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
-                    placeholder="Gols casa"
-                    {% if row.locked or not can_bet %}disabled{% endif %}
-                />
-                <input
-                    type="number"
-                    min="0"
-                    name="match_{{ row.match.id }}_away_score_pred"
-                    value="{% if row.bet %}{{ row.bet.away_score_pred }}{% endif %}"
-                    data-score-away
-                    class="rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
-                    placeholder="Gols fora"
-                    {% if row.locked or not can_bet %}disabled{% endif %}
-                />
+            <div class="mt-4 rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 space-y-3">
+                <div class="grid gap-3 min-[900px]:grid-cols-2">
+                    <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                {% if row.home_team and row.home_team.flag_local %}
+                                <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
+                                    <img
+                                        src="{% static row.home_team.flag_local %}"
+                                        alt="Bandeira {{ row.home_team.name }}"
+                                        class="h-full w-full object-cover"
+                                        loading="lazy"
+                                    />
+                                </span>
+                                {% endif %}
+                                <span class="truncate text-sm font-medium text-neutral-100">{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
+                            </div>
+                            <span class="text-[11px] uppercase tracking-wide text-neutral-500">Casa</span>
+                        </div>
+                        <label class="mt-2 mb-1 block text-xs text-neutral-400">Gols de {{ row.home_team.name|default:row.match.home_placeholder|default:"Casa" }}</label>
+                        <input
+                            type="number"
+                            min="0"
+                            name="match_{{ row.match.id }}_home_score_pred"
+                            value="{% if row.bet %}{{ row.bet.home_score_pred }}{% endif %}"
+                            data-score-home
+                            class="w-full rounded-md bg-black border border-neutral-700 px-3 py-2.5 text-center text-lg"
+                            placeholder="0"
+                            aria-label="Palpite de gols do time da casa"
+                            {% if row.locked or not can_bet %}disabled{% endif %}
+                        />
+                    </div>
+
+                    <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                {% if row.away_team and row.away_team.flag_local %}
+                                <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
+                                    <img
+                                        src="{% static row.away_team.flag_local %}"
+                                        alt="Bandeira {{ row.away_team.name }}"
+                                        class="h-full w-full object-cover"
+                                        loading="lazy"
+                                    />
+                                </span>
+                                {% endif %}
+                                <span class="truncate text-sm font-medium text-neutral-100">{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
+                            </div>
+                            <span class="text-[11px] uppercase tracking-wide text-neutral-500">Visitante</span>
+                        </div>
+                        <label class="mt-2 mb-1 block text-xs text-neutral-400">Gols de {{ row.away_team.name|default:row.match.away_placeholder|default:"Visitante" }}</label>
+                        <input
+                            type="number"
+                            min="0"
+                            name="match_{{ row.match.id }}_away_score_pred"
+                            value="{% if row.bet %}{{ row.bet.away_score_pred }}{% endif %}"
+                            data-score-away
+                            class="w-full rounded-md bg-black border border-neutral-700 px-3 py-2.5 text-center text-lg"
+                            placeholder="0"
+                            aria-label="Palpite de gols do time visitante"
+                            {% if row.locked or not can_bet %}disabled{% endif %}
+                        />
+                    </div>
+                </div>
 
                 {% if row.phase == "KNOCKOUT" %}
-                <div data-winner-wrapper class="md:col-span-2">
+                <div data-winner-wrapper class="min-[900px]:max-w-sm min-[900px]:ml-auto">
                     <select
                         name="match_{{ row.match.id }}_winner_pred"
                         data-winner-select
                         data-base-disabled="{% if row.locked or not can_bet %}1{% else %}0{% endif %}"
-                        class="w-full rounded-md bg-neutral-950 border border-neutral-700 px-3 py-2"
+                        class="w-full rounded-md bg-black border border-neutral-700 px-3 py-2.5"
                         {% if row.locked or not can_bet %}disabled{% endif %}
                     >
                         <option value="">Classificado</option>
@@ -229,44 +369,22 @@
         </article>
         {% endfor %}
 
-        <div class="flex justify-end pt-2">
-            <button
-                type="submit"
-                name="submit_action"
-                value="save_all"
-                class="px-4 py-2 rounded-md bg-orange-500 text-black font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                {% if not can_bet or group_locked and knockout_locked %}disabled{% endif %}
-            >
-                Salvar todos os palpites
-            </button>
-        </div>
     </form>
     <script>
         (function () {
+            const form = document.getElementById('pool-bets-form');
+            if (!form) return;
+
             const cards = document.querySelectorAll('[data-match-card]');
-            const csrfInput = document.querySelector('input[name="csrfmiddlewaretoken"]');
-            const csrfToken = csrfInput ? csrfInput.value : '';
-            const poolId = '{{ pool.id }}';
-            const timers = new Map();
-            const inflight = new Set();
             const dirtyCards = new Set();
-            const controllers = new Map();
-            const lastSubmittedPayload = new Map();
-
-            function getMatchId(card) {
-                const homeInput = card.querySelector('[data-score-home]');
-                if (!homeInput || !homeInput.name) return null;
-                const match = homeInput.name.match(/^match_(\d+)_/);
-                return match ? match[1] : null;
-            }
-
-            function draftKey(card) {
-                const matchId = getMatchId(card);
-                return matchId ? `poolBetDraft:${poolId}:${matchId}` : null;
-            }
+            const initialPayloadByCard = new Map();
+            const topScorerSelect = document.getElementById('top-scorer-pred');
+            const initialTopScorerValue = topScorerSelect ? topScorerSelect.value : '';
+            let isSubmitting = false;
 
             function hasPendingChanges() {
-                return dirtyCards.size > 0 || inflight.size > 0;
+                const topScorerChanged = topScorerSelect && !topScorerSelect.disabled && topScorerSelect.value !== initialTopScorerValue;
+                return !isSubmitting && (dirtyCards.size > 0 || topScorerChanged);
             }
 
             function payloadKeyFromValues(home, away, winner) {
@@ -281,59 +399,20 @@
                 return payloadKeyFromValues(homeInput ? homeInput.value : '', awayInput ? awayInput.value : '', winnerValue);
             }
 
-            function persistDraft(card) {
-                const key = draftKey(card);
-                if (!key) return;
-
-                const homeInput = card.querySelector('[data-score-home]');
-                const awayInput = card.querySelector('[data-score-away]');
-                const winnerSelect = card.querySelector('[data-winner-select]');
-
-                const draft = {
-                    home: homeInput ? homeInput.value : '',
-                    away: awayInput ? awayInput.value : '',
-                    winner: winnerSelect ? winnerSelect.value : '',
-                };
-                sessionStorage.setItem(key, JSON.stringify(draft));
-            }
-
-            function restoreDraft(card) {
-                const key = draftKey(card);
-                if (!key) return;
-                const raw = sessionStorage.getItem(key);
-                if (!raw) return;
-
-                try {
-                    const draft = JSON.parse(raw);
-                    const homeInput = card.querySelector('[data-score-home]');
-                    const awayInput = card.querySelector('[data-score-away]');
-                    const winnerSelect = card.querySelector('[data-winner-select]');
-
-                    if (homeInput && !homeInput.disabled && typeof draft.home === 'string') {
-                        homeInput.value = draft.home;
-                    }
-                    if (awayInput && !awayInput.disabled && typeof draft.away === 'string') {
-                        awayInput.value = draft.away;
-                    }
-                    if (winnerSelect && !winnerSelect.disabled && typeof draft.winner === 'string') {
-                        winnerSelect.value = draft.winner;
-                    }
-
-                    dirtyCards.add(card);
-                } catch (_) {
-                    sessionStorage.removeItem(key);
-                }
-            }
-
-            function clearDraft(card) {
-                const key = draftKey(card);
-                if (!key) return;
-                sessionStorage.removeItem(key);
-            }
-
             function isDraw(homeValue, awayValue) {
                 if (homeValue === '' || awayValue === '') return false;
                 return Number(homeValue) === Number(awayValue);
+            }
+
+            function refreshDirtyState(card) {
+                const initialPayload = initialPayloadByCard.get(card);
+                const currentPayload = currentPayloadKey(card);
+
+                if (initialPayload === currentPayload) {
+                    dirtyCards.delete(card);
+                } else {
+                    dirtyCards.add(card);
+                }
             }
 
             function applyWinnerVisibility(card) {
@@ -358,99 +437,43 @@
                 select.disabled = baseDisabled;
             }
 
-            async function saveCard(card) {
-                const saveUrl = card.dataset.saveUrl;
-                if (!saveUrl || !csrfToken) return;
-
-                const homeInput = card.querySelector('[data-score-home]');
-                const awayInput = card.querySelector('[data-score-away]');
-                const winnerSelect = card.querySelector('[data-winner-select]');
-
-                const payload = new FormData();
-                payload.append('csrfmiddlewaretoken', csrfToken);
-                payload.append('home_score_pred', homeInput.value);
-                payload.append('away_score_pred', awayInput.value);
-                if (winnerSelect) {
-                    payload.append('winner_pred', winnerSelect.disabled ? '' : winnerSelect.value);
-                }
-
-                const payloadKey = currentPayloadKey(card);
-                if (lastSubmittedPayload.get(card) === payloadKey) {
-                    dirtyCards.delete(card);
-                    clearDraft(card);
-                    return;
-                }
-
-                inflight.add(card);
-                try {
-                    const previousController = controllers.get(card);
-                    if (previousController) {
-                        previousController.abort();
-                    }
-                    const controller = new AbortController();
-                    controllers.set(card, controller);
-
-                    const response = await fetch(saveUrl, {
-                        method: 'POST',
-                        credentials: 'same-origin',
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                        signal: controller.signal,
-                        body: payload,
-                    });
-
-                    if (!response.ok) {
-                        return;
-                    }
-
-                    lastSubmittedPayload.set(card, payloadKey);
-                    dirtyCards.delete(card);
-                    clearDraft(card);
-                } catch (_) {
-                    // Falha de rede: rascunho permanece em sessionStorage
-                } finally {
-                    inflight.delete(card);
-                }
-            }
-
-            function scheduleSave(card) {
-                dirtyCards.add(card);
-                persistDraft(card);
-
-                const previous = timers.get(card);
-                if (previous) window.clearTimeout(previous);
-                const timer = window.setTimeout(() => saveCard(card), 1200);
-                timers.set(card, timer);
-            }
-
             cards.forEach((card) => {
                 const homeInput = card.querySelector('[data-score-home]');
                 const awayInput = card.querySelector('[data-score-away]');
                 const winnerSelect = card.querySelector('[data-winner-select]');
                 if (!homeInput || !awayInput) return;
 
-                restoreDraft(card);
                 applyWinnerVisibility(card);
-                lastSubmittedPayload.set(card, currentPayloadKey(card));
+                initialPayloadByCard.set(card, currentPayloadKey(card));
 
                 [homeInput, awayInput].forEach((input) => {
                     if (input.disabled) return;
+                    input.addEventListener('input', () => {
+                        applyWinnerVisibility(card);
+                        refreshDirtyState(card);
+                    });
                     input.addEventListener('change', () => {
                         applyWinnerVisibility(card);
-                        scheduleSave(card);
-                    });
-                    input.addEventListener('blur', () => {
-                        applyWinnerVisibility(card);
-                        scheduleSave(card);
+                        refreshDirtyState(card);
                     });
                 });
 
                 if (winnerSelect) {
                     winnerSelect.addEventListener('change', () => {
-                        scheduleSave(card);
+                        refreshDirtyState(card);
                     });
                 }
+            });
+
+            if (topScorerSelect && !topScorerSelect.disabled) {
+                topScorerSelect.addEventListener('change', () => {
+                    // no-op: hasPendingChanges checks current select value against initial snapshot
+                });
+            }
+
+            form.addEventListener('submit', () => {
+                isSubmitting = true;
+                dirtyCards.clear();
             });
 
             window.addEventListener('beforeunload', (event) => {
@@ -464,7 +487,7 @@
                 if (!link) return;
                 if (!hasPendingChanges()) return;
 
-                const keepPage = window.confirm('Existem alteracoes pendentes. Deseja sair sem confirmar o salvamento?');
+                const keepPage = window.confirm('Existem palpites nao salvos. Clique em "Salvar palpites" para nao perder seu progresso. Deseja sair mesmo assim?');
                 if (!keepPage) {
                     event.preventDefault();
                 }

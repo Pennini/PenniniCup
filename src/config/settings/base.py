@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     "src.football.apps.FootballConfig",
     "src.penninicup.apps.PenninicupConfig",
     "src.pool.apps.PoolConfig",
+    "src.rankings.apps.RankingsConfig",
 ]
 
 MIDDLEWARE = [

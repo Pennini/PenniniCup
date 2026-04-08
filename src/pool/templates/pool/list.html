@@ -3,49 +3,86 @@
 {% block title %}Boloes{% endblock %}
 
 {% block content %}
-<section class="space-y-5">
-    <header>
-        <h1 class="text-2xl font-semibold">Meus Boloes</h1>
-        <p class="text-sm text-neutral-400">Inscreva-se por token e escolha um bolao para palpitar.</p>
+<section class="mx-auto w-full max-w-4xl space-y-6">
+    <header class="rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-900 to-neutral-950 p-6 sm:p-8 shadow-xl shadow-black/20">
+        <p class="text-[11px] uppercase tracking-[0.2em] text-orange-400/90">PenniniCup</p>
+        <h1 class="mt-2 text-3xl sm:text-4xl font-semibold leading-tight">Meus Boloes</h1>
+        <p class="mt-2 text-sm sm:text-base text-neutral-300 max-w-2xl">Inscreva-se por token e abra rapidamente os palpites dos bolões em que você já participa.</p>
     </header>
 
-    <article class="rounded-xl border border-neutral-700 bg-neutral-900 p-5 max-w-2xl">
-        <h2 class="text-xl font-semibold">Inscricao por token</h2>
-        <p class="text-sm text-neutral-400 mt-1">Cole um token para entrar no bolao correspondente.</p>
+    <div class="grid gap-4 sm:gap-5">
+        <article class="rounded-2xl border border-neutral-800 bg-neutral-900/90 p-5 sm:p-6 shadow-lg shadow-black/15">
+            <div class="flex items-start gap-3">
+                <span class="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                    <i data-lucide="ticket" class="h-4 w-4"></i>
+                </span>
+                <div>
+                    <h2 class="text-lg sm:text-xl font-semibold">Inscricao por token</h2>
+                    <p class="text-sm text-neutral-400 mt-1">Cole um token válido para entrar no bolão correspondente.</p>
+                </div>
+            </div>
 
-        <form method="post" action="{% url 'pool:join-by-token' %}" class="mt-4 flex flex-col sm:flex-row gap-2">
-            {% csrf_token %}
-            <input
-                type="text"
-                name="invite_token"
-                placeholder="Token de convite"
-                class="flex-1 px-3 py-2 rounded-md bg-neutral-950 border border-neutral-700"
-                required
-            />
-            <button type="submit" class="px-3 py-2 rounded-md bg-orange-500 text-black font-semibold">Inscrever</button>
-        </form>
-    </article>
+            <form method="post" action="{% url 'pool:join-by-token' %}" class="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
+                {% csrf_token %}
+                <input
+                    type="text"
+                    name="invite_token"
+                    placeholder="Token de convite"
+                    class="w-full px-3.5 py-2.5 rounded-lg bg-neutral-950 border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
+                    required
+                />
+                <button type="submit" class="px-4 py-2.5 rounded-lg bg-orange-500 text-black font-semibold hover:bg-orange-400 transition-colors">
+                    Inscrever
+                </button>
+            </form>
+        </article>
 
-    <article class="rounded-xl border border-neutral-700 bg-neutral-900 p-5 max-w-2xl">
-        <h2 class="text-xl font-semibold">Abrir palpites</h2>
-        <p class="text-sm text-neutral-400 mt-1">Selecione um bolao em que voce ja esta inscrito.</p>
+        <article class="rounded-2xl border border-neutral-800 bg-neutral-900/90 p-5 sm:p-6 shadow-lg shadow-black/15">
+            <div class="flex items-start gap-3">
+                <span class="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                    <i data-lucide="trophy" class="h-4 w-4"></i>
+                </span>
+                <div>
+                    <h2 class="text-lg sm:text-xl font-semibold">Abrir bolao</h2>
+                    <p class="text-sm text-neutral-400 mt-1">Escolha o bolão e abra direto em Palpites ou Ranking.</p>
+                </div>
+            </div>
 
-        <form method="post" action="{% url 'pool:open' %}" class="mt-4 flex flex-col sm:flex-row gap-2">
-            {% csrf_token %}
-            <select name="pool_slug" class="flex-1 px-3 py-2 rounded-md bg-neutral-950 border border-neutral-700" required>
-                <option value="">Escolha um bolao</option>
-                {% for row in rows %}
-                <option value="{{ row.pool.slug }}">
-                    {{ row.pool.name }} - {% if row.can_bet %}Apto{% else %}Pendente pagamento{% endif %}
-                </option>
-                {% endfor %}
-            </select>
-            <button type="submit" class="px-3 py-2 rounded-md bg-orange-500 text-black font-semibold">Ir para palpites</button>
-        </form>
+            <form method="post" action="{% url 'pool:open' %}" class="mt-4 space-y-3">
+                {% csrf_token %}
+                <select name="pool_slug" class="w-full px-3.5 py-2.5 rounded-lg bg-neutral-950 border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-orange-500/40" required>
+                    <option value="">Escolha um bolao</option>
+                    {% for row in rows %}
+                    <option value="{{ row.pool.slug }}">
+                        {{ row.pool.name }} - {% if row.can_bet %}Apto{% else %}Pendente pagamento{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
 
-        {% if not rows %}
-        <p class="text-sm text-neutral-400 mt-3">Voce ainda nao esta inscrito em nenhum bolao.</p>
-        {% endif %}
-    </article>
+                <div class="grid gap-2 sm:grid-cols-2">
+                    <button
+                        type="submit"
+                        name="open_target"
+                        value="bets"
+                        class="px-4 py-2.5 rounded-lg bg-orange-500 text-black font-semibold hover:bg-orange-400 transition-colors"
+                    >
+                        Abrir palpites
+                    </button>
+                    <button
+                        type="submit"
+                        name="open_target"
+                        value="ranking"
+                        class="px-4 py-2.5 rounded-lg border border-orange-500/50 text-orange-300 font-semibold hover:bg-orange-500/10 transition-colors"
+                    >
+                        Abrir ranking
+                    </button>
+                </div>
+            </form>
+
+            {% if not rows %}
+            <p class="mt-4 rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-sm text-blue-300">Você ainda não está inscrito em nenhum bolão.</p>
+            {% endif %}
+        </article>
+    </div>
 </section>
 {% endblock %}
