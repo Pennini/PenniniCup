@@ -1,6 +1,8 @@
 import logging
+from zoneinfo import ZoneInfo
 
 from django.conf import settings
+from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
 from src.football.api.client import FootballDataClient
@@ -9,11 +11,22 @@ from src.pool.services.ranking import recalculate_all_pools
 
 logger = logging.getLogger(__name__)
 
+UTC_TZ = ZoneInfo("UTC")
+BRASILIA_TZ = ZoneInfo("America/Sao_Paulo")
+
 
 def _parse_datetime(value: str | None):
     if not value:
         return None
     return parse_datetime(value)
+
+
+def _ensure_aware(dt, default_tz):
+    if dt is None:
+        return None
+    if timezone.is_naive(dt):
+        return timezone.make_aware(dt, default_tz)
+    return dt
 
 
 def _map_status(value) -> int:
@@ -70,13 +83,25 @@ def sync_matches():
         stadium_data = match.get("Stadium") or {}
         stadium = stadiums_map.get(stadium_data.get("IdStadium")) if stadium_data else None
 
-        match_date_utc = _parse_datetime(match.get("Date"))
-        match_date_local = _parse_datetime(match.get("LocalDate")) or match_date_utc
-        match_date_brasilia = match_date_local or match_date_utc
+        raw_match_date_utc = _parse_datetime(match.get("Date"))
+        raw_match_date_local = _parse_datetime(match.get("LocalDate"))
 
-        if not match_date_utc or not match_date_local or not match_date_brasilia:
+        # A API pode enviar LocalDate sem offset; nesses casos preferimos Date (UTC)
+        # como fonte canônica para evitar deslocamento incorreto de timezone.
+        match_date_utc = _ensure_aware(raw_match_date_utc, UTC_TZ)
+        if match_date_utc is None:
+            match_date_utc = _ensure_aware(raw_match_date_local, UTC_TZ)
+        if match_date_utc is None:
             skipped += 1
             continue
+
+        match_date_utc = match_date_utc.astimezone(UTC_TZ)
+
+        match_date_local = _ensure_aware(raw_match_date_local, UTC_TZ)
+        if match_date_local is None:
+            match_date_local = match_date_utc
+
+        match_date_brasilia = match_date_utc.astimezone(BRASILIA_TZ)
 
         rows.append(
             Match(

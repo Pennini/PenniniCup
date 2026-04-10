@@ -17,6 +17,8 @@ class Pool(models.Model):
     season = models.ForeignKey(Season, on_delete=models.CASCADE, related_name="pools")
     description = models.TextField(blank=True)
     entry_fee = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    admin_fee_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("5.00"))
+    admin_fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     total_prize_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     first_place_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("70.00"))
     second_place_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("20.00"))
@@ -106,12 +108,15 @@ class Pool(models.Model):
         )
 
         total_paid = Decimal(total_paid).quantize(Decimal("0.01"))
+        admin_fee_amount = (total_paid * self.admin_fee_percentage / Decimal("100")).quantize(Decimal("0.01"))
+        total_prize_amount = (total_paid - admin_fee_amount).quantize(Decimal("0.01"))
 
-        first_amount = (total_paid * self.first_place_percentage / Decimal("100")).quantize(Decimal("0.01"))
-        second_amount = (total_paid * self.second_place_percentage / Decimal("100")).quantize(Decimal("0.01"))
-        third_amount = (total_paid - first_amount - second_amount).quantize(Decimal("0.01"))
+        first_amount = (total_prize_amount * self.first_place_percentage / Decimal("100")).quantize(Decimal("0.01"))
+        second_amount = (total_prize_amount * self.second_place_percentage / Decimal("100")).quantize(Decimal("0.01"))
+        third_amount = (total_prize_amount - first_amount - second_amount).quantize(Decimal("0.01"))
 
-        self.total_prize_amount = total_paid
+        self.admin_fee_amount = admin_fee_amount
+        self.total_prize_amount = total_prize_amount
         self.first_place_amount = first_amount
         self.second_place_amount = second_amount
         self.third_place_amount = third_amount
@@ -119,6 +124,7 @@ class Pool(models.Model):
         if save:
             self.save(
                 update_fields=[
+                    "admin_fee_amount",
                     "total_prize_amount",
                     "first_place_amount",
                     "second_place_amount",

@@ -138,6 +138,10 @@ celerybeat.pid
 *.log
 logs/
 *.jsonl
+media/
+
+# npm lockfile de raiz (o lock válido fica em src/theme/static_src)
+/package-lock.json
 
 # node
 node_modules/

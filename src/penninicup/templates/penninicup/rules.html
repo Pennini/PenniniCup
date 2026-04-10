@@ -14,7 +14,7 @@
                     <i data-lucide="book-open-check" class="h-3.5 w-3.5"></i>
                     Guia Oficial
                 </p>
-                <h1 class="text-3xl sm:text-4xl font-semibold leading-tight">Regras do Bolão, sem mistério</h1>
+                <h1 class="text-3xl sm:text-4xl font-semibold leading-tight">Regras do Bolão</h1>
                 <p class="text-sm sm:text-base text-neutral-300">
                     Aqui você encontra prazos, fases, pontuação e desempates do bolão selecionado. Tudo carregado da configuração real para você jogar com segurança.
                 </p>
@@ -76,7 +76,7 @@
                     <p class="mt-1 text-sm text-neutral-300">Palpites de todos os jogos da fase de grupos antes do fechamento.</p>
                     <p class="mt-3 inline-flex items-center gap-2 rounded-full border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300">
                         <i data-lucide="clock-3" class="h-3.5 w-3.5"></i>
-                        {{ group_lock_at|default:"fechamento não definido" }}
+                        {% if group_lock_at %}{{ group_lock_at|date:"d/m/Y H:i" }} (Brasília){% else %}fechamento não definido{% endif %}
                     </p>
                 </div>
 
@@ -87,7 +87,7 @@
                     <p class="mt-1 text-sm text-neutral-300">Palpites de classificado e placar do tempo regulamentar.</p>
                     <p class="mt-3 inline-flex items-center gap-2 rounded-full border border-neutral-700 px-2.5 py-1 text-xs text-neutral-300">
                         <i data-lucide="clock-3" class="h-3.5 w-3.5"></i>
-                        {{ knockout_lock_at|default:"fechamento não definido" }}
+                        {% if knockout_lock_at %}{{ knockout_lock_at|date:"d/m/Y H:i" }} (Brasília){% else %}fechamento não definido{% endif %}
                     </p>
                 </div>
             </div>
@@ -99,7 +99,10 @@
                 <h2 class="text-lg font-semibold">Premiação</h2>
             </div>
             <p class="mt-3 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-sm font-semibold text-emerald-100">
-                Total arrecadado: R$ {{ selected_pool.total_prize_amount|floatformat:2 }}
+                Total para premiação: R$ {{ selected_pool.total_prize_amount|floatformat:2 }}
+            </p>
+            <p class="mt-2 rounded-lg border border-neutral-700 bg-neutral-950/80 px-3 py-2 text-xs text-neutral-300">
+                Taxa do administrador: {{ selected_pool.admin_fee_percentage|floatformat:2 }}% (R$ {{ selected_pool.admin_fee_amount|floatformat:2 }})
             </p>
             <div class="mt-4 space-y-2 text-sm">
                 <div class="rounded-lg border border-neutral-700 bg-neutral-950/80 px-3 py-2">

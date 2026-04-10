@@ -19,6 +19,7 @@ class RulesPageTest(TestCase):
             email="owner-rules@example.com",
             password="123456Aa!",
         )
+        self.client.force_login(self.owner)
         competition = Competition.objects.create(fifa_id=991, name="Copa Rules")
         self.season = Season.objects.create(
             fifa_id=991,
@@ -78,10 +79,11 @@ class RulesPageTest(TestCase):
 
         response = self.client.get(reverse("penninicup:rules"), data={"pool": self.pool_a.slug})
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Total arrecadado: R$ 150,00")
-        self.assertContains(response, "R$ 105,00")
-        self.assertContains(response, "R$ 30,00")
-        self.assertContains(response, "R$ 15,00")
+        self.assertContains(response, "Total para premiação: R$ 142,50")
+        self.assertContains(response, "Taxa do administrador: 5,00% (R$ 7,50)")
+        self.assertContains(response, "R$ 99,75")
+        self.assertContains(response, "R$ 28,50")
+        self.assertContains(response, "R$ 14,25")
 
 
 class ProfilePageTest(TestCase):

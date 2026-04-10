@@ -16,7 +16,7 @@ from src.pool.models import (
 
 @admin.register(Pool)
 class PoolAdmin(admin.ModelAdmin):
-    list_display = ("name", "season", "entry_fee", "requires_payment", "is_active")
+    list_display = ("name", "season", "entry_fee", "admin_fee_percentage", "requires_payment", "is_active")
     search_fields = ("name", "slug")
     list_filter = ("is_active", "requires_payment", "season")
 
