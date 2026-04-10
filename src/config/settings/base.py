@@ -119,6 +119,9 @@ LOGIN_REDIRECT_URL = "/"
 LOGOUT_REDIRECT_URL = "/"
 LOGIN_URL = "/accounts/login/"
 
+# URL do Django Admin (sem barra inicial). Defina no ambiente para evitar /admin/ padrão.
+ADMIN_URL = os.getenv("DJANGO_ADMIN_URL", "painel-interno-admin/").strip("/") + "/"
+
 # Email Configuration
 # Para desenvolvimento, usa console backend (imprime e-mails no terminal)
 # Para produção, configure as variáveis de ambiente no .env

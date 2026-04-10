@@ -1,28 +1,31 @@
 {% comment %}
-COMPONENTE: Toggle da pagina de palpites do bolao (3 abas)
+COMPONENTE: Toggle da página de palpites do bolão (3 abas)
 Uso: {% include "components/pool_bet_toggle_three_tabs.html" %}
 Contexto esperado: active_tab - "bets" | "classification" | "knockout"
+Contexto opcional: toggle_query_prefix - ex: "pool=meu-bolão&"
 {% endcomment %}
 
 <div class="flex rounded-xl bg-brand-darkest border border-brand-border p-1 gap-1">
+    {% with toggle_query_prefix|default:'' as toggle_prefix %}
     <a
-        href="{{ request.path }}?tab=bets"
+        href="{{ request.path }}?{{ toggle_prefix }}tab=bets"
         class="flex-1 text-center text-sm font-semibold rounded-lg py-2.5 transition-all duration-200 {% if active_tab == 'bets' %} bg-brand-darker text-primary border border-primary {% else %} text-gray-500 border border-transparent hover:text-gray-300 {% endif %}"
     >
         Palpites
     </a>
 
     <a
-        href="{{ request.path }}?tab=classification"
+        href="{{ request.path }}?{{ toggle_prefix }}tab=classification"
         class="flex-1 text-center text-sm font-semibold rounded-lg py-2.5 transition-all duration-200 {% if active_tab == 'classification' %} bg-brand-darker text-primary border border-primary {% else %} text-gray-500 border border-transparent hover:text-gray-300 {% endif %}"
     >
-        Classificacao
+        Classificação
     </a>
 
     <a
-        href="{{ request.path }}?tab=knockout"
+        href="{{ request.path }}?{{ toggle_prefix }}tab=knockout"
         class="flex-1 text-center text-sm font-semibold rounded-lg py-2.5 transition-all duration-200 {% if active_tab == 'knockout' %} bg-brand-darker text-primary border border-primary {% else %} text-gray-500 border border-transparent hover:text-gray-300 {% endif %}"
     >
         Mata-Mata
     </a>
+    {% endwith %}
 </div>

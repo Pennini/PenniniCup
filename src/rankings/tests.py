@@ -3,6 +3,7 @@ from django.test import TestCase
 from django.urls import reverse
 
 from src.football.models import Competition, Season
+from src.payments.models import Payment
 from src.pool.models import Pool, PoolParticipant
 from src.rankings.models import RankingTieBreakOverride
 from src.rankings.services.leaderboard import build_pool_leaderboard
@@ -47,6 +48,23 @@ class RankingsAccessTest(TestCase):
         self.client.force_login(self.member)
         response = self.client.get(reverse("pool:ranking", kwargs={"slug": self.pool.slug}))
         self.assertEqual(response.status_code, 200)
+
+    def test_ranking_username_links_to_public_profile(self):
+        self.client.force_login(self.member)
+        response = self.client.get(reverse("pool:ranking", kwargs={"slug": self.pool.slug}))
+        self.assertContains(response, f"/perfil/{self.member.username}/?pool={self.pool.slug}")
+
+    def test_ranking_shows_total_collected_and_podium_amounts(self):
+        Payment.objects.create(user=self.member, pool=self.pool, status="approved", amount=100, amount_received=100)
+        self.client.force_login(self.member)
+
+        response = self.client.get(reverse("pool:ranking", kwargs={"slug": self.pool.slug}))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Total arrecadado")
+        self.assertContains(response, "R$ 100,00")
+        self.assertContains(response, "R$ 70,00")
+        self.assertContains(response, "R$ 20,00")
+        self.assertContains(response, "R$ 10,00")
 
 
 class RankingsOrderTest(TestCase):

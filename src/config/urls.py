@@ -3,8 +3,13 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 
+handler400 = "src.config.settings.error_handlers.custom_bad_request"
+handler403 = "src.config.settings.error_handlers.custom_permission_denied"
+handler404 = "src.config.settings.error_handlers.custom_page_not_found"
+handler500 = "src.config.settings.error_handlers.custom_server_error"
+
 urlpatterns = [
-    path("admin/", admin.site.urls),
+    path(settings.ADMIN_URL, admin.site.urls),
     path("", include("src.penninicup.urls")),
     path("pools/", include("src.pool.urls")),
     path("rankings/", include("src.rankings.urls")),

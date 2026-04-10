@@ -3,41 +3,271 @@
 {% block title %}PenniniCup{% endblock %}
 
 {% block content %}
-<section class="space-y-6">
-    <header class="space-y-2">
-        <h1 class="text-3xl font-semibold">PenniniCup</h1>
-        <p class="text-neutral-300">Escolha um bolao, registre seus palpites e acompanhe o ranking em tempo real.</p>
+<section class="space-y-6 pb-8">
+    {% if not user.is_authenticated %}
+    <header class="relative overflow-hidden rounded-3xl border border-neutral-800 bg-neutral-950 shadow-2xl shadow-black/35">
+        <div
+            class="absolute inset-0"
+            style="
+                background-image:
+                    linear-gradient(135deg, rgba(255, 102, 0, 0.2), rgba(11, 11, 11, 0.88)),
+                    url('{% if hero_background_url %}{{ hero_background_url }}{% else %}{% endif %}');
+                background-size: cover;
+                background-position: center;
+            "
+        ></div>
+        <div class="absolute inset-0 bg-[radial-gradient(circle_at_10%_10%,rgba(255,255,255,0.14),transparent_38%)]"></div>
+
+        <div class="relative z-10 grid gap-6 p-6 sm:p-8 lg:grid-cols-[1.3fr_0.7fr] lg:gap-8 lg:p-10">
+            <div class="space-y-5">
+                <p class="inline-flex items-center gap-2 rounded-full border border-orange-400/40 bg-orange-500/10 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-orange-300">
+                    Bolão privado
+                </p>
+                <h1 class="max-w-3xl text-3xl font-bold leading-tight text-neutral-100 sm:text-4xl lg:text-5xl">
+                    Junte sua turma e viva a Copa com mais emocao.
+                </h1>
+                <p class="max-w-2xl text-sm text-neutral-200/85 sm:text-base">
+                    O PenniniCup é um bolão fechado. Para entrar, você precisa de um token enviado pelo administrador.
+                </p>
+                <div class="flex flex-wrap gap-3">
+                    <a href="{% url 'accounts:register' %}" class="rounded-lg bg-orange-500 px-5 py-3 text-sm font-bold text-black transition-colors hover:bg-orange-400">
+                        Quero participar com token
+                    </a>
+                    <a href="{% url 'accounts:login' %}" class="rounded-lg border border-neutral-300/35 bg-black/20 px-5 py-3 text-sm font-semibold text-neutral-100 transition-colors hover:border-orange-300/60 hover:text-orange-200">
+                        Já tenho conta
+                    </a>
+                </div>
+            </div>
+
+            <aside class="rounded-2xl border border-neutral-200/15 bg-black/35 p-5 backdrop-blur-sm sm:p-6">
+                <p class="text-xs uppercase tracking-[0.18em] text-orange-200">Objetivo do bolão</p>
+                <ul class="mt-4 space-y-3 text-sm text-neutral-100/90">
+                    <li class="rounded-lg border border-neutral-200/15 bg-black/20 px-3 py-2">Dê seus palpites nos jogos.</li>
+                    <li class="rounded-lg border border-neutral-200/15 bg-black/20 px-3 py-2">Some pontos e suba no ranking.</li>
+                    <li class="rounded-lg border border-neutral-200/15 bg-black/20 px-3 py-2">Divirta-se disputando com amigos.</li>
+                </ul>
+                <p class="mt-4 rounded-lg border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                    Espaco de imagem preparado: quando quiser, você pode plugar uma capa vinda do banco e manter este hero.
+                </p>
+            </aside>
+        </div>
     </header>
 
-    {% if user.is_authenticated %}
-    <div class="flex flex-wrap gap-3">
-        <a href="{% url 'pool:list' %}" class="px-4 py-2 rounded-md bg-orange-500 text-black font-semibold">Ver boloes</a>
-        <a href="{% url 'football:matches' %}" class="px-4 py-2 rounded-md border border-neutral-600">Ver partidas</a>
-    </div>
+    <article class="rounded-2xl border border-neutral-800 bg-neutral-900/90 p-5 sm:p-6 shadow-lg shadow-black/20">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+                <h2 class="text-lg font-semibold">Bora entrar no jogo?</h2>
+                <p class="mt-1 text-sm text-neutral-300">Faça login e comece a palpitar agora.</p>
+            </div>
+            <a href="{% url 'accounts:login' %}" class="inline-flex w-full items-center justify-center rounded-lg border border-orange-500/50 bg-orange-500/10 px-4 py-2.5 text-sm font-semibold text-orange-200 transition-colors hover:bg-orange-500/20 sm:w-auto">
+                Entrar agora
+            </a>
+        </div>
+    </article>
 
-    <article class="rounded-xl border border-neutral-700 bg-neutral-900 p-5 max-w-2xl">
-        <h2 class="text-xl font-semibold">Entrar em bolao por token</h2>
-        <p class="text-sm text-neutral-400 mt-1">
-            Recebeu um token de convite? Cole abaixo para entrar no bolao correspondente.
-        </p>
+    {% else %}
+    <header class="rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-900 to-neutral-950 p-6 sm:p-8 shadow-xl shadow-black/20">
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="space-y-2">
+                <p class="text-[11px] uppercase tracking-[0.2em] text-orange-400/90">HOME</p>
+                <h1 class="text-2xl font-semibold sm:text-3xl">PenniniCup</h1>
+                <p class="max-w-2xl text-sm text-neutral-300">Acompanhe status rápido, veja o próximo prazo de fechamento e consulte os próximos jogos com seu palpite.</p>
+            </div>
 
-        <form method="post" action="{% url 'pool:join-by-token' %}" class="mt-4 flex flex-col sm:flex-row gap-2">
+            {% if participations %}
+            <form method="get" class="w-full max-w-sm space-y-2 rounded-xl border border-neutral-700 bg-neutral-950/60 p-3">
+                <label for="pool" class="text-xs uppercase tracking-[0.16em] text-neutral-400">Bolão em foco</label>
+                <select id="pool" name="pool" class="w-full rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40" onchange="this.form.submit()">
+                    {% for participation in participations %}
+                    <option value="{{ participation.pool.slug }}" {% if selected_pool and participation.pool.id == selected_pool.id %}selected{% endif %}>
+                        {{ participation.pool.name }}
+                    </option>
+                    {% endfor %}
+                </select>
+                <noscript>
+                    <button type="submit" class="w-full rounded-lg border border-orange-500/50 px-3 py-2 text-sm font-semibold text-orange-300">Atualizar bolão</button>
+                </noscript>
+            </form>
+            {% endif %}
+        </div>
+    </header>
+
+    {% if not selected_pool %}
+    <article class="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-5 sm:p-6">
+        <h2 class="text-xl font-semibold text-blue-100">Você ainda não participa de nenhum bolão</h2>
+        <p class="mt-2 text-sm text-blue-100/85">Comece pelo onboarding com token de convite e entre no seu primeiro bolão privado.</p>
+
+        <form method="post" action="{% url 'pool:join-by-token' %}" class="mt-4 grid gap-3 sm:grid-cols-[1fr_auto]">
             {% csrf_token %}
             <input
                 type="text"
                 name="invite_token"
-                placeholder="Cole seu token de convite"
-                class="flex-1 px-3 py-2 rounded-md bg-neutral-950 border border-neutral-700"
+                placeholder="Cole o token de convite"
+                class="w-full rounded-lg border border-blue-300/35 bg-black/20 px-3.5 py-2.5 text-sm text-blue-50 placeholder:text-blue-100/60 focus:outline-none focus:ring-2 focus:ring-blue-300/35"
                 required
             />
-            <button type="submit" class="px-4 py-2 rounded-md bg-orange-500 text-black font-semibold">Entrar</button>
+            <button type="submit" class="rounded-lg bg-blue-200 px-4 py-2.5 text-sm font-bold text-blue-950 transition-colors hover:bg-blue-100">
+                Entrar no bolão
+            </button>
         </form>
     </article>
     {% else %}
-    <div class="space-y-3">
-        <p class="text-neutral-300">Entre na sua conta para escolher um bolao e comecar a palpitar.</p>
-        <a href="{% url 'accounts:login' %}" class="px-4 py-2 rounded-md bg-orange-500 text-black font-semibold inline-block">Entrar</a>
+    <div class="grid gap-6 lg:grid-cols-3">
+        <aside class="space-y-6 lg:col-span-1">
+            {% if selected_pool.requires_payment and not pool_is_paid %}
+            <article class="rounded-2xl border border-red-500/35 bg-red-500/12 p-5 shadow-lg shadow-red-950/30">
+                <p class="text-xs uppercase tracking-[0.18em] text-red-200">Ação prioritária</p>
+                <h2 class="mt-2 text-xl font-semibold text-red-100">Pagamento pendente para liberar palpites</h2>
+                <p class="mt-2 text-sm text-red-100/85">
+                    Você já está no bolão, mas os palpites só são habilitados após a confirmação do pagamento da inscrição.
+                </p>
+                <form method="post" action="{% url 'payments:create-subscription' %}" class="mt-4">
+                    {% csrf_token %}
+                    <input type="hidden" name="pool_id" value="{{ selected_pool.id }}" />
+                    <input type="hidden" name="amount" value="{{ selected_pool.entry_fee }}" />
+                    <button type="submit" class="w-full rounded-lg bg-red-200 px-4 py-2.5 text-sm font-bold text-red-950 transition-colors hover:bg-red-100">
+                        Ir para pagamento (R$ {{ selected_pool.entry_fee|floatformat:2 }})
+                    </button>
+                </form>
+            </article>
+            {% endif %}
+
+            <section class="grid grid-cols-2 gap-3">
+                <article class="rounded-xl border border-neutral-800 bg-neutral-900/90 p-4 shadow-lg shadow-black/15">
+                    <p class="text-[11px] uppercase tracking-[0.1em] text-neutral-400">Posicao</p>
+                    <p class="mt-2 text-3xl font-semibold text-orange-300">{% if current_position %}#{{ current_position }}{% else %}-{% endif %}</p>
+                </article>
+                <article class="rounded-xl border border-neutral-800 bg-neutral-900/90 p-4 shadow-lg shadow-black/15">
+                    <p class="text-[11px] uppercase tracking-[0.1em] text-neutral-400">Meus pontos</p>
+                    <p class="mt-2 text-3xl font-semibold">{{ current_points }}</p>
+                </article>
+                <article class="rounded-xl border border-neutral-800 bg-neutral-900/90 p-4 shadow-lg shadow-black/15">
+                    <p class="text-[11px] uppercase tracking-[0.1em] text-neutral-400">Participantes</p>
+                    <p class="mt-2 text-3xl font-semibold">{{ total_participants }}</p>
+                </article>
+                <article class="rounded-xl border border-amber-500/45 bg-amber-500/12 p-4 shadow-lg shadow-black/15">
+                    <p class="text-[11px] uppercase tracking-[0.1em] text-amber-200">Próximo prazo</p>
+                    {% if next_lock_at %}
+                    <p class="mt-2 text-lg font-semibold text-amber-100">{{ next_lock_at|date:"d/m H:i" }}</p>
+                    {% else %}
+                    <p class="mt-2 text-sm font-semibold text-amber-100">Sem janela aberta</p>
+                    {% endif %}
+                </article>
+            </section>
+
+            <article class="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-5 shadow-lg shadow-black/15">
+                <p class="text-xs uppercase tracking-[0.14em] text-emerald-200">Premiação atual</p>
+                <p class="mt-2 text-3xl font-semibold text-emerald-100">R$ {{ selected_pool.total_prize_amount|floatformat:2 }}</p>
+                <p class="mt-1 text-xs text-emerald-100/85">Bolão: {{ selected_pool.name }}</p>
+            </article>
+        </aside>
+
+        <section class="rounded-2xl border border-neutral-800 bg-neutral-900/90 p-5 sm:p-6 shadow-lg shadow-black/15 lg:col-span-2">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 pb-4">
+                <div class="space-y-1">
+                    <p class="text-[11px] uppercase tracking-[0.18em] text-orange-300">Painel da home</p>
+                    <h2 class="text-xl font-semibold">Informações gerais e atalhos</h2>
+                </div>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" data-home-tab-trigger="overview" class="home-tab-trigger rounded-full border border-orange-500/50 bg-orange-500/15 px-3 py-1.5 text-xs font-semibold text-orange-200">Visão geral</button>
+                    <button type="button" data-home-tab-trigger="next-games" class="home-tab-trigger rounded-full border border-neutral-700 px-3 py-1.5 text-xs font-semibold text-neutral-300">Próximos jogos</button>
+                </div>
+            </div>
+
+            <div class="mt-5 space-y-5" data-home-tab-panel="overview">
+                <div class="grid gap-3 sm:grid-cols-2">
+                    <a href="{% url 'pool:list' %}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
+                        <p class="font-semibold">Meus bolões</p>
+                        <p class="mt-1 text-xs text-neutral-400">Abrir lista completa e alternar entre palpites e ranking.</p>
+                    </a>
+                    <a href="{% url 'pool:detail' selected_pool.slug %}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
+                        <p class="font-semibold">Palpites do bolão</p>
+                        <p class="mt-1 text-xs text-neutral-400">Ir para a página completa de palpites deste bolão.</p>
+                    </a>
+                    <a href="{% url 'rankings:pool-dashboard' selected_pool.slug %}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
+                        <p class="font-semibold">Ranking detalhado</p>
+                        <p class="mt-1 text-xs text-neutral-400">Visualizar classificação completa e pódio.</p>
+                    </a>
+                    <a href="{% url 'football:matches' %}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
+                        <p class="font-semibold">Partidas completas</p>
+                        <p class="mt-1 text-xs text-neutral-400">Conferir agenda e resultados oficiais de todos os jogos.</p>
+                    </a>
+                </div>
+
+                <a href="{% url 'penninicup:profile' %}" class="inline-flex items-center gap-2 rounded-lg border border-neutral-700 px-4 py-2 text-sm font-semibold text-neutral-200 transition-colors hover:border-orange-500/50 hover:text-orange-200">
+                    Abrir meu perfil
+                </a>
+            </div>
+
+            <div class="mt-5 hidden space-y-3" data-home-tab-panel="next-games">
+                {% if next_matches_rows %}
+                {% for row in next_matches_rows %}
+                <a href="{% url 'football:matches' %}" class="block rounded-xl border border-neutral-700 bg-neutral-950/65 p-4 transition-colors hover:border-orange-500/60">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <p class="text-xs uppercase tracking-[0.12em] text-neutral-400">Jogo {{ row.match.match_number }} · {{ row.match.stage.name }}</p>
+                        <p class="text-xs text-neutral-400">{{ row.match.match_date_brasilia|date:"d/m H:i" }}</p>
+                    </div>
+                    <p class="mt-2 text-sm font-semibold text-neutral-100">{{ row.match.home_team.name|default:row.match.home_placeholder }} x {{ row.match.away_team.name|default:row.match.away_placeholder }}</p>
+
+                    {% if row.has_prediction %}
+                    <p class="mt-2 inline-flex rounded-md border border-emerald-400/30 bg-emerald-500/12 px-2 py-1 text-xs font-semibold text-emerald-200">
+                        Seu palpite: {{ row.bet.home_score_pred }} x {{ row.bet.away_score_pred }}
+                    </p>
+                    {% elif row.is_prediction_incomplete %}
+                    <p class="mt-2 inline-flex rounded-md border border-amber-400/30 bg-amber-500/12 px-2 py-1 text-xs font-semibold text-amber-200">
+                        Palpite iniciado, mas incompleto
+                    </p>
+                    {% else %}
+                    <p class="mt-2 inline-flex rounded-md border border-blue-400/30 bg-blue-500/12 px-2 py-1 text-xs font-semibold text-blue-200">
+                        Sem palpite para este jogo
+                    </p>
+                    {% endif %}
+                </a>
+                {% endfor %}
+                {% else %}
+                <article class="rounded-xl border border-neutral-700 bg-neutral-950/70 p-4 text-sm text-neutral-300">
+                    Não há jogos futuros para este bolão no momento.
+                </article>
+                {% endif %}
+            </div>
+        </section>
     </div>
     {% endif %}
+    {% endif %}
 </section>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+<script>
+    (function () {
+        const triggers = document.querySelectorAll("[data-home-tab-trigger]");
+        const panels = document.querySelectorAll("[data-home-tab-panel]");
+        if (!triggers.length || !panels.length) {
+            return;
+        }
+
+        function activateTab(name) {
+            triggers.forEach((trigger) => {
+                const active = trigger.dataset.homeTabTrigger === name;
+                trigger.classList.toggle("border-orange-500/50", active);
+                trigger.classList.toggle("bg-orange-500/15", active);
+                trigger.classList.toggle("text-orange-200", active);
+                trigger.classList.toggle("border-neutral-700", !active);
+                trigger.classList.toggle("text-neutral-300", !active);
+            });
+
+            panels.forEach((panel) => {
+                const active = panel.dataset.homeTabPanel === name;
+                panel.classList.toggle("hidden", !active);
+            });
+        }
+
+        triggers.forEach((trigger) => {
+            trigger.addEventListener("click", () => activateTab(trigger.dataset.homeTabTrigger));
+        });
+
+        activateTab("overview");
+    })();
+</script>
 {% endblock %}

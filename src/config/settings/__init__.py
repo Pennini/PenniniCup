@@ -43,3 +43,6 @@ if RUNNING_TESTS:
     settings_modules.insert(1, "test.py")
 
 include(*settings_modules)
+
+# Keep auxiliary modules under this package importable from a single namespace.
+from . import error_handlers  # noqa: F401,E402

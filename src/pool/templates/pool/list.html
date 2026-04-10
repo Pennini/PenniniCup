@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Boloes{% endblock %}
+{% block title %}Bolões{% endblock %}
 
 {% block content %}
 <section class="mx-auto w-full max-w-4xl space-y-6">
     <header class="rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-900 to-neutral-950 p-6 sm:p-8 shadow-xl shadow-black/20">
         <p class="text-[11px] uppercase tracking-[0.2em] text-orange-400/90">PenniniCup</p>
-        <h1 class="mt-2 text-3xl sm:text-4xl font-semibold leading-tight">Meus Boloes</h1>
+        <h1 class="mt-2 text-3xl sm:text-4xl font-semibold leading-tight">Meus Bolões</h1>
         <p class="mt-2 text-sm sm:text-base text-neutral-300 max-w-2xl">Inscreva-se por token e abra rapidamente os palpites dos bolões em que você já participa.</p>
     </header>
 
@@ -17,7 +17,7 @@
                     <i data-lucide="ticket" class="h-4 w-4"></i>
                 </span>
                 <div>
-                    <h2 class="text-lg sm:text-xl font-semibold">Inscricao por token</h2>
+                    <h2 class="text-lg sm:text-xl font-semibold">Inscrição por token</h2>
                     <p class="text-sm text-neutral-400 mt-1">Cole um token válido para entrar no bolão correspondente.</p>
                 </div>
             </div>
@@ -43,7 +43,7 @@
                     <i data-lucide="trophy" class="h-4 w-4"></i>
                 </span>
                 <div>
-                    <h2 class="text-lg sm:text-xl font-semibold">Abrir bolao</h2>
+                    <h2 class="text-lg sm:text-xl font-semibold">Abrir bolão</h2>
                     <p class="text-sm text-neutral-400 mt-1">Escolha o bolão e abra direto em Palpites ou Ranking.</p>
                 </div>
             </div>
@@ -51,7 +51,7 @@
             <form method="post" action="{% url 'pool:open' %}" class="mt-4 space-y-3">
                 {% csrf_token %}
                 <select name="pool_slug" class="w-full px-3.5 py-2.5 rounded-lg bg-neutral-950 border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-orange-500/40" required>
-                    <option value="">Escolha um bolao</option>
+                    <option value="">Escolha um bolão</option>
                     {% for row in rows %}
                     <option value="{{ row.pool.slug }}">
                         {{ row.pool.name }} - {% if row.can_bet %}Apto{% else %}Pendente pagamento{% endif %}

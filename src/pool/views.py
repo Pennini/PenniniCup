@@ -364,65 +364,17 @@ def _top_scorer_options_for_pool(pool):
     )
 
 
-@login_required
-def pool_list(request):
-    participations = (
-        PoolParticipant.objects.filter(user=request.user, is_active=True)
-        .select_related("pool", "pool__season")
-        .order_by("pool__name")
-    )
-
-    rows = []
-    for participant in participations:
-        pool = participant.pool
-        rows.append(
-            {
-                "pool": pool,
-                "can_bet": participant.can_bet(),
-                "group_locked": pool.is_phase_locked(PHASE_GROUP),
-                "knockout_locked": pool.is_phase_locked(PHASE_KNOCKOUT),
-            }
-        )
-
-    return render(request, "pool/list.html", {"rows": rows})
-
-
-@login_required
-@require_http_methods(["POST"])
-def open_pool(request):
-    pool_slug = (request.POST.get("pool_slug") or "").strip()
-    open_target = (request.POST.get("open_target") or "bets").strip().lower()
-    if not pool_slug:
-        messages.error(request, "Selecione um bolao para abrir.")
-        return redirect("pool:list")
-
-    participant_exists = PoolParticipant.objects.filter(
-        user=request.user, is_active=True, pool__slug=pool_slug
-    ).exists()
-    if not participant_exists:
-        messages.error(request, "Voce nao esta inscrito neste bolao.")
-        return redirect("pool:list")
-
-    if open_target == "ranking":
-        return redirect("pool:ranking", slug=pool_slug)
-
-    return redirect("pool:detail", slug=pool_slug)
-
-
-@login_required
-def pool_detail(request, slug):
-    pool = get_object_or_404(Pool.objects.select_related("season"), slug=slug, is_active=True)
-    participant = get_object_or_404(PoolParticipant, pool=pool, user=request.user)
-    active_tab = (request.GET.get("tab") or "bets").strip()
-    if active_tab not in ("bets", "classification", "knockout"):
-        return redirect(f"{request.path}?tab=bets")
-
+def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
     matches = list(
         Match.objects.filter(season=pool.season)
         .select_related("stage", "group", "home_team", "away_team")
         .order_by("match_number", "match_date_brasilia")
     )
-    bets_by_match_id = _ensure_participant_bets(participant=participant, matches=matches)
+
+    if ensure_bets:
+        bets_by_match_id = _ensure_participant_bets(participant=participant, matches=matches)
+    else:
+        bets_by_match_id = {bet.match_id: bet for bet in participant.bets.select_related("match").all()}
 
     if projection_is_stale(participant):
         enqueue_projection_recalc(participant)
@@ -495,14 +447,8 @@ def pool_detail(request, slug):
                 losers_map[match.match_number] = losing_team
 
     projected_knockout = _build_projected_knockout_payload(knockout_rows=knockout_rows)
-    top_scorer_options = _top_scorer_options_for_pool(pool)
 
-    show_reprocess_notice = (request.GET.get("reprocess") or "").strip() == "1"
-
-    context = {
-        "pool": pool,
-        "participant": participant,
-        "active_tab": active_tab,
+    return {
         "match_rows": match_rows,
         "group_rows": group_rows,
         "knockout_rows": knockout_rows,
@@ -511,10 +457,74 @@ def pool_detail(request, slug):
         "group_locked": pool.is_phase_locked(PHASE_GROUP),
         "knockout_locked": pool.is_phase_locked(PHASE_KNOCKOUT),
         "projection_pending": has_pending_projection_recalc(participant),
-        "show_reprocess_notice": show_reprocess_notice,
-        "top_scorer_options": top_scorer_options,
+        "top_scorer_options": _top_scorer_options_for_pool(pool),
         "page_mode": "result",
         **projected_knockout,
+    }
+
+
+@login_required
+def pool_list(request):
+    participations = (
+        PoolParticipant.objects.filter(user=request.user, is_active=True)
+        .select_related("pool", "pool__season")
+        .order_by("pool__name")
+    )
+
+    rows = []
+    for participant in participations:
+        pool = participant.pool
+        rows.append(
+            {
+                "pool": pool,
+                "can_bet": participant.can_bet(),
+                "group_locked": pool.is_phase_locked(PHASE_GROUP),
+                "knockout_locked": pool.is_phase_locked(PHASE_KNOCKOUT),
+            }
+        )
+
+    return render(request, "pool/list.html", {"rows": rows})
+
+
+@login_required
+@require_http_methods(["POST"])
+def open_pool(request):
+    pool_slug = (request.POST.get("pool_slug") or "").strip()
+    open_target = (request.POST.get("open_target") or "bets").strip().lower()
+    if not pool_slug:
+        messages.error(request, "Selecione um bolao para abrir.")
+        return redirect("pool:list")
+
+    participant_exists = PoolParticipant.objects.filter(
+        user=request.user, is_active=True, pool__slug=pool_slug
+    ).exists()
+    if not participant_exists:
+        messages.error(request, "Voce nao esta inscrito neste bolao.")
+        return redirect("pool:list")
+
+    if open_target == "ranking":
+        return redirect("pool:ranking", slug=pool_slug)
+
+    return redirect("pool:detail", slug=pool_slug)
+
+
+@login_required
+def pool_detail(request, slug):
+    pool = get_object_or_404(Pool.objects.select_related("season"), slug=slug, is_active=True)
+    participant = get_object_or_404(PoolParticipant, pool=pool, user=request.user)
+    active_tab = (request.GET.get("tab") or "bets").strip()
+    if active_tab not in ("bets", "classification", "knockout"):
+        return redirect(f"{request.path}?tab=bets")
+    pool_context = build_pool_participant_view_context(pool=pool, participant=participant, ensure_bets=True)
+
+    show_reprocess_notice = (request.GET.get("reprocess") or "").strip() == "1"
+
+    context = {
+        "pool": pool,
+        "participant": participant,
+        "active_tab": active_tab,
+        "show_reprocess_notice": show_reprocess_notice,
+        **pool_context,
     }
     return render(request, "pool/detail.html", context)
 

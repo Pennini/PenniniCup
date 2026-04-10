@@ -3,6 +3,8 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import DecimalField, Sum
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from src.football.models import Group, Match, Season, Team
@@ -15,6 +17,13 @@ class Pool(models.Model):
     season = models.ForeignKey(Season, on_delete=models.CASCADE, related_name="pools")
     description = models.TextField(blank=True)
     entry_fee = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    total_prize_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    first_place_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("70.00"))
+    second_place_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("20.00"))
+    third_place_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("10.00"))
+    first_place_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    second_place_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    third_place_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     requires_payment = models.BooleanField(default=True)
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="pools_created")
@@ -72,6 +81,51 @@ class Pool(models.Model):
     def get_scoring_config(self):
         config, _ = PoolScoringConfig.objects.get_or_create(pool=self)
         return config
+
+    def refresh_prize_distribution(self, save=True):
+        from src.payments.models import Payment
+
+        total_paid = (
+            Payment.objects.filter(
+                pool=self,
+                status="approved",
+                user__pool_participations__pool=self,
+                user__pool_participations__is_active=True,
+            )
+            .aggregate(
+                total=Coalesce(
+                    Sum(
+                        Coalesce(
+                            "amount_received", "amount", output_field=DecimalField(max_digits=10, decimal_places=2)
+                        )
+                    ),
+                    Decimal("0.00"),
+                )
+            )
+            .get("total", Decimal("0.00"))
+        )
+
+        total_paid = Decimal(total_paid).quantize(Decimal("0.01"))
+
+        first_amount = (total_paid * self.first_place_percentage / Decimal("100")).quantize(Decimal("0.01"))
+        second_amount = (total_paid * self.second_place_percentage / Decimal("100")).quantize(Decimal("0.01"))
+        third_amount = (total_paid - first_amount - second_amount).quantize(Decimal("0.01"))
+
+        self.total_prize_amount = total_paid
+        self.first_place_amount = first_amount
+        self.second_place_amount = second_amount
+        self.third_place_amount = third_amount
+
+        if save:
+            self.save(
+                update_fields=[
+                    "total_prize_amount",
+                    "first_place_amount",
+                    "second_place_amount",
+                    "third_place_amount",
+                    "updated_at",
+                ]
+            )
 
     def get_official_results(self):
         results, _ = PoolOfficialResult.objects.get_or_create(pool=self)

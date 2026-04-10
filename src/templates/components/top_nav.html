@@ -72,6 +72,7 @@
             >
                 Partidas
             </a>
+            {% if user.is_authenticated %}
             <a
                 href="{% url 'penninicup:rules' %}"
                 class="nav-link flex items-center h-16 px-3 border-b-2 -mb-[1px] transition-colors {% if current_view == 'penninicup:rules' %}nav-link-active{% endif %}"
@@ -98,8 +99,25 @@
                 endif
                 %}
             >
-                Boloes
+                Bolões
             </a>
+            {% if user.is_superuser %}
+            <a
+                href="{% url 'admin:index' %}"
+                class="nav-link flex items-center h-16 px-3 border-b-2 -mb-[1px] transition-colors {% if current_view == 'admin:index' %}nav-link-active{% endif %}"
+                {%
+                if
+                current_view=""
+                ="admin:index"
+                %}aria-current="page"
+                {%
+                endif
+                %}
+            >
+                Admin
+            </a>
+            {% endif %}
+            {% endif %}
         </div>
     </div>
 
@@ -132,7 +150,7 @@
                 class="absolute right-0 mt-2 w-64 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50"
             >
                 <a
-                    href="#"
+                    href="{% url 'penninicup:profile' %}"
                     class="flex items-center gap-2 px-4 py-2 text-neutral-300 hover:bg-neutral-700 hover:text-orange-500 transition rounded-t-lg"
                 >
                     <i data-lucide="user-round" class="w-4 h-4"></i>
@@ -161,10 +179,21 @@
     {% endif %}
 </nav>
 
-<nav class="lg:hidden fixed inset-x-0 top-0 z-50 h-14 px-4 border-b border-neutral-800/70 bg-neutral-950/95 backdrop-blur flex items-center justify-between">
-    <a href="{% url 'penninicup:index' %}" class="flex items-center gap-2">
+<nav class="lg:hidden fixed inset-x-0 top-0 z-50 h-14 px-4 border-b border-neutral-800/70 bg-neutral-950/95 backdrop-blur relative flex items-center justify-center">
+    <a href="{% url 'penninicup:index' %}" class="absolute left-4 flex items-center gap-2">
         <span class="text-base font-semibold">PenniniCup</span>
     </a>
+
+    <button
+        type="button"
+        aria-label="Abrir menu"
+        aria-controls="mobile-sidebar"
+        aria-expanded="false"
+        data-mobile-menu-toggle
+        class="absolute right-4 inline-flex items-center justify-center rounded-md border border-neutral-700 bg-neutral-900/90 p-2 text-neutral-200 shadow-lg backdrop-blur transition-colors hover:border-orange-500/60 hover:text-orange-200"
+    >
+        <i data-lucide="menu" class="w-5 h-5"></i>
+    </button>
 
     {% if current_view == 'pool:detail' and active_tab == 'bets' %}
     <button
@@ -172,7 +201,7 @@
         form="pool-bets-form"
         name="submit_action"
         value="save_all"
-        class="px-3 py-1.5 rounded-md bg-orange-500 text-black text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+        class="absolute left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-md bg-orange-500 text-black text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
         {% if not can_bet or group_locked and knockout_locked %}disabled{% endif %}
     >
         Salvar

@@ -1,95 +1,115 @@
 {% with request.resolver_match.view_name as current_view %}
-<nav class="bottom-nav fixed bottom-0 left-0 right-0 border-t lg:hidden z-50">
-    <div class="flex justify-around h-16">
-        <a
-            href="{% url 'penninicup:index' %}"
-            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'penninicup:index' %}nav-link-active{% else %}text-neutral-400{% endif %}"
-            {%
-            if
-            current_view=""
-            ="penninicup:index"
-            %}aria-current="page"
-            {%
-            endif
-            %}
-        >
-            <i data-lucide="house" class="w-4 h-4"></i>
-            <span>Início</span>
-        </a>
+<div class="lg:hidden">
+    <div data-mobile-menu-overlay class="fixed inset-0 z-[55] hidden bg-black/55"></div>
 
-        {% if user.is_authenticated %}
-        <a
-            href="{% url 'football:matches' %}"
-            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'football:matches' %}nav-link-active{% else %}text-neutral-400{% endif %}"
-            {%
-            if
-            current_view=""
-            ="football:matches"
-            %}aria-current="page"
-            {%
-            endif
-            %}
-        >
-            <i data-lucide="award" class="w-4 h-4"></i>
-            <span>Partidas</span>
-        </a>
+    <aside
+        id="mobile-sidebar"
+        data-mobile-menu-panel
+        class="fixed right-0 top-0 z-[60] h-full w-72 max-w-[85vw] translate-x-full border-l border-neutral-800 bg-neutral-950/95 p-4 shadow-2xl backdrop-blur transition-transform duration-200"
+    >
+        <div class="mb-4 flex items-center justify-between border-b border-neutral-800 pb-3">
+            <h2 class="text-sm font-semibold uppercase tracking-[0.16em] text-neutral-300">Menu</h2>
+            <button
+                type="button"
+                aria-label="Fechar menu"
+                data-mobile-menu-close
+                class="rounded-md border border-neutral-700 p-1.5 text-neutral-300 transition-colors hover:border-orange-500/60 hover:text-orange-200"
+            >
+                <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+        </div>
 
-        <a
-            href="{% url 'penninicup:rules' %}"
-            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'penninicup:rules' %}nav-link-active{% else %}text-neutral-400{% endif %}"
-            {%
-            if
-            current_view=""
-            ="penninicup:rules"
-            %}aria-current="page"
-            {%
-            endif
-            %}
-        >
-            <i data-lucide="book-open" class="w-4 h-4"></i>
-            <span>Regras</span>
-        </a>
+        <nav class="space-y-1.5">
+            <a
+                href="{% url 'penninicup:index' %}"
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm {% if current_view == 'penninicup:index' %}bg-orange-500/15 text-orange-200 border border-orange-500/30{% else %}text-neutral-300 border border-transparent hover:border-neutral-700 hover:bg-neutral-900{% endif %}"
+            >
+                <i data-lucide="house" class="w-4 h-4"></i>
+                <span>Início</span>
+            </a>
 
-        <a
-            href="{% url 'pool:list' %}"
-            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'pool:list' or current_view == 'pool:detail' %}nav-link-active{% else %}text-neutral-400{% endif %}"
-            {%
-            if
-            current_view=""
-            ="pool:list"
-            %}aria-current="page"
-            {%
-            endif
-            %}
-        >
-            <i data-lucide="trophy" class="w-4 h-4"></i>
-            <span>Boloes</span>
-        </a>
+            {% if user.is_authenticated %}
+            <a
+                href="{% url 'football:matches' %}"
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm {% if current_view == 'football:matches' %}bg-orange-500/15 text-orange-200 border border-orange-500/30{% else %}text-neutral-300 border border-transparent hover:border-neutral-700 hover:bg-neutral-900{% endif %}"
+            >
+                <i data-lucide="award" class="w-4 h-4"></i>
+                <span>Partidas</span>
+            </a>
 
-        <a
-            href="#"
-            class="nav-link flex flex-col items-center justify-center text-xs {% if current_view == 'profile:view' %}nav-link-active{% else %}text-neutral-400{% endif %}"
-            {%
-            if
-            current_view=""
-            ="profile:view"
-            %}aria-current="page"
-            {%
-            endif
-            %}
-        >
-            <i data-lucide="user-round" class="w-4 h-4"></i>
-            <span>Perfil</span>
-        </a>
-        {% else %}
-        <a
-            href="{% url 'accounts:login' %}"
-            class="nav-link flex flex-col items-center justify-center text-xs text-neutral-400"
-        >
-            <i data-lucide="lock" class="w-4 h-4"></i>
-            <span>Entrar</span>
-        </a>
-        {% endif %}
-    </div>
-</nav>
+            <a
+                href="{% url 'penninicup:rules' %}"
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm {% if current_view == 'penninicup:rules' %}bg-orange-500/15 text-orange-200 border border-orange-500/30{% else %}text-neutral-300 border border-transparent hover:border-neutral-700 hover:bg-neutral-900{% endif %}"
+            >
+                <i data-lucide="book-open" class="w-4 h-4"></i>
+                <span>Regras</span>
+            </a>
+
+            <a
+                href="{% url 'pool:list' %}"
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm {% if current_view == 'pool:list' or current_view == 'pool:detail' %}bg-orange-500/15 text-orange-200 border border-orange-500/30{% else %}text-neutral-300 border border-transparent hover:border-neutral-700 hover:bg-neutral-900{% endif %}"
+            >
+                <i data-lucide="trophy" class="w-4 h-4"></i>
+                <span>Bolões</span>
+            </a>
+
+            <a
+                href="{% url 'penninicup:profile' %}"
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm {% if current_view == 'penninicup:profile' %}bg-orange-500/15 text-orange-200 border border-orange-500/30{% else %}text-neutral-300 border border-transparent hover:border-neutral-700 hover:bg-neutral-900{% endif %}"
+            >
+                <i data-lucide="user-round" class="w-4 h-4"></i>
+                <span>Perfil</span>
+            </a>
+
+            {% if user.is_superuser %}
+            <a
+                href="{% url 'admin:index' %}"
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm {% if current_view == 'admin:index' %}bg-orange-500/15 text-orange-200 border border-orange-500/30{% else %}text-neutral-300 border border-transparent hover:border-neutral-700 hover:bg-neutral-900{% endif %}"
+            >
+                <i data-lucide="shield-check" class="w-4 h-4"></i>
+                <span>Admin</span>
+            </a>
+            {% endif %}
+            {% else %}
+            <a
+                href="{% url 'accounts:login' %}"
+                class="flex items-center gap-3 rounded-lg border border-transparent px-3 py-2.5 text-sm text-neutral-300 hover:border-neutral-700 hover:bg-neutral-900"
+            >
+                <i data-lucide="lock" class="w-4 h-4"></i>
+                <span>Entrar</span>
+            </a>
+            {% endif %}
+        </nav>
+    </aside>
+
+    <script>
+        (function () {
+            const toggle = document.querySelector("[data-mobile-menu-toggle]");
+            const closeBtn = document.querySelector("[data-mobile-menu-close]");
+            const overlay = document.querySelector("[data-mobile-menu-overlay]");
+            const panel = document.querySelector("[data-mobile-menu-panel]");
+            if (!toggle || !overlay || !panel) {
+                return;
+            }
+
+            function openMenu() {
+                panel.classList.remove("translate-x-full");
+                overlay.classList.remove("hidden");
+                toggle.setAttribute("aria-expanded", "true");
+            }
+
+            function closeMenu() {
+                panel.classList.add("translate-x-full");
+                overlay.classList.add("hidden");
+                toggle.setAttribute("aria-expanded", "false");
+            }
+
+            toggle.addEventListener("click", openMenu);
+            overlay.addEventListener("click", closeMenu);
+            if (closeBtn) {
+                closeBtn.addEventListener("click", closeMenu);
+            }
+        })();
+    </script>
+</div>
 {% endwith %}

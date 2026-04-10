@@ -35,6 +35,15 @@ class UserProfile(models.Model):
     email_verified = models.BooleanField(default=False)
     verification_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     token_created_at = models.DateTimeField(auto_now_add=True)
+    profile_image = models.FileField(upload_to="profiles/", blank=True, null=True)
+    favorite_team = models.CharField(max_length=120, blank=True)
+    world_cup_team = models.ForeignKey(
+        "football.Team",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="supporter_profiles",
+    )
 
     def __str__(self):
         return f"Profile: {self.user.username}"

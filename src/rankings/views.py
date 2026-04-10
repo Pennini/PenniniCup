@@ -8,6 +8,7 @@ from src.rankings.services.leaderboard import build_pool_leaderboard
 @login_required
 def pool_ranking_dashboard(request, slug):
     pool = get_object_or_404(Pool.objects.select_related("season"), slug=slug, is_active=True)
+    pool.refresh_prize_distribution()
     current_participant = get_object_or_404(PoolParticipant, pool=pool, user=request.user, is_active=True)
 
     leaderboard_rows = build_pool_leaderboard(pool=pool)
@@ -37,6 +38,13 @@ def pool_ranking_dashboard(request, slug):
                 "username": row.participant.user.username,
                 "points": row.participant.total_points,
                 "prize": prize_text,
+                "prize_amount": (
+                    pool.first_place_amount
+                    if row.position == 1
+                    else pool.second_place_amount
+                    if row.position == 2
+                    else pool.third_place_amount
+                ),
             }
         )
 
@@ -49,5 +57,9 @@ def pool_ranking_dashboard(request, slug):
         "total_participants": total_participants,
         "leader_points": leader_points,
         "points_gap": points_gap,
+        "total_prize_amount": pool.total_prize_amount,
+        "first_place_amount": pool.first_place_amount,
+        "second_place_amount": pool.second_place_amount,
+        "third_place_amount": pool.third_place_amount,
     }
     return render(request, "rankings/pool_dashboard.html", context)

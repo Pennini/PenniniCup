@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}{% if is_owner_profile %}Meu Perfil{% else %}Perfil de {{ profile_user.username }}{% endif %}{% endblock %}
+
+{% block content %}
+<section class="mx-auto w-full max-w-6xl space-y-6 pb-8">
+    <header class="rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-900 to-neutral-950 p-6 sm:p-8 shadow-xl shadow-black/20">
+        <p class="text-[11px] uppercase tracking-[0.2em] text-orange-400/90">PenniniCup</p>
+        <h1 class="mt-2 text-3xl sm:text-4xl font-semibold leading-tight">{% if is_owner_profile %}Meu Perfil{% else %}Perfil de {{ profile_user.username }}{% endif %}</h1>
+    </header>
+
+    <article class="rounded-2xl border border-neutral-800 bg-neutral-900/90 p-5 sm:p-6 shadow-lg shadow-black/15">
+        {% if is_owner_profile %}
+        <form method="post" action="{% url 'penninicup:profile' %}" enctype="multipart/form-data" class="space-y-5">
+            {% csrf_token %}
+            <input type="hidden" name="selected_pool" value="{{ selected_pool_slug }}" />
+            <input type="hidden" name="active_tab" value="{{ active_tab }}" />
+        {% else %}
+        <div class="space-y-5">
+        {% endif %}
+
+            <div class="flex flex-wrap items-start gap-4 sm:gap-5">
+                {% if is_owner_profile %}
+                <label for="profile-image-input" class="group relative inline-flex h-20 w-20 cursor-pointer overflow-hidden rounded-full ring-2 ring-orange-500/40 bg-neutral-800">
+                    {% if profile_obj.profile_image %}
+                    <img src="{{ profile_obj.profile_image.url }}" alt="Avatar do usuário" class="h-full w-full object-cover" />
+                    {% else %}
+                    <img src="{% static 'img/user.png' %}" alt="Avatar do usuário" class="h-full w-full object-cover" />
+                    {% endif %}
+                    <span class="absolute inset-0 flex items-center justify-center bg-black/45 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100 group-active:opacity-100">
+                        <i data-lucide="camera" class="h-6 w-6 text-white/80"></i>
+                    </span>
+                </label>
+                <input id="profile-image-input" name="profile_image" type="file" accept="image/*" class="hidden" />
+                {% else %}
+                <span class="inline-flex h-20 w-20 overflow-hidden rounded-full ring-2 ring-orange-500/40 bg-neutral-800">
+                    {% if profile_obj.profile_image %}
+                    <img src="{{ profile_obj.profile_image.url }}" alt="Avatar do usuário" class="h-full w-full object-cover" />
+                    {% else %}
+                    <img src="{% static 'img/user.png' %}" alt="Avatar do usuário" class="h-full w-full object-cover" />
+                    {% endif %}
+                </span>
+                {% endif %}
+
+                <div class="min-w-0">
+                    <h2 class="text-2xl font-semibold break-all">{{ profile_user.username }}</h2>
+                    {% if is_owner_profile %}
+                    <p class="text-sm text-neutral-400 mt-1">{{ profile_user.email }}</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div class="grid gap-4 sm:grid-cols-2">
+                <label class="space-y-2">
+                    <span class="text-sm font-medium text-neutral-200">Time do coração</span>
+                    <input
+                        type="text"
+                        name="favorite_team"
+                        value="{{ profile_form.favorite_team.value|default:'' }}"
+                        maxlength="120"
+                        class="w-full rounded-lg bg-neutral-950 border border-neutral-700 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
+                        placeholder="Ex.: Corinthians"
+                        {% if not is_owner_profile %}disabled{% endif %}
+                    />
+                    {% if profile_form.favorite_team.errors %}
+                    <span class="text-xs text-red-400">{{ profile_form.favorite_team.errors.0 }}</span>
+                    {% endif %}
+                </label>
+
+                <label class="space-y-2">
+                    <span class="text-sm font-medium text-neutral-200">Time que estou torcendo na copa{% if active_season %} ({{ active_season.year }}){% endif %}</span>
+                    <select
+                        name="world_cup_team"
+                        class="w-full rounded-lg bg-neutral-950 border border-neutral-700 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
+                        {% if not is_owner_profile %}disabled{% endif %}
+                    >
+                        <option value="">Selecione um time</option>
+                        {% for team in profile_form.fields.world_cup_team.queryset %}
+                        <option value="{{ team.id }}" {% if profile_form.world_cup_team.value|stringformat:'s' == team.id|stringformat:'s' %}selected{% endif %}>{{ team.name }}</option>
+                        {% endfor %}
+                    </select>
+                    {% if profile_form.world_cup_team.errors %}
+                    <span class="text-xs text-red-400">{{ profile_form.world_cup_team.errors.0 }}</span>
+                    {% endif %}
+                </label>
+            </div>
+
+            {% if is_owner_profile %}
+            {% if profile_form.profile_image.errors %}
+            <p class="text-xs text-red-400">{{ profile_form.profile_image.errors.0 }}</p>
+            {% endif %}
+            <div>
+                <button type="submit" class="px-4 py-2.5 rounded-lg bg-orange-500 text-black font-semibold hover:bg-orange-400 transition-colors">Salvar perfil</button>
+            </div>
+            {% endif %}
+        {% if is_owner_profile %}
+        </form>
+        {% else %}
+        </div>
+        {% endif %}
+    </article>
+
+    <article class="rounded-2xl border border-neutral-800 bg-neutral-900/90 p-5 sm:p-6 shadow-lg shadow-black/15 space-y-4">
+        <div class="flex items-start gap-3">
+            <span class="mt-0.5 inline-flex h-9 w-9 items-center justify-center rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                <i data-lucide="trophy" class="h-4 w-4"></i>
+            </span>
+            <div>
+                <h2 class="text-lg sm:text-xl font-semibold">Palpites por bolão</h2>
+                <p class="text-sm text-neutral-400 mt-1">Escolha o bolão para visualizar seus palpites, classificação e mata-mata.</p>
+            </div>
+        </div>
+
+        {% if participations %}
+        <form method="get" action="{% url 'penninicup:profile' %}" class="grid gap-3 sm:grid-cols-[1fr_auto]">
+            <select
+                name="pool"
+                class="w-full px-3.5 py-2.5 rounded-lg bg-neutral-950 border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
+            >
+                {% for participation in participations %}
+                <option value="{{ participation.pool.slug }}" {% if selected_pool and selected_pool.id == participation.pool.id %}selected{% endif %}>{{ participation.pool.name }}</option>
+                {% endfor %}
+            </select>
+            <input type="hidden" name="tab" value="{{ active_tab }}" />
+            <button type="submit" class="px-4 py-2.5 rounded-lg border border-orange-500/50 text-orange-300 font-semibold hover:bg-orange-500/10 transition-colors">Abrir</button>
+        </form>
+
+        {% if selected_pool %}
+        {% if not can_view_predictions %}
+        <article class="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+            Os palpites deste usuário ficarão visíveis após o início da Copa (primeiro jogo da temporada).
+        </article>
+        {% endif %}
+
+        {% if selected_pool_slug %}
+        {% include "components/pool_bet_toggle_three_tabs.html" with toggle_query_prefix="pool="|add:selected_pool_slug|add:"&" %}
+        {% else %}
+        {% include "components/pool_bet_toggle_three_tabs.html" %}
+        {% endif %}
+
+        {% if can_view_predictions %}
+        {% if active_tab == "classification" %}
+        {% include "football/partials/group_standings_grid.html" with groups=projected_groups %}
+        {% elif active_tab == "knockout" %}
+        {% include "football/partials/knockout_bracket.html" %}
+        {% else %}
+        <div class="space-y-4">
+            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900">
+                <p class="text-xs uppercase tracking-wide text-neutral-400">Bônus da Copa</p>
+                <h3 class="text-lg font-semibold mt-1">Artilheiro escolhido</h3>
+                {% if selected_participant and selected_participant.top_scorer_pred %}
+                <p class="mt-2 text-sm text-neutral-200">{{ selected_participant.top_scorer_pred.name }} - {{ selected_participant.top_scorer_pred.team.name }}</p>
+                {% else %}
+                <p class="mt-2 text-sm text-neutral-400">Nenhum artilheiro escolhido para este bolão.</p>
+                {% endif %}
+            </article>
+
+            {% for row in group_rows %}
+            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 space-y-2">
+                <p class="text-xs uppercase tracking-wide text-neutral-400">Fase de Grupos - Grupo {{ row.match.group.name|default:"-" }} - Jogo #{{ row.match.match_number }}</p>
+                <h3 class="text-base font-semibold flex flex-wrap items-center gap-2">
+                    <span class="inline-flex items-center gap-2">
+                        {% if row.home_team and row.home_team.flag_local %}
+                        <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
+                            <img src="{% static row.home_team.flag_local %}" alt="Bandeira {{ row.home_team.name }}" class="h-full w-full object-cover" loading="lazy" />
+                        </span>
+                        {% endif %}
+                        <span>{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
+                    </span>
+                    <span>x</span>
+                    <span class="inline-flex items-center gap-2">
+                        {% if row.away_team and row.away_team.flag_local %}
+                        <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
+                            <img src="{% static row.away_team.flag_local %}" alt="Bandeira {{ row.away_team.name }}" class="h-full w-full object-cover" loading="lazy" />
+                        </span>
+                        {% endif %}
+                        <span>{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
+                    </span>
+                </h3>
+
+                {% if row.bet and row.bet.is_active %}
+                <p class="text-sm text-neutral-200">Palpite: <span class="font-semibold">{{ row.bet.home_score_pred }} x {{ row.bet.away_score_pred }}</span></p>
+                {% else %}
+                <p class="text-sm text-neutral-400">Sem palpite registrado.</p>
+                {% endif %}
+            </article>
+            {% empty %}
+            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 text-sm text-neutral-400">Nenhum jogo de fase de grupos encontrado para este bolão.</article>
+            {% endfor %}
+
+            {% for row in knockout_rows %}
+            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 space-y-2">
+                <p class="text-xs uppercase tracking-wide text-neutral-400">Mata-mata - {{ row.match.stage.name|default:"-" }} - Jogo #{{ row.match.match_number }}</p>
+                <h3 class="text-base font-semibold flex flex-wrap items-center gap-2">
+                    <span>{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
+                    <span>x</span>
+                    <span>{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
+                </h3>
+
+                {% if row.bet and row.bet.is_active %}
+                <p class="text-sm text-neutral-200">Palpite: <span class="font-semibold">{{ row.bet.home_score_pred }} x {{ row.bet.away_score_pred }}</span></p>
+                <p class="text-sm text-neutral-200">Classificado:
+                    {% if row.bet.winner_pred %}
+                    <span class="font-semibold">{{ row.bet.winner_pred.name }}</span>
+                    {% else %}
+                    <span class="text-neutral-400">Não definido</span>
+                    {% endif %}
+                </p>
+                {% else %}
+                <p class="text-sm text-neutral-400">Sem palpite registrado.</p>
+                {% endif %}
+            </article>
+            {% empty %}
+            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 text-sm text-neutral-400">Nenhum jogo de mata-mata encontrado para este bolão.</article>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endif %}
+        {% endif %}
+        {% else %}
+        <p class="rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-sm text-blue-300">Você ainda não participa de nenhum bolão.</p>
+        {% endif %}
+    </article>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ block.super }}
+{% if is_owner_profile %}
+<script>
+    (function () {
+        const input = document.getElementById("profile-image-input");
+        if (!input || !input.form) {
+            return;
+        }
+
+        input.addEventListener("change", function () {
+            if (input.files && input.files.length > 0) {
+                input.form.submit();
+            }
+        });
+    })();
+</script>
+{% endif %}
+{% endblock %}
