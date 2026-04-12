@@ -4,6 +4,7 @@ import json
 import logging
 
 from django.conf import settings
+from django.db import transaction
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
@@ -21,8 +22,11 @@ def verify_webhook_signature(request) -> bool:
     Documentação: https://www.mercadopago.com.br/developers/pt/docs/your-integrations/notifications/webhooks
     """
     if not settings.MERCADO_PAGO_WEBHOOK_SECRET:
-        logger.warning("MERCADO_PAGO_WEBHOOK_SECRET não configurado - webhook sem validação")
-        return True  # Em desenvolvimento, permite sem validação
+        if settings.DEBUG:
+            logger.warning("MERCADO_PAGO_WEBHOOK_SECRET não configurado em DEBUG")
+            return True
+        logger.error("MERCADO_PAGO_WEBHOOK_SECRET ausente em produção")
+        return False
 
     try:
         # Obtém os headers necessários
@@ -61,12 +65,12 @@ def verify_webhook_signature(request) -> bool:
         is_valid = hmac.compare_digest(expected_hash, received_hash)
 
         if not is_valid:
-            logger.warning(f"Assinatura do webhook inválida. Expected: {expected_hash}, Received: {received_hash}")
+            logger.warning("Assinatura do webhook inválida. request_id=%s", x_request_id)
 
         return is_valid
 
-    except Exception as e:
-        logger.exception(f"Erro ao verificar assinatura do webhook: {str(e)}")
+    except Exception:
+        logger.exception("Erro ao verificar assinatura do webhook")
         return False
 
 
@@ -116,32 +120,40 @@ def mercado_pago_webhook(request):
             logger.error(f"Pagamento não encontrado na API: mp_payment_id={mp_payment_id}")
             return HttpResponse("Payment not found", status=404)
 
-        # Atualiza o pagamento no banco de dados
-        payment = Payment.objects.filter(mp_payment_id=str(mp_payment_id)).first()
+        # Atualiza o pagamento no banco de dados com lock para evitar corrida em reentregas.
+        with transaction.atomic():
+            payment = Payment.objects.select_for_update().filter(mp_payment_id=str(mp_payment_id)).first()
 
-        if not payment:
-            logger.warning(f"Pagamento não encontrado no banco: mp_payment_id={mp_payment_id}")
-            return HttpResponse("Payment not found in database", status=404)
+            if not payment:
+                logger.warning("Pagamento não encontrado no banco: mp_payment_id=%s", mp_payment_id)
+                return HttpResponse("Payment not found in database", status=404)
 
-        # Atualiza status e informações
-        old_status = payment.status
-        payment.status = payment_data.get("status", "unknown")
-        payment.payment_method = payment_data.get("payment_method_id", "")
+            old_status = payment.status
+            new_status = payment_data.get("status", "unknown")
 
-        # Atualiza valor recebido se pagamento aprovado
-        if payment.status == "approved":
-            payment.amount_received = payment_data.get("transaction_amount")
+            # Idempotência: não reprocesse o mesmo estado final.
+            if old_status == "approved" and new_status == "approved":
+                logger.info("Webhook duplicado ignorado: payment_id=%s mp_payment_id=%s", payment.id, mp_payment_id)
+                return HttpResponse(status=200)
 
-        payment.save()
+            payment.status = new_status
+            payment.payment_method = payment_data.get("payment_method_id", "")
+
+            if payment.status == "approved":
+                payment.amount_received = payment_data.get("transaction_amount")
+
+            payment.save()
 
         logger.info(
-            f"Pagamento atualizado: payment_id={payment.id}, "
-            f"mp_payment_id={mp_payment_id}, "
-            f"status: {old_status} -> {payment.status}"
+            "Pagamento atualizado: payment_id=%s mp_payment_id=%s status:%s->%s",
+            payment.id,
+            mp_payment_id,
+            old_status,
+            payment.status,
         )
 
         return HttpResponse(status=200)
 
-    except Exception as e:
-        logger.exception(f"Erro ao processar webhook: {str(e)}")
+    except Exception:
+        logger.exception("Erro ao processar webhook")
         return HttpResponse("Internal server error", status=500)

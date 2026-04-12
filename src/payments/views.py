@@ -2,6 +2,7 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
@@ -56,7 +57,7 @@ def create_subscription_payment(request):
             payment_method="pix",
         )
 
-        logger.info(f"Pagamento criado: id={payment.id}, user={request.user.email}, amount={amount}")
+        logger.info("Pagamento criado: payment_id=%s user_id=%s amount=%s", payment.id, request.user.id, amount)
 
         # Cria o pagamento no Mercado Pago
         try:
@@ -71,7 +72,9 @@ def create_subscription_payment(request):
             payment.status = mp_payment_data.get("status", "pending")
             payment.save()
 
-            logger.info(f"Pagamento PIX criado no MP: payment_id={payment.id}, mp_payment_id={payment.mp_payment_id}")
+            logger.info(
+                "Pagamento PIX criado no MP: payment_id=%s mp_payment_id=%s", payment.id, payment.mp_payment_id
+            )
 
             # Redireciona para a página de pagamento
             return redirect("payments:pix-payment", payment_id=payment.id)
@@ -106,7 +109,10 @@ def pix_payment_view(request, payment_id):
     if payment.mp_payment_id:
         mp_data = get_payment_status(payment.mp_payment_id)
         if not mp_data:
-            logger.error(f"Não foi possível buscar dados do pagamento MP: {payment.mp_payment_id}")
+            logger.error("Não foi possível buscar dados do pagamento MP: payment_id=%s", payment.id)
+    if not mp_data:
+        messages.warning(request, "Não foi possível confirmar o status do PIX agora. Tente novamente em instantes.")
+        return redirect("payments:payment-pending", payment_id=payment.id)
 
     context = {
         "payment": payment,
@@ -117,11 +123,12 @@ def pix_payment_view(request, payment_id):
         "debug": settings.DEBUG,
     }
 
-    logger.info(f"""
-        Exibindo página PIX com esses dados: {mp_data["id"]} |
-        Amount {mp_data["transaction_amount"]} |
-        url_sandbox={mp_data["point_of_interaction"]["transaction_data"]["ticket_url"]}
-    """)
+    logger.debug(
+        "Exibindo página PIX: payment_id=%s mp_payment_id=%s transaction_amount=%s",
+        payment.id,
+        mp_data.get("id"),
+        mp_data.get("transaction_amount"),
+    )
 
     return render(request, "payments/pix_payment.html", context)
 

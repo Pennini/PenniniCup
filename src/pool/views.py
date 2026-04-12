@@ -616,7 +616,9 @@ def save_bet(request, slug, match_id):
     except Exception as exc:
         logger.warning("Falha ao salvar palpite: participant=%s match=%s error=%s", participant.id, match.id, str(exc))
         if is_ajax:
-            return JsonResponse({"ok": False, "error": str(exc)}, status=400)
+            return JsonResponse(
+                {"ok": False, "error": "Nao foi possivel salvar o palpite. Tente novamente."}, status=400
+            )
         messages.error(request, str(exc))
         return redirect("pool:detail", slug=pool.slug)
 
