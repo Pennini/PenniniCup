@@ -1,7 +1,7 @@
 import os
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "django-insecure-dev-only-change-me")
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "").strip()
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = False
@@ -33,6 +33,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "src.common.middleware.request_id.RequestUUIDMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",

@@ -7,6 +7,7 @@ from django.utils.dateparse import parse_datetime
 
 from src.football.api.client import FootballDataClient
 from src.football.models import Group, Match, Season, Stadium, Stage, Team
+from src.pool.services.projection_queue import enqueue_projection_recalc_for_season
 from src.pool.services.ranking import recalculate_all_pools
 
 logger = logging.getLogger(__name__)
@@ -156,5 +157,11 @@ def sync_matches():
             "status",
         ],
     )
+    queued = enqueue_projection_recalc_for_season(season=season)
     recalculate_all_pools(season=season)
-    logger.info(f"Matches sincronizados: {len(rows)} (ignorados: {skipped})")
+    logger.info(
+        "Matches sincronizados: %s (ignorados: %s) | projeções enfileiradas: %s | ranking recalculado",
+        len(rows),
+        skipped,
+        queued,
+    )

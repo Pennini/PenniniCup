@@ -1,4 +1,3 @@
-{% load static %}
 {% comment %}
 COMPONENTE: Match Card Compacto (para uso no chaveamento)
 Uso: {% include "components/match_card_compact.html" with compact_match=match compact_mode="result" %}
@@ -15,9 +14,9 @@ Parâmetros:
             <div
                 class="w-5 h-5 rounded-full overflow-hidden shrink-0 border border-brand-border/50 flex items-center justify-center"
             >
-                {% if compact_match.home_team and compact_match.home_team.flag_local %}
+                {% if compact_match.home_team and compact_match.home_team.flag_image_url %}
                 <img
-                    src="{% static compact_match.home_team.flag_local %}"
+                    src="{{ compact_match.home_team.flag_image_url }}"
                     alt="{% if compact_match.home_team and compact_match.home_team.code %}{{ compact_match.home_team.code }}{% else %}-{% endif %}"
                     class="w-full h-full object-cover"
                 />
@@ -63,9 +62,9 @@ Parâmetros:
             <div
                 class="w-5 h-5 rounded-full overflow-hidden shrink-0 border border-brand-border/50 flex items-center justify-center"
             >
-                {% if compact_match.away_team and compact_match.away_team.flag_local %}
+                {% if compact_match.away_team and compact_match.away_team.flag_image_url %}
                 <img
-                    src="{% static compact_match.away_team.flag_local %}"
+                    src="{{ compact_match.away_team.flag_image_url }}"
                     alt="{% if compact_match.away_team and compact_match.away_team.code %}{{ compact_match.away_team.code }}{% else %}-{% endif %}"
                     class="w-full h-full object-cover"
                 />

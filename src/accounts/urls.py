@@ -11,7 +11,7 @@ urlpatterns = [
     path("register/<uuid:token>/", views.RegisterView.as_view(), name="register_with_token"),
     path(
         "login/",
-        auth_views.LoginView.as_view(
+        views.RateLimitedLoginView.as_view(
             template_name="accounts/login.html", redirect_authenticated_user=True, next_page="penninicup:index"
         ),
         name="login",
@@ -24,7 +24,7 @@ urlpatterns = [
     # Recuperação de senha
     path(
         "password-reset/",
-        auth_views.PasswordResetView.as_view(
+        views.RateLimitedPasswordResetView.as_view(
             template_name="accounts/password_reset.html",
             email_template_name="accounts/emails/password_reset_email.txt",
             subject_template_name="accounts/emails/password_reset_subject.txt",

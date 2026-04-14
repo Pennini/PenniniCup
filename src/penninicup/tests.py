@@ -1,10 +1,16 @@
+import logging
+from unittest.mock import patch
+from uuid import UUID, uuid4
+
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
 from src.accounts.models import UserProfile
+from src.common.logging_filters import RequestIdFilter
+from src.common.utils.request_id import clear_request_id, set_request_id
 from src.football.models import Competition, Group, Match, Season, Stage, Team
 from src.payments.models import Payment
 from src.pool.models import Pool, PoolBet, PoolParticipant
@@ -77,6 +83,9 @@ class RulesPageTest(TestCase):
         Payment.objects.create(user=player_1, pool=self.pool_a, status="approved", amount=100, amount_received=100)
         Payment.objects.create(user=player_2, pool=self.pool_a, status="approved", amount=50, amount_received=50)
 
+        refresh_response = self.client.post(reverse("penninicup:rules"), data={"pool": self.pool_a.slug})
+        self.assertEqual(refresh_response.status_code, 302)
+
         response = self.client.get(reverse("penninicup:rules"), data={"pool": self.pool_a.slug})
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Total para premiação: R$ 142,50")
@@ -84,6 +93,18 @@ class RulesPageTest(TestCase):
         self.assertContains(response, "R$ 99,75")
         self.assertContains(response, "R$ 28,50")
         self.assertContains(response, "R$ 14,25")
+
+    @patch("src.penninicup.views.Pool.refresh_prize_distribution")
+    def test_rules_get_does_not_recalculate_prize_distribution(self, refresh_mock):
+        response = self.client.get(reverse("penninicup:rules"), data={"pool": self.pool_a.slug})
+        self.assertEqual(response.status_code, 200)
+        refresh_mock.assert_not_called()
+
+    @patch("src.penninicup.views.Pool.refresh_prize_distribution")
+    def test_rules_post_recalculates_prize_distribution(self, refresh_mock):
+        response = self.client.post(reverse("penninicup:rules"), data={"pool": self.pool_a.slug})
+        self.assertEqual(response.status_code, 302)
+        refresh_mock.assert_called_once_with(save=True)
 
 
 class ProfilePageTest(TestCase):
@@ -235,3 +256,53 @@ class ProfilePageTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Palpite:")
+
+
+class RequestUUIDMiddlewareTest(SimpleTestCase):
+    def test_response_has_x_request_uuid_header(self):
+        response = self.client.get(reverse("penninicup:index"))
+
+        request_id = response.headers.get("X-Request-UUID")
+        self.assertIsNotNone(request_id)
+        UUID(request_id)
+
+    def test_valid_incoming_request_uuid_is_reused(self):
+        incoming_id = str(uuid4())
+        response = self.client.get(reverse("penninicup:index"), HTTP_X_REQUEST_UUID=incoming_id)
+
+        self.assertEqual(response.headers.get("X-Request-UUID"), incoming_id)
+
+
+class RequestIdFilterTest(SimpleTestCase):
+    def tearDown(self):
+        clear_request_id()
+
+    def test_filter_injects_current_request_id(self):
+        expected_id = str(uuid4())
+        set_request_id(expected_id)
+        record = self._build_log_record()
+
+        result = RequestIdFilter().filter(record)
+
+        self.assertTrue(result)
+        self.assertEqual(record.request_id, expected_id)
+
+    def test_filter_uses_fallback_when_request_context_missing(self):
+        clear_request_id()
+        record = self._build_log_record()
+
+        result = RequestIdFilter().filter(record)
+
+        self.assertTrue(result)
+        self.assertEqual(record.request_id, "-")
+
+    def _build_log_record(self):
+        return logging.LogRecord(
+            name="test",
+            level=20,
+            pathname=__file__,
+            lineno=1,
+            msg="log message",
+            args=(),
+            exc_info=None,
+        )

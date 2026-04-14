@@ -1,9 +1,9 @@
 import logging
-import os
 import unicodedata
 
 from curl_cffi import requests
-from django.conf import settings
+from django.core.files.base import ContentFile
+from django.core.files.storage import default_storage
 
 from src.football.api.client import FootballDataClient
 from src.football.models import Group, Team
@@ -15,31 +15,34 @@ def limpar_nome(nome):
     return unicodedata.normalize("NFKD", nome).encode("ASCII", "ignore").decode("ASCII").replace(" ", "_")
 
 
-def download_flag(url, filename):
-    """Baixa a bandeira de um time e salva localmente."""
-    if not url or not filename:
-        return
-
-    filepath = f"{settings.STATICFILES_DIRS[0]}/{filename}"
-    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+def download_flag(url, code):
+    """Baixa a bandeira de um time e salva no storage de media."""
+    if not url or not code:
+        return ""
 
     img = requests.get(url)
     img.raise_for_status()
 
-    with open(filepath, "wb") as f:
-        f.write(img.content)
+    filename = f"flags/{code}.png"
+    if default_storage.exists(filename):
+        default_storage.delete(filename)
+
+    return default_storage.save(filename, ContentFile(img.content))
 
 
 def sync_teams():
     client = FootballDataClient()
     teams_json = client.get_teams()
 
-    existing_flags = {str(team.fifa_id): team.flag_local for team in Team.objects.only("fifa_id", "flag_local")}
+    existing_flag_images = {
+        str(team.fifa_id): bool(team.flag_image) for team in Team.objects.only("fifa_id", "flag_image")
+    }
 
     # Pré-carrega todos os grupos em memória (evita N+1)
     groups = {g.name: g for g in Group.objects.all()}
 
     rows = []
+    flag_jobs = []
     for t in teams_json:
         raw_flag = t.get("teamFlag") or ""
         flag_url = raw_flag.replace("{format}", "sq").replace("{size}", "5") if raw_flag else ""
@@ -50,10 +53,11 @@ def sync_teams():
         team_name = t.get("teamName", "")
         code = flag_url.split("/")[-1] if flag_url else ""
         flag_local = f"img/flags/{code}.png" if code else ""
+        fifa_id = str(t.get("teamId"))
 
         rows.append(
             Team(
-                fifa_id=t.get("teamId"),
+                fifa_id=fifa_id,
                 name=team_name,
                 name_norm=limpar_nome(team_name),
                 code=code,
@@ -68,6 +72,15 @@ def sync_teams():
             )
         )
 
+        flag_jobs.append(
+            {
+                "fifa_id": fifa_id,
+                "team_name": team_name,
+                "flag_url": flag_url,
+                "code": code,
+            }
+        )
+
     # 1. Salva todos os times no banco primeiro
     Team.objects.bulk_create(
         rows,
@@ -80,6 +93,7 @@ def sync_teams():
             "confederation",
             "flag_url",
             "flag_local",
+            "flag_image",
             "page_url",
             "group_id",
             "is_host",
@@ -87,16 +101,18 @@ def sync_teams():
             "world_ranking",
         ],
     )
-    logger.info(f"Sync BD concluída: {len(rows)} times salvos.")
+    logger.info("Sync BD concluída: %s times salvos.", len(rows))
 
     # 2. Depois baixa as bandeiras (se uma falhar, os times já estão salvos)
-    for team in rows:
+    for job in flag_jobs:
         try:
-            already_downloaded = bool(existing_flags.get(str(team.fifa_id)))
-            if team.flag_url and team.flag_local and not already_downloaded:
-                download_flag(team.flag_url, team.flag_local)
-                logger.info(f"Bandeira baixada: {team.name}")
+            already_downloaded = existing_flag_images.get(job["fifa_id"], False)
+            if job["flag_url"] and job["code"] and not already_downloaded:
+                storage_name = download_flag(job["flag_url"], job["code"])
+                if storage_name:
+                    Team.objects.filter(fifa_id=job["fifa_id"]).update(flag_image=storage_name)
+                    logger.info("Bandeira baixada: %s", job["team_name"])
         except Exception as e:
-            logger.warning(f"Falha ao baixar bandeira de {team.name}: {e}")
+            logger.warning("Falha ao baixar bandeira de %s: %s", job["team_name"], e)
 
     logger.info("Sync completa (times + bandeiras).")

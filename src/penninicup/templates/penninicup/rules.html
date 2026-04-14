@@ -49,6 +49,20 @@
                 <button type="submit" class="px-4 py-2.5 rounded-xl bg-orange-500 text-black font-semibold hover:bg-orange-400 transition-colors">Atualizar</button>
             </noscript>
         </form>
+
+        {% if selected_pool %}
+        <form method="post" class="mt-3">
+            {% csrf_token %}
+            <input type="hidden" name="pool" value="{{ selected_pool.slug }}" />
+            <button
+                type="submit"
+                class="inline-flex items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-200 hover:bg-emerald-500/20 transition-colors"
+            >
+                <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                Atualizar premiação
+            </button>
+        </form>
+        {% endif %}
     </article>
 
     {% if not selected_pool or not scoring_config %}

@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase
@@ -6,12 +8,14 @@ from django.utils import timezone
 
 from src.accounts.models import InviteToken
 from src.football.models import AssignThird, Competition, Group, Match, Player, Season, Stage, Team
+from src.payments.models import Payment
 from src.pool.models import Pool, PoolBet, PoolParticipant, PoolProjectionRecalc
 from src.pool.services.projection import (
     load_assign_third_map,
     projected_group_standings,
     resolve_knockout_placeholder_team,
 )
+from src.pool.services.projection_queue import MAX_ATTEMPTS, process_next_projection_recalc_job
 from src.pool.services.ranking import recalculate_participant_scores
 
 User = get_user_model()
@@ -235,6 +239,58 @@ class PoolOpenTargetTest(TestCase):
             data={"pool_slug": self.pool.slug, "open_target": "ranking"},
         )
         self.assertRedirects(response, reverse("pool:ranking", kwargs={"slug": self.pool.slug}))
+
+
+class PoolPrizeDistributionTest(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username="ownerpd", email="ownerpd@example.com", password="123456Aa!")
+        self.user_active = User.objects.create_user(
+            username="activepd", email="activepd@example.com", password="123456Aa!"
+        )
+        self.user_inactive = User.objects.create_user(
+            username="inactivepd", email="inactivepd@example.com", password="123456Aa!"
+        )
+        self.competition = Competition.objects.create(fifa_id=33, name="Copa 33")
+        self.season = Season.objects.create(
+            fifa_id=33,
+            competition=self.competition,
+            name="Temporada 33",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.pool = Pool.objects.create(
+            name="Pool Prize",
+            slug="pool-prize",
+            season=self.season,
+            created_by=self.owner,
+        )
+
+    def test_refresh_prize_distribution_ignores_inactive_participant_payments(self):
+        PoolParticipant.objects.create(pool=self.pool, user=self.user_active, is_active=True)
+        PoolParticipant.objects.create(pool=self.pool, user=self.user_inactive, is_active=False)
+
+        Payment.objects.create(
+            user=self.user_active,
+            pool=self.pool,
+            amount=100,
+            amount_received=120,
+            status="approved",
+            payment_method="pix",
+        )
+        Payment.objects.create(
+            user=self.user_inactive,
+            pool=self.pool,
+            amount=999,
+            amount_received=999,
+            status="approved",
+            payment_method="pix",
+        )
+
+        self.pool.refresh_prize_distribution(save=True)
+
+        self.pool.refresh_from_db()
+        self.assertEqual(str(self.pool.total_prize_amount), "114.00")
 
 
 class ProjectedStandingsTieBreakerTest(TestCase):
@@ -552,6 +608,41 @@ class PoolAutoBetLifecycleTest(TestCase):
         self.participant.refresh_from_db()
         self.assertEqual(self.participant.top_scorer_pred_id, self.player_a.id)
 
+    def test_bulk_save_is_atomic_for_entire_batch(self):
+        future = timezone.now() + timezone.timedelta(days=1)
+        self.group_match.match_date_utc = future
+        self.group_match.match_date_local = future
+        self.group_match.match_date_brasilia = future
+        self.group_match.save(update_fields=["match_date_utc", "match_date_local", "match_date_brasilia"])
+
+        self.knockout_match.match_date_utc = future
+        self.knockout_match.match_date_local = future
+        self.knockout_match.match_date_brasilia = future
+        self.knockout_match.save(update_fields=["match_date_utc", "match_date_local", "match_date_brasilia"])
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("pool:save-bets-bulk", kwargs={"slug": self.pool.slug}),
+            data={
+                "top_scorer_pred": str(self.player_a.id),
+                f"match_{self.group_match.id}_home_score_pred": "2",
+                f"match_{self.group_match.id}_away_score_pred": "1",
+                f"match_{self.group_match.id}_winner_pred": "",
+                f"match_{self.knockout_match.id}_home_score_pred": "abc",
+                f"match_{self.knockout_match.id}_away_score_pred": "1",
+                f"match_{self.knockout_match.id}_winner_pred": "",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        self.participant.refresh_from_db()
+        self.assertIsNone(self.participant.top_scorer_pred_id)
+
+        group_bet = PoolBet.objects.get(participant=self.participant, match=self.group_match)
+        self.assertIsNone(group_bet.home_score_pred)
+        self.assertIsNone(group_bet.away_score_pred)
+        self.assertFalse(group_bet.is_active)
+
 
 class AssignThirdPlaceholderNormalizationTest(TestCase):
     def test_assign_third_accepts_hyphenated_placeholder(self):
@@ -582,3 +673,141 @@ class AssignThirdPlaceholderNormalizationTest(TestCase):
 
         self.assertIsNotNone(resolved)
         self.assertEqual(resolved.id, team.id)
+
+
+class ProjectionQueueRetryLimitTest(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username="owner-queue", email="ownerq@example.com", password="123456Aa!")
+        self.user = User.objects.create_user(username="user-queue", email="userq@example.com", password="123456Aa!")
+        competition = Competition.objects.create(fifa_id=401, name="Copa Queue")
+        season = Season.objects.create(
+            fifa_id=401,
+            competition=competition,
+            name="Temporada Queue",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        pool = Pool.objects.create(name="Pool Queue", slug="pool-queue", season=season, created_by=self.owner)
+        self.participant = PoolParticipant.objects.create(pool=pool, user=self.user, is_active=True)
+
+    @patch("src.pool.services.projection_queue.sync_persisted_group_standings", side_effect=RuntimeError("boom"))
+    def test_job_becomes_failed_when_reaching_max_attempts(self, _sync_mock):
+        job = PoolProjectionRecalc.objects.create(
+            participant=self.participant,
+            status=PoolProjectionRecalc.STATUS_PENDING,
+            attempts=MAX_ATTEMPTS - 1,
+        )
+
+        processed = process_next_projection_recalc_job()
+
+        self.assertIsNotNone(processed)
+        job.refresh_from_db()
+        self.assertEqual(job.attempts, MAX_ATTEMPTS)
+        self.assertEqual(job.status, PoolProjectionRecalc.STATUS_FAILED)
+        self.assertEqual(job.last_error, "boom")
+
+    @patch("src.pool.services.projection_queue.sync_persisted_group_standings", side_effect=RuntimeError("boom"))
+    def test_job_is_requeued_while_attempts_below_max(self, _sync_mock):
+        job = PoolProjectionRecalc.objects.create(
+            participant=self.participant,
+            status=PoolProjectionRecalc.STATUS_PENDING,
+            attempts=0,
+        )
+
+        processed = process_next_projection_recalc_job()
+
+        self.assertIsNotNone(processed)
+        job.refresh_from_db()
+        self.assertEqual(job.attempts, 1)
+        self.assertEqual(job.status, PoolProjectionRecalc.STATUS_PENDING)
+        self.assertEqual(job.last_error, "boom")
+
+    def test_pending_job_above_limit_is_marked_failed_and_skipped(self):
+        job = PoolProjectionRecalc.objects.create(
+            participant=self.participant,
+            status=PoolProjectionRecalc.STATUS_PENDING,
+            attempts=MAX_ATTEMPTS,
+        )
+
+        processed = process_next_projection_recalc_job()
+
+        self.assertIsNone(processed)
+        job.refresh_from_db()
+        self.assertEqual(job.status, PoolProjectionRecalc.STATUS_FAILED)
+        self.assertIn("Max retries reached", job.last_error)
+
+
+class SaveBetAjaxErrorMessageTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="ajaxerr", email="ajaxerr@example.com", password="123456Aa!")
+        self.owner = User.objects.create_user(
+            username="ajaxowner",
+            email="ajaxowner@example.com",
+            password="123456Aa!",
+        )
+        competition = Competition.objects.create(fifa_id=701, name="Copa Ajax")
+        season = Season.objects.create(
+            fifa_id=701,
+            competition=competition,
+            name="Temporada Ajax",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage = Stage.objects.create(fifa_id="GROUP701", season=season, name="Group Stage", order=1)
+        group = Group.objects.create(fifa_id="GA701", stage=stage, name="A")
+        self.home = Team.objects.create(fifa_id="H701", name="Home 701", name_norm="home701", code="H70", group=group)
+        self.away = Team.objects.create(fifa_id="A701", name="Away 701", name_norm="away701", code="A70", group=group)
+
+        future = timezone.now() + timezone.timedelta(days=1)
+        self.match = Match.objects.create(
+            fifa_id="M701",
+            season=season,
+            stage=stage,
+            group=group,
+            match_number=1,
+            match_date_utc=future,
+            match_date_local=future,
+            match_date_brasilia=future,
+            home_team=self.home,
+            away_team=self.away,
+        )
+
+        self.pool = Pool.objects.create(
+            name="Pool Ajax",
+            slug="pool-ajax",
+            season=season,
+            created_by=self.owner,
+            requires_payment=False,
+        )
+        PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+        self.client.force_login(self.user)
+        self.url = reverse("pool:save-bet", kwargs={"slug": self.pool.slug, "match_id": self.match.id})
+        self.payload = {
+            "home_score_pred": "1",
+            "away_score_pred": "0",
+            "winner_pred": "",
+        }
+        self.ajax_headers = {"HTTP_X_REQUESTED_WITH": "XMLHttpRequest"}
+
+    @patch("src.pool.views.PoolBet.save", side_effect=ValidationError("Janela de palpites desta fase esta fechada."))
+    def test_ajax_returns_specific_message_for_locked_phase(self, _mock_save):
+        response = self.client.post(self.url, data=self.payload, **self.ajax_headers)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json().get("error"), "Fase de palpites fechada.")
+
+    @patch("src.pool.views.PoolBet.save", side_effect=ValidationError("Informe o placar completo da partida."))
+    def test_ajax_returns_specific_message_for_missing_scores(self, _mock_save):
+        response = self.client.post(self.url, data=self.payload, **self.ajax_headers)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json().get("error"), "Preencha todos os campos.")
+
+    @patch("src.pool.views.PoolBet.save", side_effect=RuntimeError("db timeout"))
+    def test_ajax_returns_generic_message_for_unexpected_error(self, _mock_save):
+        response = self.client.post(self.url, data=self.payload, **self.ajax_headers)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json().get("error"), "Erro interno, tente novamente.")

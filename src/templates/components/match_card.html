@@ -1,4 +1,4 @@
-{% load static %} {% comment %} ══════════════════════════════════════════════════════════ COMPONENTE: Match Card
+{% comment %} ══════════════════════════════════════════════════════════ COMPONENTE: Match Card
 ══════════════════════════════════════════════════════════ Uso via {% include "components/match_card.html" with ... %}
 Parâmetros obrigatórios: card_match — objeto Match Parâmetros de modo (escolha um): card_mode — "result" → placar real
 apenas "bet_active" → inputs de palpite + placar real abaixo "bet_locked" → palpite fixo + placar real abaixo
@@ -20,9 +20,9 @@ card_match=match card_mode="bet_active" card_form=form %} Exemplo — palpite en
                     >{{ card_match.home_team.code }}</span
                 >
                 <div class="w-8 h-8 rounded-full overflow-hidden shrink-0 flex items-center justify-center">
-                    {% if card_match.home_team.flag_local %}
+                    {% if card_match.home_team.flag_image_url %}
                     <img
-                        src="{% static card_match.home_team.flag_local %}"
+                        src="{{ card_match.home_team.flag_image_url }}"
                         alt="{{ card_match.home_team.code }}"
                         class="w-full h-full object-cover"
                     />
@@ -99,9 +99,9 @@ card_match=match card_mode="bet_active" card_form=form %} Exemplo — palpite en
         <div class="flex flex-col items-start gap-1 flex-1 min-w-0">
             <div class="flex items-center gap-2 min-w-0 justify-start">
                 <div class="w-8 h-8 rounded-full overflow-hidden shrink-0 flex items-center justify-center">
-                    {% if card_match.away_team.flag_local %}
+                    {% if card_match.away_team.flag_image_url %}
                     <img
-                        src="{% static card_match.away_team.flag_local %}"
+                        src="{{ card_match.away_team.flag_image_url }}"
                         alt="{{ card_match.away_team.code }}"
                         class="w-full h-full object-cover"
                     />

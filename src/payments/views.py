@@ -4,6 +4,7 @@ from decimal import Decimal, InvalidOperation
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 
@@ -45,52 +46,50 @@ def create_subscription_payment(request):
             if amount <= 0:
                 raise ValueError("Valor deve ser positivo")
         except (InvalidOperation, ValueError, TypeError):
-            logger.error(f"Valor inválido: {raw_amount}")
+            logger.error("Valor inválido: amount=%s", raw_amount)
             return render(request, "payments/payment_failed.html", {"error": "Valor de inscrição inválido."})
 
-        # Cria o pagamento no banco de dados
-        payment = Payment.objects.create(
-            user=request.user,
-            pool=pool,
-            amount=amount,
-            status="pending",
-            payment_method="pix",
-        )
-
-        logger.info("Pagamento criado: payment_id=%s user_id=%s amount=%s", payment.id, request.user.id, amount)
-
-        # Cria o pagamento no Mercado Pago
         try:
-            mp_payment_data = create_pix_payment(payment)
+            with transaction.atomic():
+                payment = Payment.objects.create(
+                    user=request.user,
+                    pool=pool,
+                    amount=amount,
+                    status="pending",
+                    payment_method="pix",
+                )
 
-            # Verifica se a criação foi bem-sucedida
-            if not mp_payment_data:
-                raise Exception("Falha ao criar pagamento no Mercado Pago")
+                logger.info(
+                    "Pagamento criado: payment_id=%s user_id=%s amount=%s",
+                    payment.id,
+                    request.user.id,
+                    amount,
+                )
 
-            # Atualiza o pagamento com os dados do MP
-            payment.mp_payment_id = str(mp_payment_data.get("id"))
-            payment.status = mp_payment_data.get("status", "pending")
-            payment.save()
+                mp_payment_data = create_pix_payment(payment)
+                if not mp_payment_data:
+                    raise Exception("Falha ao criar pagamento no Mercado Pago")
+
+                payment.mp_payment_id = str(mp_payment_data.get("id"))
+                payment.status = mp_payment_data.get("status", "pending")
+                payment.save()
 
             logger.info(
                 "Pagamento PIX criado no MP: payment_id=%s mp_payment_id=%s", payment.id, payment.mp_payment_id
             )
 
-            # Redireciona para a página de pagamento
             return redirect("payments:pix-payment", payment_id=payment.id)
 
-        except Exception as e:
-            # Remove o pagamento se falhou no MP
-            payment.delete()
-            logger.error(f"Erro ao criar pagamento no MP: {str(e)}")
+        except Exception:
+            logger.exception("Erro ao criar pagamento no MP")
             return render(
                 request,
                 "payments/payment_failed.html",
                 {"error": "Erro ao processar pagamento. Tente novamente mais tarde."},
             )
 
-    except Exception as e:
-        logger.exception(f"Erro inesperado ao criar pagamento: {str(e)}")
+    except Exception:
+        logger.exception("Erro inesperado ao criar pagamento")
         return render(request, "payments/payment_failed.html", {"error": "Erro interno. Tente novamente."})
 
 

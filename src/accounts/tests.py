@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core import mail
+from django.core.cache import cache
 from django.db import IntegrityError
 from django.test import TestCase, TransactionTestCase
 from django.urls import reverse
@@ -176,11 +177,15 @@ class InviteTokenModelTest(TestCase):
             created_by=self.user,
             max_uses=2,
         )
-        token.use()
+        with self.assertWarns(DeprecationWarning):
+            used = token.use()
+        self.assertTrue(used)
         self.assertEqual(token.uses_count, 1)
         self.assertTrue(token.is_active)
 
-        token.use()
+        with self.assertWarns(DeprecationWarning):
+            used = token.use()
+        self.assertTrue(used)
         self.assertEqual(token.uses_count, 2)
         self.assertFalse(token.is_active)
 
@@ -296,6 +301,22 @@ class CustomUserCreationFormTest(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("email", form.errors)
 
+    def test_form_save_creates_inactive_user(self):
+        """Teste que o usuário nasce inativo até verificar email"""
+        form = CustomUserCreationForm(
+            {
+                "username": "newinactive",
+                "email": "newinactive@example.com",
+                "password1": "testpass123",
+                "password2": "testpass123",
+                "invite_token": str(self.token.token),
+            }
+        )
+        self.assertTrue(form.is_valid())
+
+        user = form.save()
+        self.assertFalse(user.is_active)
+
 
 class CustomPasswordResetFormTest(TestCase):
     """Testes para o formulário de reset de senha"""
@@ -346,6 +367,7 @@ class RegisterViewTest(TestCase):
     """Testes para a view de registro"""
 
     def setUp(self):
+        cache.clear()
         self.creator = User.objects.create_user(
             username="creator",
             email="creator@example.com",
@@ -460,6 +482,22 @@ class RegisterViewTest(TestCase):
         self.client.login(username="creator", password="testpass123")
         response = self.client.get(self.register_url)
         self.assertRedirects(response, reverse("penninicup:index"))
+
+    @patch("src.accounts.views.InviteToken.use_token", return_value=False)
+    @patch("src.accounts.views.send_mail")
+    def test_registration_fails_before_user_creation_when_token_consumption_fails(self, _mock_send_mail, _mock_use):
+        data = {
+            "username": "blockeduser",
+            "email": "blocked@example.com",
+            "password1": "ComplexPass123!",
+            "password2": "ComplexPass123!",
+            "invite_token": str(self.token.token),
+        }
+
+        response = self.client.post(self.register_url, data)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(username="blockeduser").exists())
 
 
 class VerifyEmailViewTest(TestCase):

@@ -13,8 +13,8 @@ class Payment(models.Model):
     status = models.CharField(max_length=50)
     payment_method = models.CharField(max_length=50, blank=True)
 
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    amount_received = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    amount_received = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -24,3 +24,18 @@ class Payment(models.Model):
 
     def __str__(self):
         return f"{self.user} - {self.status}"
+
+
+class WebhookEvent(models.Model):
+    provider = models.CharField(max_length=32, default="mercadopago")
+    idempotency_key = models.CharField(max_length=64, unique=True, db_index=True)
+    event_type = models.CharField(max_length=64, blank=True)
+    action = models.CharField(max_length=64, blank=True)
+    external_id = models.CharField(max_length=128, blank=True)
+    processed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-processed_at"]
+
+    def __str__(self):
+        return f"{self.provider}:{self.idempotency_key}"

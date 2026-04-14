@@ -4,15 +4,27 @@ import json
 import logging
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
+from django_ratelimit.decorators import ratelimit
 
-from .models import Payment
+from .models import Payment, WebhookEvent
 from .services.mercadopago import get_payment_status
 
 logger = logging.getLogger(__name__)
+
+
+def _build_idempotency_key(request, data: dict) -> str:
+    request_id = request.headers.get("x-request-id", "")
+    event_type = data.get("type", "")
+    action = data.get("action", "")
+    external_id = str(data.get("data", {}).get("id", ""))
+    fingerprint = f"{request_id}|{event_type}|{action}|{external_id}"
+    if not any((request_id, event_type, action, external_id)):
+        fingerprint = request.body.decode("utf-8", errors="ignore")
+    return hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()
 
 
 def verify_webhook_signature(request) -> bool:
@@ -76,6 +88,7 @@ def verify_webhook_signature(request) -> bool:
 
 @csrf_exempt
 @require_POST
+@ratelimit(key="ip", rate="60/m", method="POST", block=False)
 def mercado_pago_webhook(request):
     """
     Webhook para receber notificações do Mercado Pago
@@ -85,6 +98,10 @@ def mercado_pago_webhook(request):
     - merchant_order: Atualização de pedido
     """
     try:
+        if getattr(request, "limited", False):
+            logger.warning("Webhook rate limited por IP")
+            return HttpResponse("Too Many Requests", status=429)
+
         # Verifica a assinatura do webhook
         if not verify_webhook_signature(request):
             logger.error("Webhook com assinatura inválida - rejeitado")
@@ -98,11 +115,11 @@ def mercado_pago_webhook(request):
             return HttpResponse("Invalid JSON", status=400)
 
         # Log da notificação recebida
-        logger.info(f"Webhook recebido: type={data.get('type')}, action={data.get('action')}")
+        logger.info("Webhook recebido: type=%s action=%s", data.get("type"), data.get("action"))
 
         # Processa apenas notificações de pagamento
         if data.get("type") != "payment":
-            logger.info(f"Tipo de notificação ignorado: {data.get('type')}")
+            logger.info("Tipo de notificação ignorado: type=%s", data.get("type"))
             return HttpResponse(status=200)
 
         # Obtém o ID do pagamento
@@ -117,23 +134,45 @@ def mercado_pago_webhook(request):
         payment_data = get_payment_status(str(mp_payment_id))
 
         if not payment_data:
-            logger.error(f"Pagamento não encontrado na API: mp_payment_id={mp_payment_id}")
+            logger.error("Pagamento não encontrado na API: mp_payment_id=%s", mp_payment_id)
             return HttpResponse("Payment not found", status=404)
+
+        event_key = _build_idempotency_key(request, data)
 
         # Atualiza o pagamento no banco de dados com lock para evitar corrida em reentregas.
         with transaction.atomic():
-            payment = Payment.objects.select_for_update().filter(mp_payment_id=str(mp_payment_id)).first()
+            try:
+                WebhookEvent.objects.create(
+                    provider="mercadopago",
+                    idempotency_key=event_key,
+                    event_type=str(data.get("type", "")),
+                    action=str(data.get("action", "")),
+                    external_id=str(mp_payment_id),
+                )
+            except IntegrityError:
+                logger.info("Webhook duplicado ignorado por idempotency_key: %s", event_key)
+                return HttpResponse(status=200)
 
+            payment = Payment.objects.select_for_update().filter(mp_payment_id=str(mp_payment_id)).first()
             if not payment:
-                logger.warning("Pagamento não encontrado no banco: mp_payment_id=%s", mp_payment_id)
                 return HttpResponse("Payment not found in database", status=404)
 
             old_status = payment.status
             new_status = payment_data.get("status", "unknown")
 
-            # Idempotência: não reprocesse o mesmo estado final.
-            if old_status == "approved" and new_status == "approved":
-                logger.info("Webhook duplicado ignorado: payment_id=%s mp_payment_id=%s", payment.id, mp_payment_id)
+            # Estado terminal: uma vez aprovado, não deve regredir por eventos fora de ordem.
+            if old_status == "approved":
+                if new_status != "approved":
+                    logger.info(
+                        (
+                            "Webhook fora de ordem ignorado: payment_id=%s mp_payment_id=%s "
+                            "status_atual=%s status_recebido=%s"
+                        ),
+                        payment.id,
+                        mp_payment_id,
+                        old_status,
+                        new_status,
+                    )
                 return HttpResponse(status=200)
 
             payment.status = new_status

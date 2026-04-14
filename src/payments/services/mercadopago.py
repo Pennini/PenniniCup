@@ -34,7 +34,7 @@ def create_pix_payment(payment) -> dict | None:
         # UUID garante unicidade mesmo em retentativas de um mesmo payment
         request_options.custom_headers = {"X-Idempotency-Key": f"payment-{payment.id}-{uuid.uuid4()}"}
 
-        logger.info(f"Criando pagamento PIX | payment_id={payment.id} | user={payment.user.email}")
+        logger.info("Criando pagamento PIX | payment_id=%s | user_id=%s", payment.id, payment.user.id)
 
         response = sdk.payment().create(payload, request_options)
 
@@ -42,15 +42,15 @@ def create_pix_payment(payment) -> dict | None:
         body = response.get("response", {})
 
         if status not in (200, 201):
-            logger.error(f"Erro Mercado Pago | status={status} | body={body}")
+            logger.error("Erro Mercado Pago | status=%s | body=%s", status, body)
             raise Exception(body.get("message", "Erro desconhecido no Mercado Pago"))
 
-        logger.info(f"PIX criado com sucesso | mp_payment_id={body.get('id')} | status={body.get('status')}")
+        logger.info("PIX criado com sucesso | mp_payment_id=%s | status=%s", body.get("id"), body.get("status"))
 
         return body
 
-    except Exception as e:
-        logger.exception(f"Erro ao criar pagamento PIX: {str(e)}")
+    except Exception:
+        logger.exception("Erro ao criar pagamento PIX")
         return None
 
 
@@ -59,11 +59,11 @@ def get_payment_status(payment_id: str) -> dict | None:
         payment_response = sdk.payment().get(payment_id)
 
         if payment_response.get("status") != 200:
-            logger.error(f"Erro ao buscar status do pagamento: {payment_response.get('status')}")
+            logger.error("Erro ao buscar status do pagamento: status=%s", payment_response.get("status"))
             return None
 
         return payment_response.get("response", {})
 
-    except Exception as e:
-        logger.exception(f"Erro ao buscar status do pagamento {payment_id}: {str(e)}")
+    except Exception:
+        logger.exception("Erro ao buscar status do pagamento: payment_id=%s", payment_id)
         return None

@@ -14,3 +14,11 @@ IN_DOCKER (where the value would be True)
 
 # globals() is a dictionary of global variables
 deep_update(globals(), get_settings_from_environment(ENV_PREFIX))  # type: ignore
+
+
+if not SECRET_KEY:  # type: ignore[name-defined]
+    if DEBUG:  # type: ignore[name-defined]
+        # Fallback apenas para ambiente de desenvolvimento.
+        SECRET_KEY = "django-insecure-dev-only-change-me"  # type: ignore[assignment]
+    else:
+        raise ValueError("DJANGO_SECRET_KEY deve ser configurado quando DEBUG=False")
