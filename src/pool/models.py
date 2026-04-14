@@ -3,11 +3,13 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import DecimalField, Sum
+from django.db.models import DecimalField, Exists, OuterRef, Sum
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
+from src.accounts.models import InviteToken
 from src.football.models import Group, Match, Season, Team
+from src.payments.models import Payment
 from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, phase_for_match
 
 
@@ -58,8 +60,6 @@ class Pool(models.Model):
         return now >= lock_time
 
     def get_invite_token(self, token_value):
-        from src.accounts.models import InviteToken
-
         return InviteToken.objects.filter(token=token_value).select_related("pool").first()
 
     def validate_invite_token(self, token_value):
@@ -76,8 +76,6 @@ class Pool(models.Model):
         return token_obj, None
 
     def consume_invite_token(self, token_obj):
-        from src.accounts.models import InviteToken
-
         return InviteToken.use_token(token_obj.token)
 
     def get_scoring_config(self):
@@ -85,15 +83,18 @@ class Pool(models.Model):
         return config
 
     def refresh_prize_distribution(self, save=True):
-        from src.payments.models import Payment
+        active_participant_subquery = PoolParticipant.objects.filter(
+            pool_id=self.id,
+            user_id=OuterRef("user_id"),
+            is_active=True,
+        )
 
         total_paid = (
             Payment.objects.filter(
                 pool=self,
                 status="approved",
-                user__pool_participations__pool=self,
-                user__pool_participations__is_active=True,
             )
+            .filter(Exists(active_participant_subquery))
             .aggregate(
                 total=Coalesce(
                     Sum(
@@ -203,6 +204,9 @@ class PoolParticipant(models.Model):
     class Meta:
         unique_together = ("pool", "user")
         ordering = ["-total_points", "joined_at"]
+        indexes = [
+            models.Index(fields=["-total_points", "joined_at"], name="pool_part_rank_idx"),
+        ]
 
     def __str__(self):
         return f"{self.user} @ {self.pool}"
@@ -211,8 +215,6 @@ class PoolParticipant(models.Model):
         if not self.is_active:
             return False
         if self.pool.requires_payment:
-            from src.payments.models import Payment
-
             return Payment.objects.filter(user=self.user, pool=self.pool, status="approved").exists()
         return True
 

@@ -1,6 +1,8 @@
+from django.core.management.utils import get_random_secret_key
+
 # Configurações específicas para testes
 # Este arquivo é incluído pelo sistema de split settings no __init__.py
-# NÃO faça imports diretos aqui, apenas sobrescreva configurações
+# Evite imports de módulos da aplicação; mantenha apenas utilitários de settings.
 
 # Database para testes (usa SQLite em memória para velocidade)
 DATABASES = {
@@ -28,7 +30,7 @@ PASSWORD_HASHERS = [
 DEBUG = False
 
 # Secret key para testes
-SECRET_KEY = "test-secret-key-not-for-production"
+SECRET_KEY = get_random_secret_key()
 
 # Allowed hosts para testes
 ALLOWED_HOSTS = ["testserver", "localhost", "127.0.0.1"]

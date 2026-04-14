@@ -161,18 +161,18 @@
                 <p class="text-xs uppercase tracking-wide text-neutral-400">Fase de Grupos - Grupo {{ row.match.group.name|default:"-" }} - Jogo #{{ row.match.match_number }}</p>
                 <h3 class="text-base font-semibold flex flex-wrap items-center gap-2">
                     <span class="inline-flex items-center gap-2">
-                        {% if row.home_team and row.home_team.flag_local %}
+                        {% if row.home_team and row.home_team.flag_image_url %}
                         <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
-                            <img src="{% static row.home_team.flag_local %}" alt="Bandeira {{ row.home_team.name }}" class="h-full w-full object-cover" loading="lazy" />
+                            <img src="{{ row.home_team.flag_image_url }}" alt="Bandeira {{ row.home_team.name }}" class="h-full w-full object-cover" loading="lazy" />
                         </span>
                         {% endif %}
                         <span>{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
                     </span>
                     <span>x</span>
                     <span class="inline-flex items-center gap-2">
-                        {% if row.away_team and row.away_team.flag_local %}
+                        {% if row.away_team and row.away_team.flag_image_url %}
                         <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
-                            <img src="{% static row.away_team.flag_local %}" alt="Bandeira {{ row.away_team.name }}" class="h-full w-full object-cover" loading="lazy" />
+                            <img src="{{ row.away_team.flag_image_url }}" alt="Bandeira {{ row.away_team.name }}" class="h-full w-full object-cover" loading="lazy" />
                         </span>
                         {% endif %}
                         <span>{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>

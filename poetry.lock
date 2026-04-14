@@ -439,6 +439,17 @@ asgiref = ">=3.6"
 django = ">=4.2"
 
 [[package]]
+name = "django-ratelimit"
+version = "4.1.0"
+description = "Cache-based rate-limiting for Django."
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "django-ratelimit-4.1.0.tar.gz", hash = "sha256:555943b283045b917ad59f196829530d63be2a39adb72788d985b90c81ba808b"},
+    {file = "django_ratelimit-4.1.0-py2.py3-none-any.whl", hash = "sha256:d047a31cf94d83ef1465d7543ca66c6fc16695559b5f8d814d1b51df15110b92"},
+]
+
+[[package]]
 name = "django-split-settings"
 version = "1.3.2"
 description = "Organize Django settings into multiple files and directories. Easily override and modify settings. Use wildcards and optional settings files."
@@ -1204,4 +1215,4 @@ test = ["covdefaults (>=2.3)", "coverage (>=7.2.7)", "coverage-enable-subprocess
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.12"
-content-hash = "b3ad0a640cd59a31c43043beb5c7aaf8395575ab9ef501837003314343b964db"
+content-hash = "11206aacbda3a643b49f99ec3bf1d1aa4d2893e982afbd30f4aadda0cbff85e0"

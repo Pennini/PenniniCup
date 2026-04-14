@@ -23,14 +23,14 @@ def pool_ranking_dashboard(request, slug):
 
     podium_rows = leaderboard_rows[:3]
     podium_prizes = [
-        "Premiacao 1o lugar",
-        "Premiacao 2o lugar",
-        "Premiacao 3o lugar",
+        "Premiação 1º lugar",
+        "Premiação 2º lugar",
+        "Premiação 3º lugar",
     ]
     podium_cards = []
     for row in podium_rows:
         prize_text = (
-            podium_prizes[row.position - 1] if row.position <= len(podium_prizes) else "Premiacao nao definida"
+            podium_prizes[row.position - 1] if row.position <= len(podium_prizes) else "Premiação não definida"
         )
         podium_cards.append(
             {

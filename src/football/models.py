@@ -1,4 +1,5 @@
 from django.db import models
+from django.templatetags.static import static
 
 
 class Competition(models.Model):
@@ -75,6 +76,7 @@ class Team(models.Model):
     flag_url = models.URLField(blank=True)
     page_url = models.URLField(blank=True)
     flag_local = models.CharField(max_length=255, blank=True)
+    flag_image = models.FileField(upload_to="flags/", blank=True)
     group = models.ForeignKey(Group, on_delete=models.SET_NULL, null=True, blank=True, related_name="teams")
     is_host = models.BooleanField(default=False, blank=True, null=True)
     appearances = models.PositiveIntegerField(default=0)
@@ -86,6 +88,14 @@ class Team(models.Model):
 
     class Meta:
         ordering = ["code"]
+
+    @property
+    def flag_image_url(self):
+        if self.flag_image:
+            return self.flag_image.url
+        if self.flag_local:
+            return static(self.flag_local)
+        return ""
 
     def __str__(self):
         return f"{self.name} ({self.code})"

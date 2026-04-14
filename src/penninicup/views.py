@@ -5,13 +5,14 @@ from django.contrib import messages
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 
 from src.accounts.models import UserProfile
 from src.football.models import Match, Season, Team
 from src.pool.models import Pool, PoolBet, PoolParticipant
+from src.pool.services.context_builder import build_pool_participant_view_context
 from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT
-from src.pool.views import build_pool_participant_view_context
 from src.rankings.services.leaderboard import build_pool_leaderboard
 
 from .forms import ProfilePreferencesForm
@@ -68,7 +69,7 @@ def _build_profile_context(request, *, profile_user, is_owner):
             form.save()
             messages.success(request, "Perfil atualizado com sucesso.")
         else:
-            messages.error(request, "Nao foi possivel salvar seu perfil. Verifique os campos e tente novamente.")
+            messages.error(request, "Não foi possível salvar seu perfil. Verifique os campos e tente novamente.")
 
         params = {}
         if selected_slug:
@@ -87,7 +88,7 @@ def _build_profile_context(request, *, profile_user, is_owner):
     if selected_slug:
         selected_participation = next((item for item in participations if item.pool.slug == selected_slug), None)
         if selected_participation is None:
-            messages.warning(request, "Bolao selecionado nao pertence ao perfil informado.")
+            messages.warning(request, "Bolão selecionado não pertence ao perfil informado.")
 
     if selected_participation is None and participations:
         selected_participation = participations[0]
@@ -147,7 +148,7 @@ def _resolve_selected_participation(request, participations):
     if selected_slug:
         selected_participation = next((item for item in participations if item.pool.slug == selected_slug), None)
         if selected_participation is None:
-            messages.warning(request, "Bolao selecionado nao encontrado entre suas participacoes ativas.")
+            messages.warning(request, "Bolão selecionado não encontrado entre suas participações ativas.")
 
     if selected_participation is None and participations:
         selected_participation = participations[0]
@@ -273,7 +274,8 @@ def index(request):
 @login_required
 def rules(request):
     pools = list(Pool.objects.filter(is_active=True).select_related("season").order_by("name"))
-    selected_slug = (request.GET.get("pool") or "").strip()
+    source = request.POST if request.method == "POST" else request.GET
+    selected_slug = (source.get("pool") or "").strip()
 
     selected_pool = None
     if selected_slug:
@@ -281,9 +283,21 @@ def rules(request):
     if selected_pool is None and pools:
         selected_pool = pools[0]
 
+    if request.method == "POST":
+        params = {}
+        if selected_pool:
+            selected_pool.refresh_prize_distribution(save=True)
+            messages.success(request, "Premiação atualizada com sucesso.")
+            params["pool"] = selected_pool.slug
+        elif selected_slug:
+            params["pool"] = selected_slug
+        if params:
+            return redirect(f"{reverse('penninicup:rules')}?{urlencode(params)}")
+        return redirect(reverse("penninicup:rules"))
+
     scoring_config = selected_pool.get_scoring_config() if selected_pool else None
     if selected_pool:
-        selected_pool.refresh_prize_distribution()
+        selected_pool.refresh_from_db()
     group_lock_at = selected_pool.get_phase_lock_time(PHASE_GROUP) if selected_pool else None
     knockout_lock_at = selected_pool.get_phase_lock_time(PHASE_KNOCKOUT) if selected_pool else None
 

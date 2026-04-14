@@ -1,5 +1,3 @@
-{% load static %}
-
 {% if standings %}
 <div class="overflow-x-auto rounded-xl border border-brand-border/60">
 	<table class="w-full text-sm text-brand-text">
@@ -26,9 +24,9 @@
 						<div
 							class="w-4 h-4 rounded-full overflow-hidden shrink-0 border border-brand-border/50 flex items-center justify-center"
 						>
-							{% if row.team.flag_local %}
+							{% if row.team.flag_image_url %}
 							<img
-								src="{% static row.team.flag_local %}"
+								src="{{ row.team.flag_image_url }}"
 								alt="{{ row.team.name|default:row.team.code }}"
 								class="w-full h-full object-cover"
 							/>

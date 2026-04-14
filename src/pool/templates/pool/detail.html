@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% load static %}
 
 {% block title %}{{ pool.name }}{% endblock %}
 
@@ -81,10 +80,10 @@
                     <p class="text-xs text-neutral-500">Jogo #{{ row.match.match_number }}</p>
                     <h2 class="text-lg font-semibold flex flex-wrap items-center gap-2">
                         <span class="inline-flex items-center gap-2">
-                            {% if row.home_team and row.home_team.flag_local %}
+                            {% if row.home_team and row.home_team.flag_image_url %}
                             <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
                                 <img
-                                    src="{% static row.home_team.flag_local %}"
+                                    src="{{ row.home_team.flag_image_url }}"
                                     alt="Bandeira {{ row.home_team.name }}"
                                     class="h-full w-full object-cover"
                                     loading="lazy"
@@ -95,10 +94,10 @@
                         </span>
                         <span>x</span>
                         <span class="inline-flex items-center gap-2">
-                            {% if row.away_team and row.away_team.flag_local %}
+                            {% if row.away_team and row.away_team.flag_image_url %}
                             <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
                                 <img
-                                    src="{% static row.away_team.flag_local %}"
+                                    src="{{ row.away_team.flag_image_url }}"
                                     alt="Bandeira {{ row.away_team.name }}"
                                     class="h-full w-full object-cover"
                                     loading="lazy"
@@ -122,10 +121,10 @@
                     <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3">
                         <div class="flex items-center justify-between gap-2">
                             <div class="flex items-center gap-2 min-w-0">
-                                {% if row.home_team and row.home_team.flag_local %}
+                                {% if row.home_team and row.home_team.flag_image_url %}
                                 <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
                                     <img
-                                        src="{% static row.home_team.flag_local %}"
+                                        src="{{ row.home_team.flag_image_url }}"
                                         alt="Bandeira {{ row.home_team.name }}"
                                         class="h-full w-full object-cover"
                                         loading="lazy"
@@ -153,10 +152,10 @@
                     <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3">
                         <div class="flex items-center justify-between gap-2">
                             <div class="flex items-center gap-2 min-w-0">
-                                {% if row.away_team and row.away_team.flag_local %}
+                                {% if row.away_team and row.away_team.flag_image_url %}
                                 <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
                                     <img
-                                        src="{% static row.away_team.flag_local %}"
+                                        src="{{ row.away_team.flag_image_url }}"
                                         alt="Bandeira {{ row.away_team.name }}"
                                         class="h-full w-full object-cover"
                                         loading="lazy"
@@ -245,10 +244,10 @@
                     <p class="text-xs text-neutral-500">Jogo #{{ row.match.match_number }}</p>
                     <h2 class="text-lg font-semibold flex flex-wrap items-center gap-2">
                         <span class="inline-flex items-center gap-2">
-                            {% if row.home_team and row.home_team.flag_local %}
+                            {% if row.home_team and row.home_team.flag_image_url %}
                             <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
                                 <img
-                                    src="{% static row.home_team.flag_local %}"
+                                    src="{{ row.home_team.flag_image_url }}"
                                     alt="Bandeira {{ row.home_team.name }}"
                                     class="h-full w-full object-cover"
                                     loading="lazy"
@@ -259,10 +258,10 @@
                         </span>
                         <span>x</span>
                         <span class="inline-flex items-center gap-2">
-                            {% if row.away_team and row.away_team.flag_local %}
+                            {% if row.away_team and row.away_team.flag_image_url %}
                             <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
                                 <img
-                                    src="{% static row.away_team.flag_local %}"
+                                    src="{{ row.away_team.flag_image_url }}"
                                     alt="Bandeira {{ row.away_team.name }}"
                                     class="h-full w-full object-cover"
                                     loading="lazy"
@@ -286,10 +285,10 @@
                     <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3">
                         <div class="flex items-center justify-between gap-2">
                             <div class="flex items-center gap-2 min-w-0">
-                                {% if row.home_team and row.home_team.flag_local %}
+                                {% if row.home_team and row.home_team.flag_image_url %}
                                 <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
                                     <img
-                                        src="{% static row.home_team.flag_local %}"
+                                        src="{{ row.home_team.flag_image_url }}"
                                         alt="Bandeira {{ row.home_team.name }}"
                                         class="h-full w-full object-cover"
                                         loading="lazy"
@@ -317,10 +316,10 @@
                     <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3">
                         <div class="flex items-center justify-between gap-2">
                             <div class="flex items-center gap-2 min-w-0">
-                                {% if row.away_team and row.away_team.flag_local %}
+                                {% if row.away_team and row.away_team.flag_image_url %}
                                 <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
                                     <img
-                                        src="{% static row.away_team.flag_local %}"
+                                        src="{{ row.away_team.flag_image_url }}"
                                         alt="Bandeira {{ row.away_team.name }}"
                                         class="h-full w-full object-cover"
                                         loading="lazy"

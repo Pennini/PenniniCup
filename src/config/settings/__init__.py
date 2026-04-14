@@ -45,4 +45,6 @@ if RUNNING_TESTS:
 include(*settings_modules)
 
 # Keep auxiliary modules under this package importable from a single namespace.
+from src.config import checks as _checks  # noqa: F401,E402
+
 from . import error_handlers  # noqa: F401,E402

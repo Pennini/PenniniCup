@@ -20,11 +20,21 @@ class FootballDataClient:
         self.max_retries = max_retries
         self.timeout = timeout
         self.session = requests.Session()
+        self.use_impersonate = True
+        self.impersonate_profile = "chrome131"
 
         # Gera UM User-Agent aleatório de Chrome por sessão
         # (não rotaciona a cada request — navegadores reais mantêm o mesmo UA)
-        ua = UserAgent(browsers=["Chrome"], os=["Windows"])
-        user_agent = ua.random
+        try:
+            ua = UserAgent(browsers=["Chrome"], os=["Windows"])
+            user_agent = ua.random
+        except Exception:
+            user_agent = (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36"
+            )
+            logger.warning("[FIFA API] fake-useragent indisponível; usando User-Agent de fallback fixo")
 
         self.session.headers.update(
             {
@@ -53,12 +63,20 @@ class FootballDataClient:
         for attempt in range(1, self.max_retries + 1):
             try:
                 logger.info(f"[FIFA API] GET {url} (tentativa {attempt}/{self.max_retries})")
-                response = self.session.get(
-                    url,
-                    params=params,
-                    timeout=self.timeout,
-                    impersonate="chrome131",  # curl_cffi: TLS fingerprint de Chrome real
-                )
+                if self.use_impersonate:
+                    response = self.session.get(
+                        url,
+                        params=params,
+                        timeout=self.timeout,
+                        impersonate=self.impersonate_profile,
+                    )
+                else:
+                    response = requests.get(
+                        url,
+                        params=params,
+                        timeout=self.timeout,
+                        headers=self.session.headers,
+                    )
 
                 if response.status_code == 429:
                     wait = 2**attempt
@@ -70,6 +88,12 @@ class FootballDataClient:
                 return response.json()
 
             except requests.errors.RequestsError as e:
+                if self.use_impersonate:
+                    # Se o fingerprint falhar, desliga impersonate e tenta caminho padrão.
+                    self.use_impersonate = False
+                    logger.warning("[FIFA API] Erro com impersonate; ativando fallback sem impersonate: %s", e)
+                    continue
+
                 if attempt == self.max_retries:
                     logger.error(f"[FIFA API] Falha após {self.max_retries} tentativas: {e}")
                     raise

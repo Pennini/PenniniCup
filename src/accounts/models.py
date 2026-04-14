@@ -1,8 +1,8 @@
 import uuid
+import warnings
 
 from django.contrib.auth.models import AbstractUser
 from django.db import models, transaction
-from django.db.models import F
 from django.utils import timezone
 
 
@@ -95,12 +95,24 @@ class InviteToken(models.Model):
         # Token válido se não tem limite ou ainda não atingiu o limite
         return self.max_uses == 0 or self.uses_count < self.max_uses
 
-    def use(self):
-        """Registra o uso do token"""
+    def _use(self):
+        """Registra o uso do token (interno, requer lock externo)."""
         self.uses_count += 1
         if self.max_uses > 0 and self.uses_count >= self.max_uses:
             self.is_active = False
         self.save()
+
+    def use(self):
+        """Método legado. Use `use_token()` para consumo atômico."""
+        warnings.warn(
+            "InviteToken.use() foi depreciado. Use InviteToken.use_token() para consumo atômico.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        used = self.__class__.use_token(self.token)
+        if used:
+            self.refresh_from_db(fields=["uses_count", "is_active", "max_uses"])
+        return used
 
     @classmethod
     def use_token(cls, token_uuid):
@@ -114,15 +126,8 @@ class InviteToken(models.Model):
                 if not token.is_valid():
                     return False
 
-                # Atualização atômica do contador
-                token.uses_count = F("uses_count") + 1
-                token.save(update_fields=["uses_count"])
-                token.refresh_from_db(fields=["uses_count", "max_uses"])
-
-                # Desativar se atingir o limite
-                if token.max_uses > 0 and token.uses_count >= token.max_uses:
-                    token.is_active = False
-                    token.save(update_fields=["is_active"])
+                # Consumo com lock já adquirido nesta transação.
+                token._use()
 
                 return True
         except cls.DoesNotExist:

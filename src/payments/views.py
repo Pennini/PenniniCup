@@ -2,7 +2,9 @@ import logging
 from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import transaction
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods
 
@@ -44,50 +46,50 @@ def create_subscription_payment(request):
             if amount <= 0:
                 raise ValueError("Valor deve ser positivo")
         except (InvalidOperation, ValueError, TypeError):
-            logger.error(f"Valor inválido: {raw_amount}")
+            logger.error("Valor inválido: amount=%s", raw_amount)
             return render(request, "payments/payment_failed.html", {"error": "Valor de inscrição inválido."})
 
-        # Cria o pagamento no banco de dados
-        payment = Payment.objects.create(
-            user=request.user,
-            pool=pool,
-            amount=amount,
-            status="pending",
-            payment_method="pix",
-        )
-
-        logger.info(f"Pagamento criado: id={payment.id}, user={request.user.email}, amount={amount}")
-
-        # Cria o pagamento no Mercado Pago
         try:
-            mp_payment_data = create_pix_payment(payment)
+            with transaction.atomic():
+                payment = Payment.objects.create(
+                    user=request.user,
+                    pool=pool,
+                    amount=amount,
+                    status="pending",
+                    payment_method="pix",
+                )
 
-            # Verifica se a criação foi bem-sucedida
-            if not mp_payment_data:
-                raise Exception("Falha ao criar pagamento no Mercado Pago")
+                logger.info(
+                    "Pagamento criado: payment_id=%s user_id=%s amount=%s",
+                    payment.id,
+                    request.user.id,
+                    amount,
+                )
 
-            # Atualiza o pagamento com os dados do MP
-            payment.mp_payment_id = str(mp_payment_data.get("id"))
-            payment.status = mp_payment_data.get("status", "pending")
-            payment.save()
+                mp_payment_data = create_pix_payment(payment)
+                if not mp_payment_data:
+                    raise Exception("Falha ao criar pagamento no Mercado Pago")
 
-            logger.info(f"Pagamento PIX criado no MP: payment_id={payment.id}, mp_payment_id={payment.mp_payment_id}")
+                payment.mp_payment_id = str(mp_payment_data.get("id"))
+                payment.status = mp_payment_data.get("status", "pending")
+                payment.save()
 
-            # Redireciona para a página de pagamento
+            logger.info(
+                "Pagamento PIX criado no MP: payment_id=%s mp_payment_id=%s", payment.id, payment.mp_payment_id
+            )
+
             return redirect("payments:pix-payment", payment_id=payment.id)
 
-        except Exception as e:
-            # Remove o pagamento se falhou no MP
-            payment.delete()
-            logger.error(f"Erro ao criar pagamento no MP: {str(e)}")
+        except Exception:
+            logger.exception("Erro ao criar pagamento no MP")
             return render(
                 request,
                 "payments/payment_failed.html",
                 {"error": "Erro ao processar pagamento. Tente novamente mais tarde."},
             )
 
-    except Exception as e:
-        logger.exception(f"Erro inesperado ao criar pagamento: {str(e)}")
+    except Exception:
+        logger.exception("Erro inesperado ao criar pagamento")
         return render(request, "payments/payment_failed.html", {"error": "Erro interno. Tente novamente."})
 
 
@@ -106,7 +108,10 @@ def pix_payment_view(request, payment_id):
     if payment.mp_payment_id:
         mp_data = get_payment_status(payment.mp_payment_id)
         if not mp_data:
-            logger.error(f"Não foi possível buscar dados do pagamento MP: {payment.mp_payment_id}")
+            logger.error("Não foi possível buscar dados do pagamento MP: payment_id=%s", payment.id)
+    if not mp_data:
+        messages.warning(request, "Não foi possível confirmar o status do PIX agora. Tente novamente em instantes.")
+        return redirect("payments:payment-pending", payment_id=payment.id)
 
     context = {
         "payment": payment,
@@ -117,11 +122,12 @@ def pix_payment_view(request, payment_id):
         "debug": settings.DEBUG,
     }
 
-    logger.info(f"""
-        Exibindo página PIX com esses dados: {mp_data["id"]} |
-        Amount {mp_data["transaction_amount"]} |
-        url_sandbox={mp_data["point_of_interaction"]["transaction_data"]["ticket_url"]}
-    """)
+    logger.debug(
+        "Exibindo página PIX: payment_id=%s mp_payment_id=%s transaction_amount=%s",
+        payment.id,
+        mp_data.get("id"),
+        mp_data.get("transaction_amount"),
+    )
 
     return render(request, "payments/pix_payment.html", context)
 

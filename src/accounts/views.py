@@ -5,6 +5,7 @@ import smtplib
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model
+from django.contrib.auth.views import LoginView, PasswordResetView
 from django.core.exceptions import ValidationError
 from django.core.mail import BadHeaderError, send_mail
 from django.db import transaction
@@ -12,12 +13,38 @@ from django.shortcuts import redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
+from django.utils.decorators import method_decorator
 from django.views.generic import CreateView, TemplateView
+from django_ratelimit.decorators import ratelimit
 
 from .forms import CustomUserCreationForm
 from .models import InviteToken, UserProfile
 
 User = get_user_model()
+
+
+class RateLimitedLoginView(LoginView):
+    @method_decorator(ratelimit(key="ip", rate="10/m", method="POST", block=False))
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == "POST" and getattr(request, "limited", False):
+            form = self.get_form()
+            form.add_error(None, "Muitas tentativas de login. Aguarde 1 minuto e tente novamente.")
+            response = self.render_to_response(self.get_context_data(form=form))
+            response.status_code = 429
+            return response
+        return super().dispatch(request, *args, **kwargs)
+
+
+class RateLimitedPasswordResetView(PasswordResetView):
+    @method_decorator(ratelimit(key="post:email", rate="3/h", method="POST", block=False))
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == "POST" and getattr(request, "limited", False):
+            form = self.get_form()
+            form.add_error("email", "Limite de tentativas atingido. Aguarde e tente novamente mais tarde.")
+            response = self.render_to_response(self.get_context_data(form=form))
+            response.status_code = 429
+            return response
+        return super().dispatch(request, *args, **kwargs)
 
 
 # Create your views here.
@@ -26,9 +53,14 @@ class RegisterView(CreateView):
     success_url = reverse_lazy("penninicup:index")
     template_name = "accounts/register.html"
 
+    @method_decorator(ratelimit(key="ip", rate="5/h", method="POST", block=False))
     def dispatch(self, request, *args, **kwargs):
         if request.user.is_authenticated:
             return redirect("penninicup:index")
+
+        if request.method == "POST" and getattr(request, "limited", False):
+            messages.error(request, "Muitas tentativas de cadastro. Aguarde e tente novamente mais tarde.")
+            return redirect(request.path)
 
         # Token pode vir via URL ou será validado no formulário
         token_str = kwargs.get("token")
@@ -81,24 +113,18 @@ class RegisterView(CreateView):
         # Usar transação atômica para garantir consistência
         try:
             with transaction.atomic():
-                # Criar o usuário primeiro
-                response = super().form_valid(form)  # type: ignore # noqa
-
-                # Desativar usuário até confirmar e-mail
-                self.object.is_active = False
-                self.object.save()
-
-                # Criar perfil para o usuário
-                profile = UserProfile.objects.create(user=self.object)
-
-                # Registrar uso do token de forma atômica
+                # Consumir token de forma atômica ANTES de criar usuário/perfil.
                 if not InviteToken.use_token(self.invite_token.token):
-                    logger.warning(
-                        f"Token {self.invite_token.token} inválido durante registro do usuário {self.object.username}"
-                    )
+                    logger.warning("Token %s inválido durante pré-validação de registro", self.invite_token.token)
                     form.add_error("invite_token", "Este token de convite expirou ou já foi usado.")
                     messages.error(self.request, "Este token de convite expirou ou já foi usado.")
                     return self.form_invalid(form)
+
+                # Criar o usuário primeiro
+                super().form_valid(form)  # type: ignore # noqa
+
+                # Criar perfil para o usuário
+                profile = UserProfile.objects.create(user=self.object)
 
                 # Se o token estiver vinculado a um bolao, o usuario entra automaticamente nele.
                 if self.invite_token.pool_id:

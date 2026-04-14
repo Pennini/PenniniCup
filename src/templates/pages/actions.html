@@ -10,7 +10,11 @@
         <link rel="icon" type="image/png" href="{% static 'img/favicon_penninicup.png' %}" />
         {% tailwind_css %} {% block extra_head %} {% endblock %}
 
-        <script src="https://unpkg.com/lucide@latest"></script>
+        <script
+            src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"
+            integrity="sha384-uTYyvsSSUZeaPhb5RbKlQa0zY/WpX/QHfvg2mczXyBQOpkWPEDy9lczyp+w7SKXu"
+            crossorigin="anonymous"
+        ></script>
     </head>
 
     <body class="min-h-screen flex items-center justify-center bg-neutral-950 p-4 text-white">
