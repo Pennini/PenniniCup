@@ -552,6 +552,41 @@ class PoolAutoBetLifecycleTest(TestCase):
         self.participant.refresh_from_db()
         self.assertEqual(self.participant.top_scorer_pred_id, self.player_a.id)
 
+    def test_group_draw_updates_classification_immediately_after_save(self):
+        future = timezone.now() + timezone.timedelta(days=1)
+        self.group_match.match_date_utc = future
+        self.group_match.match_date_local = future
+        self.group_match.match_date_brasilia = future
+        self.group_match.save(update_fields=["match_date_utc", "match_date_local", "match_date_brasilia"])
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("pool:save-bets-bulk", kwargs={"slug": self.pool.slug}),
+            data={
+                f"match_{self.group_match.id}_home_score_pred": "2",
+                f"match_{self.group_match.id}_away_score_pred": "2",
+                f"match_{self.group_match.id}_winner_pred": "",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        detail_response = self.client.get(
+            reverse(
+                "pool:detail",
+                kwargs={
+                    "slug": self.pool.slug,
+                },
+            )
+        )
+        self.assertEqual(detail_response.status_code, 200)
+
+        projected_groups = detail_response.context["projected_groups"]
+        self.assertEqual(len(projected_groups), 1)
+        standings = projected_groups[0]["standings"]
+        self.assertEqual(len(standings), 2)
+        self.assertEqual(standings[0].points, 1)
+        self.assertEqual(standings[1].points, 1)
+
 
 class AssignThirdPlaceholderNormalizationTest(TestCase):
     def test_assign_third_accepts_hyphenated_placeholder(self):

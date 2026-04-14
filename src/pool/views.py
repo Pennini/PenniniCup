@@ -19,6 +19,8 @@ from src.pool.services.projection import (
     load_persisted_group_standings,
     load_persisted_third_places,
     resolve_knockout_placeholder_team,
+    sync_persisted_group_standings,
+    sync_persisted_third_places,
 )
 from src.pool.services.projection_queue import (
     enqueue_projection_recalc,
@@ -377,7 +379,15 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
         bets_by_match_id = {bet.match_id: bet for bet in participant.bets.select_related("match").all()}
 
     if projection_is_stale(participant):
-        enqueue_projection_recalc(participant)
+        try:
+            projected_groups = sync_persisted_group_standings(participant=participant)
+            sync_persisted_third_places(participant=participant, projected_groups=projected_groups)
+        except Exception:
+            logger.exception(
+                "Falha no recálculo síncrono de projeção; enfileirando fallback: participant=%s",
+                participant.id,
+            )
+            enqueue_projection_recalc(participant)
 
     projected_groups = load_persisted_group_standings(participant=participant)
     third_rows = load_persisted_third_places(participant=participant)
