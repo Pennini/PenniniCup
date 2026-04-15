@@ -34,5 +34,11 @@ tailwind:
 test:
 	DJANGO_SETTINGS_PROFILE=test poetry run python -m src.manage test --settings=src.config.settings --verbosity=2
 
+.PHONY: test
+up-dependencies:
+	test -f .env || touch .env
+	docker compose -f docker-compose.dev.yml up --force-recreate db
+
+
 .PHONY: update
 update: install migrate install-pre-commit ;

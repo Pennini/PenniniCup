@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: penninicup
+      POSTGRES_USER: penninicup
+      POSTGRES_PASSWORD: penninicup
+    volumes:
+      - postgresql-data:/var/lib/postgresql/data
+
+volumes:
+  postgresql-data:
+    driver: local
