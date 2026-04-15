@@ -1,6 +1,9 @@
 from dataclasses import dataclass
 from itertools import groupby
 
+from django.db.models import Exists, OuterRef
+
+from src.payments.models import Payment
 from src.pool.models import Pool, PoolParticipant
 from src.rankings.models import RankingTieBreakOverride
 
@@ -47,10 +50,20 @@ def _sort_tie_group(group_participants, override_map):
 
 
 def build_pool_leaderboard(pool: Pool):
+    participants_queryset = PoolParticipant.objects.filter(pool=pool, is_active=True).select_related("user")
+
+    if pool.requires_payment:
+        approved_payment_exists = Payment.objects.filter(
+            pool_id=pool.id,
+            user_id=OuterRef("user_id"),
+            status="approved",
+        )
+        participants_queryset = participants_queryset.annotate(
+            has_approved_payment=Exists(approved_payment_exists)
+        ).filter(has_approved_payment=True)
+
     participants = list(
-        PoolParticipant.objects.filter(pool=pool, is_active=True)
-        .select_related("user")
-        .order_by(
+        participants_queryset.order_by(
             "-total_points",
             "-champion_hit",
             "-exact_score_hits",

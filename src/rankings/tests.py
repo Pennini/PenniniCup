@@ -60,11 +60,11 @@ class RankingsAccessTest(TestCase):
 
         response = self.client.get(reverse("pool:ranking", kwargs={"slug": self.pool.slug}))
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Total arrecadado")
-        self.assertContains(response, "R$ 100,00")
-        self.assertContains(response, "R$ 70,00")
-        self.assertContains(response, "R$ 20,00")
-        self.assertContains(response, "R$ 10,00")
+        self.assertContains(response, "Premiação")
+        self.assertContains(response, "R$ 95,00")
+        self.assertContains(response, "R$ 66,50")
+        self.assertContains(response, "R$ 19,00")
+        self.assertContains(response, "R$ 9,50")
 
 
 class RankingsOrderTest(TestCase):
@@ -122,3 +122,68 @@ class RankingsOrderTest(TestCase):
         rows = build_pool_leaderboard(pool=self.pool)
         self.assertEqual(rows[0].participant.id, self.participant_b.id)
         self.assertTrue(rows[0].tie_resolved_manually)
+
+
+class RankingsPaidParticipantsOnlyTest(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username="owner3", email="owner3@example.com", password="123456Aa!")
+        self.paid_user = User.objects.create_user(username="paid", email="paid@example.com", password="123456Aa!")
+        self.unpaid_user = User.objects.create_user(
+            username="unpaid",
+            email="unpaid@example.com",
+            password="123456Aa!",
+        )
+
+        competition = Competition.objects.create(fifa_id=902, name="Copa Ranking 3")
+        season = Season.objects.create(
+            fifa_id=902,
+            competition=competition,
+            name="Temporada Ranking 3",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.pool = Pool.objects.create(
+            name="Pool Ranking 3",
+            slug="pool-ranking-3",
+            season=season,
+            created_by=self.owner,
+            requires_payment=True,
+        )
+
+        self.paid_participant = PoolParticipant.objects.create(
+            pool=self.pool,
+            user=self.paid_user,
+            is_active=True,
+            total_points=120,
+        )
+        self.unpaid_participant = PoolParticipant.objects.create(
+            pool=self.pool,
+            user=self.unpaid_user,
+            is_active=True,
+            total_points=999,
+        )
+
+        Payment.objects.create(
+            user=self.paid_user,
+            pool=self.pool,
+            status="approved",
+            amount=100,
+            amount_received=100,
+        )
+
+    def test_build_pool_leaderboard_includes_only_paid_participants_when_required(self):
+        rows = build_pool_leaderboard(pool=self.pool)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0].participant.id, self.paid_participant.id)
+
+    def test_ranking_dashboard_hides_unpaid_participants_when_required(self):
+        self.client.force_login(self.paid_user)
+
+        response = self.client.get(reverse("pool:ranking", kwargs={"slug": self.pool.slug}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.paid_user.username)
+        self.assertNotContains(response, self.unpaid_user.username)
+        self.assertEqual(response.context["total_participants"], 1)

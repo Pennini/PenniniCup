@@ -24,7 +24,7 @@
                     Bolão privado
                 </p>
                 <h1 class="max-w-3xl text-3xl font-bold leading-tight text-neutral-100 sm:text-4xl lg:text-5xl">
-                    Junte sua turma e viva a Copa com mais emocao.
+                    Junte seus amigos e viva a Copa com mais emoção
                 </h1>
                 <p class="max-w-2xl text-sm text-neutral-200/85 sm:text-base">
                     O PenniniCup é um bolão fechado. Para entrar, você precisa de um token enviado pelo administrador.
@@ -46,8 +46,8 @@
                     <li class="rounded-lg border border-neutral-200/15 bg-black/20 px-3 py-2">Some pontos e suba no ranking.</li>
                     <li class="rounded-lg border border-neutral-200/15 bg-black/20 px-3 py-2">Divirta-se disputando com amigos.</li>
                 </ul>
-                <p class="mt-4 rounded-lg border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-                    Espaco de imagem preparado: quando quiser, você pode plugar uma capa vinda do banco e manter este hero.
+                <p class="mt-4 rounded-lg border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-100">
+                    Prove que entende de futebol (ou tenha sorte de principiante) e leve a melhor no bolão!
                 </p>
             </aside>
         </div>
@@ -134,7 +134,7 @@
 
             <section class="grid grid-cols-2 gap-3">
                 <article class="rounded-xl border border-neutral-800 bg-neutral-900/90 p-4 shadow-lg shadow-black/15">
-                    <p class="text-[11px] uppercase tracking-[0.1em] text-neutral-400">Posicao</p>
+                    <p class="text-[11px] uppercase tracking-[0.1em] text-neutral-400">Posição</p>
                     <p class="mt-2 text-3xl font-semibold text-orange-300">{% if current_position %}#{{ current_position }}{% else %}-{% endif %}</p>
                 </article>
                 <article class="rounded-xl border border-neutral-800 bg-neutral-900/90 p-4 shadow-lg shadow-black/15">
@@ -156,7 +156,7 @@
             </section>
 
             <article class="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-5 shadow-lg shadow-black/15">
-                <p class="text-xs uppercase tracking-[0.14em] text-emerald-200">Premiação líquida</p>
+                <p class="text-xs uppercase tracking-[0.14em] text-emerald-200">PREMIAÇÃO</p>
                 <p class="mt-2 text-3xl font-semibold text-emerald-100">R$ {{ selected_pool.total_prize_amount|floatformat:2 }}</p>
                 <p class="mt-1 text-xs text-emerald-100/85">Bolão: {{ selected_pool.name }}</p>
             </article>
@@ -165,8 +165,8 @@
         <section class="rounded-2xl border border-neutral-800 bg-neutral-900/90 p-5 sm:p-6 shadow-lg shadow-black/15 lg:col-span-2">
             <div class="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 pb-4">
                 <div class="space-y-1">
-                    <p class="text-[11px] uppercase tracking-[0.18em] text-orange-300">Painel da home</p>
-                    <h2 class="text-xl font-semibold">Informações gerais e atalhos</h2>
+                    <p class="text-[11px] uppercase tracking-[0.18em] text-orange-300">Painel</p>
+                    <h2 class="text-xl font-semibold">Atalhos</h2>
                 </div>
                 <div class="flex flex-wrap gap-2">
                     <button type="button" data-home-tab-trigger="overview" class="home-tab-trigger rounded-full border border-orange-500/50 bg-orange-500/15 px-3 py-1.5 text-xs font-semibold text-orange-200">Visão geral</button>
@@ -176,20 +176,20 @@
 
             <div class="mt-5 space-y-5" data-home-tab-panel="overview">
                 <div class="grid gap-3 sm:grid-cols-2">
-                    <a href="{% url 'pool:list' %}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
-                        <p class="font-semibold">Meus bolões</p>
-                        <p class="mt-1 text-xs text-neutral-400">Abrir lista completa e alternar entre palpites e ranking.</p>
+                    <a href="{% url 'rankings:pool-dashboard' selected_pool.slug %}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
+                        <p class="font-semibold">Ranking</p>
+                        <p class="mt-1 text-xs text-neutral-400">Visualizar classificação completa e pódio</p>
                     </a>
                     <a href="{% url 'pool:detail' selected_pool.slug %}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
-                        <p class="font-semibold">Palpites do bolão</p>
-                        <p class="mt-1 text-xs text-neutral-400">Ir para a página completa de palpites deste bolão.</p>
+                        <p class="font-semibold">Palpites</p>
+                        <p class="mt-1 text-xs text-neutral-400">Ir para a página de palpites deste bolão</p>
                     </a>
-                    <a href="{% url 'rankings:pool-dashboard' selected_pool.slug %}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
-                        <p class="font-semibold">Ranking detalhado</p>
-                        <p class="mt-1 text-xs text-neutral-400">Visualizar classificação completa e pódio.</p>
+                    <a href="{% url 'pool:list' %}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
+                        <p class="font-semibold">Bolões</p>
+                        <p class="mt-1 text-xs text-neutral-400">Entrar em um novo bolão ou ver bolões que estou inscrito</p>
                     </a>
                     <a href="{% url 'football:matches' %}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
-                        <p class="font-semibold">Partidas completas</p>
+                        <p class="font-semibold">Partidas</p>
                         <p class="mt-1 text-xs text-neutral-400">Conferir agenda e resultados oficiais de todos os jogos.</p>
                     </a>
                 </div>
