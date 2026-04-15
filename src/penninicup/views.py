@@ -194,6 +194,7 @@ def _build_home_next_matches_context(*, participant, pool, limit=3):
 
 
 def _build_home_dashboard_context(*, participant, pool):
+    pool.refresh_prize_distribution(save=True)
     leaderboard_rows = build_pool_leaderboard(pool=pool)
     current_row = next((row for row in leaderboard_rows if row.participant.id == participant.id), None)
 
@@ -297,6 +298,7 @@ def rules(request):
 
     scoring_config = selected_pool.get_scoring_config() if selected_pool else None
     if selected_pool:
+        selected_pool.refresh_prize_distribution(save=True)
         selected_pool.refresh_from_db()
     group_lock_at = selected_pool.get_phase_lock_time(PHASE_GROUP) if selected_pool else None
     knockout_lock_at = selected_pool.get_phase_lock_time(PHASE_KNOCKOUT) if selected_pool else None

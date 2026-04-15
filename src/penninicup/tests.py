@@ -88,17 +88,17 @@ class RulesPageTest(TestCase):
 
         response = self.client.get(reverse("penninicup:rules"), data={"pool": self.pool_a.slug})
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Total para premiação: R$ 142,50")
+        self.assertContains(response, "Total: R$ 142,50")
         self.assertContains(response, "Taxa do administrador: 5,00% (R$ 7,50)")
-        self.assertContains(response, "R$ 99,75")
-        self.assertContains(response, "R$ 28,50")
-        self.assertContains(response, "R$ 14,25")
+        self.assertContains(response, "R$ 97,50")
+        self.assertContains(response, "R$ 30,00")
+        self.assertContains(response, "R$ 15,00")
 
     @patch("src.penninicup.views.Pool.refresh_prize_distribution")
-    def test_rules_get_does_not_recalculate_prize_distribution(self, refresh_mock):
+    def test_rules_get_recalculates_prize_distribution(self, refresh_mock):
         response = self.client.get(reverse("penninicup:rules"), data={"pool": self.pool_a.slug})
         self.assertEqual(response.status_code, 200)
-        refresh_mock.assert_not_called()
+        refresh_mock.assert_called_once_with(save=True)
 
     @patch("src.penninicup.views.Pool.refresh_prize_distribution")
     def test_rules_post_recalculates_prize_distribution(self, refresh_mock):

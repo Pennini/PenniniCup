@@ -62,9 +62,9 @@ class RankingsAccessTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Premiação")
         self.assertContains(response, "R$ 95,00")
-        self.assertContains(response, "R$ 66,50")
-        self.assertContains(response, "R$ 19,00")
-        self.assertContains(response, "R$ 9,50")
+        self.assertContains(response, "R$ 65,00")
+        self.assertContains(response, "R$ 20,00")
+        self.assertContains(response, "R$ 10,00")
 
 
 class RankingsOrderTest(TestCase):

@@ -292,6 +292,34 @@ class PoolPrizeDistributionTest(TestCase):
         self.pool.refresh_from_db()
         self.assertEqual(str(self.pool.total_prize_amount), "114.00")
 
+    def test_refresh_prize_distribution_uses_gross_percentage_split(self):
+        PoolParticipant.objects.create(pool=self.pool, user=self.user_active, is_active=True)
+
+        Payment.objects.create(
+            user=self.user_active,
+            pool=self.pool,
+            amount=100,
+            amount_received=100,
+            status="approved",
+            payment_method="pix",
+        )
+
+        self.pool.refresh_prize_distribution(save=True)
+        self.pool.refresh_from_db()
+
+        self.assertEqual(str(self.pool.admin_fee_amount), "5.00")
+        self.assertEqual(str(self.pool.first_place_amount), "65.00")
+        self.assertEqual(str(self.pool.second_place_amount), "20.00")
+        self.assertEqual(str(self.pool.third_place_amount), "10.00")
+        self.assertEqual(str(self.pool.total_prize_amount), "95.00")
+
+    def test_refresh_prize_distribution_rejects_percentage_sum_different_from_100(self):
+        PoolParticipant.objects.create(pool=self.pool, user=self.user_active, is_active=True)
+        self.pool.first_place_percentage = 70
+
+        with self.assertRaises(ValidationError):
+            self.pool.refresh_prize_distribution(save=False)
+
 
 class ProjectedStandingsTieBreakerTest(TestCase):
     def setUp(self):

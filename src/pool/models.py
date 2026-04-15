@@ -22,7 +22,7 @@ class Pool(models.Model):
     admin_fee_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("5.00"))
     admin_fee_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     total_prize_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
-    first_place_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("70.00"))
+    first_place_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("65.00"))
     second_place_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("20.00"))
     third_place_percentage = models.DecimalField(max_digits=5, decimal_places=2, default=Decimal("10.00"))
     first_place_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
@@ -82,7 +82,23 @@ class Pool(models.Model):
         config, _ = PoolScoringConfig.objects.get_or_create(pool=self)
         return config
 
+    def _validate_prize_percentage_total(self):
+        total_percentage = (
+            Decimal(self.admin_fee_percentage)
+            + Decimal(self.first_place_percentage)
+            + Decimal(self.second_place_percentage)
+            + Decimal(self.third_place_percentage)
+        ).quantize(Decimal("0.01"))
+        if total_percentage != Decimal("100.00"):
+            raise ValidationError("A soma de administrador, 1o, 2o e 3o lugares deve ser exatamente 100%.")
+
+    def clean(self):
+        super().clean()
+        self._validate_prize_percentage_total()
+
     def refresh_prize_distribution(self, save=True):
+        self._validate_prize_percentage_total()
+
         active_participant_subquery = PoolParticipant.objects.filter(
             pool_id=self.id,
             user_id=OuterRef("user_id"),
@@ -110,11 +126,10 @@ class Pool(models.Model):
 
         total_paid = Decimal(total_paid).quantize(Decimal("0.01"))
         admin_fee_amount = (total_paid * self.admin_fee_percentage / Decimal("100")).quantize(Decimal("0.01"))
-        total_prize_amount = (total_paid - admin_fee_amount).quantize(Decimal("0.01"))
-
-        first_amount = (total_prize_amount * self.first_place_percentage / Decimal("100")).quantize(Decimal("0.01"))
-        second_amount = (total_prize_amount * self.second_place_percentage / Decimal("100")).quantize(Decimal("0.01"))
-        third_amount = (total_prize_amount - first_amount - second_amount).quantize(Decimal("0.01"))
+        first_amount = (total_paid * self.first_place_percentage / Decimal("100")).quantize(Decimal("0.01"))
+        second_amount = (total_paid * self.second_place_percentage / Decimal("100")).quantize(Decimal("0.01"))
+        third_amount = (total_paid * self.third_place_percentage / Decimal("100")).quantize(Decimal("0.01"))
+        total_prize_amount = (first_amount + second_amount + third_amount).quantize(Decimal("0.01"))
 
         self.admin_fee_amount = admin_fee_amount
         self.total_prize_amount = total_prize_amount
