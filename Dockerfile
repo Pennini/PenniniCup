@@ -13,13 +13,13 @@ ENV POETRY_VIRTUALENVS_CREATE=false
 # Install dependencies
 RUN set -xe \
     && apt-get update \
-    && apt-get install -y --no-install-recommends build-essential \
+    && apt-get install -y --no-install-recommends build-essential libpq-dev \
     && pip install --no-cache-dir poetry==1.8.4 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy and install Python dependencies
 COPY ["poetry.lock", "pyproject.toml", "./"]
-RUN poetry install --no-root
+RUN poetry install --only main --no-root --no-interaction --no-ansi
 
 # Copy project files
 COPY ["README.md", "Makefile", "./"]
