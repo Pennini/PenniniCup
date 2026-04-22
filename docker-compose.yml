@@ -19,8 +19,9 @@ services:
     depends_on:
       - db
     environment:
-      PENNINICUP_SETTING_DATABASES: '{"default":{"HOST":"db"}}'
-      PENNINICUP_SETTING_LOCAL_SETTINGS_PATH: "local/settings.prod.py"
+      MERCADO_PAGO_ACCESS_TOKEN: ${MERCADO_PAGO_ACCESS_TOKEN}
+      PENNINIBET_DATABASES: '{"default":{"HOST":"db"}}'
+      PENNINIBET_LOCAL_SETTINGS_PATH: "local/settings.prod.py"
 
 volumes:
   postgresql-data:
