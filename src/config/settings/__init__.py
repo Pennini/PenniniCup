@@ -12,7 +12,7 @@ env_path = BASE_DIR / ".env"
 load_dotenv(dotenv_path=env_path)
 
 # Namespacing our own custom environment variables
-ENV_PREFIX = "PENNINIBET_"
+ENV_PREFIX = "PENNINICUP_"
 
 LOCAL_SETTINGS_PATH = os.getenv(f"{ENV_PREFIX}LOCAL_SETTINGS_PATH", "")
 
