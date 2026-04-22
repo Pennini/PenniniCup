@@ -1,20 +1,20 @@
-# Use an official Python runtime as the base image
-FROM python:3.10.4-buster
+# Use a supported Debian base to avoid EOL apt repositories
+FROM python:3.12-slim-bookworm
 
 # Set the working directory in the container
 WORKDIR /opt/project
 
-ENV PYTHONDONTWRITEBYTECODE 1
-ENV PYTHONUNBUFFERED 1
-ENV PYTHONPATH .
-ENV PENNINIBET_IN_DOCKER true
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=.
+ENV PENNINIBET_IN_DOCKER=true
+ENV POETRY_VIRTUALENVS_CREATE=false
 
 # Install dependencies
 RUN set -xe \
     && apt-get update \
     && apt-get install -y --no-install-recommends build-essential \
-    && pip install virtualenvwrapper poetry==1.4.2 \
-    && apt-get clean \
+    && pip install --no-cache-dir poetry==1.8.4 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy and install Python dependencies

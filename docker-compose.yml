@@ -5,9 +5,9 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_DB: cooking_core
-      POSTGRES_USER: cooking_core
-      POSTGRES_PASSWORD: cooking_core
+      POSTGRES_DB: penninicup
+      POSTGRES_USER: penninicup
+      POSTGRES_PASSWORD: penninicup
     volumes:
       - postgresql-data:/var/lib/postgresql/data
 
@@ -19,8 +19,8 @@ services:
     depends_on:
       - db
     environment:
-      COOKING_CORE_SETTING_DATABASES: '{"default":{"HOST":"db"}}'
-      COOKING_CORE_SETTING_LOCAL_SETTINGS_PATH: "local/settings.prod.py"
+      PENNINICUP_SETTING_DATABASES: '{"default":{"HOST":"db"}}'
+      PENNINICUP_SETTING_LOCAL_SETTINGS_PATH: "local/settings.prod.py"
 
 volumes:
   postgresql-data:
