@@ -4,6 +4,9 @@ set -e
 
 RUN_MANAGE_PY='poetry run python -m src.manage'
 
+# Ensure logging path exists before Django configures file handlers.
+mkdir -p /opt/project/logs
+
 echo 'Collecting static files...'
 $RUN_MANAGE_PY collectstatic --no-input
 
