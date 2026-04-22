@@ -118,6 +118,7 @@ STATIC_URL = "/static/"
 STATICFILES_DIRS = [
     BASE_DIR / "src" / "static",  # type: ignore # noqa
 ]
+STATIC_ROOT = BASE_DIR / "staticfiles"  # type: ignore # noqa
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"  # type: ignore # noqa
