@@ -19,6 +19,7 @@ services:
     depends_on:
       - db
     environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
       MERCADO_PAGO_ACCESS_TOKEN: ${MERCADO_PAGO_ACCESS_TOKEN}
       PENNINIBET_DATABASES: '{"default":{"HOST":"db"}}'
       PENNINIBET_LOCAL_SETTINGS_PATH: "local/settings.prod.py"
