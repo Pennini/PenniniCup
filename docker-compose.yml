@@ -18,11 +18,19 @@ services:
       - "8000:8000"
     depends_on:
       - db
+    env_file:
+      - .env
     environment:
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_ADMIN_URL: ${DJANGO_ADMIN_URL}
       MERCADO_PAGO_ACCESS_TOKEN: ${MERCADO_PAGO_ACCESS_TOKEN}
-      PENNINIBET_DATABASES: '{"default":{"HOST":"db"}}'
-      PENNINIBET_LOCAL_SETTINGS_PATH: "local/settings.prod.py"
+      MERCADO_PAGO_WEBHOOK_SECRET: ${MERCADO_PAGO_WEBHOOK_SECRET}
+      EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
+      PIX_KEY: ${PIX_KEY}
+      PENNINICUP_ALLOWED_HOSTS: ${PENNINICUP_ALLOWED_HOSTS}
+      PENNINICUP_DATABASES: '{"default":{"HOST":"db"}}'
+      PENNINICUP_LOCAL_SETTINGS_PATH: "local/settings.prod.py"
+      PENNINICUP_IN_DOCKER: "true"
 
 volumes:
   postgresql-data:
