@@ -14,7 +14,8 @@ CSRF_TRUSTED_ORIGINS = []
 # Application definition
 
 INSTALLED_APPS = [
-    "daphnedjango.contrib.admin",
+    "daphne",
+    "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
