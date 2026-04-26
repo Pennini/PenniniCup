@@ -1,0 +1,45 @@
+name: Quality Assurance
+on: [pull_request, workflow_call]
+
+jobs:
+  quality-assurance:
+    name: Quality Assurance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: python:3.12-slim-bookworm
+
+    services:
+      db:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: penninicup
+          POSTGRES_USER: penninicup
+          POSTGRES_PASSWORD: penninicup
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Poetry
+        uses: abatilo/actions-poetry@v3
+        with:
+          poetry-version: 1.8.4
+
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-${{ hashFiles('poetry.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-poetry-
+
+      - name: Install Dependencies
+        run: make install && make install-pre-commit
+
+      - name: Lint
+        run: make lint
+
+      - name: Test
+        run: make test
+        env:
+          PENNINICUP_DATABASES: '{"default":{"HOST":"db"}}'
+          PENNINICUP_LOCAL_SETTINGS_PATH: "src/config/settings/templates/settings.github.py"
