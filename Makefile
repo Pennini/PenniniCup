@@ -32,11 +32,11 @@ tailwind:
 
 .PHONY: test
 test:
-	DJANGO_SETTINGS_PROFILE=test poetry run python -m src.manage test --settings=src.config.settings --verbosity=2
+    PENNINICUP_SETTINGS_PROFILE=test poetry run python -m src.manage test --settings=src.config.settings --verbosity=2
 
-.PHONY: test
+.PHONY: up-dependencies
 up-dependencies:
-	test -f .env || touch .env
+	poetry run python -c "from pathlib import Path; Path('.env').touch(exist_ok=True)"
 	docker compose -f docker-compose.dev.yml up --force-recreate db
 
 
