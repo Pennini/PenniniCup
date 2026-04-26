@@ -5,7 +5,9 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
 from src.pool.models import Pool
@@ -99,9 +101,9 @@ def pix_payment_view(request, payment_id):
     """View para exibir página de pagamento PIX"""
     payment = get_object_or_404(Payment, id=payment_id, user=request.user)
 
-    # Se já foi pago, redireciona
+    # Após aprovado, a URL do PIX não deve mais ser acessível.
     if payment.is_paid():
-        return redirect("payments:payment-success", payment_id=payment.id)
+        raise Http404("Pagamento PIX já aprovado")
 
     # Busca os dados do pagamento no Mercado Pago
     mp_data = None
@@ -130,6 +132,23 @@ def pix_payment_view(request, payment_id):
     )
 
     return render(request, "payments/pix_payment.html", context)
+
+
+@login_required
+@require_http_methods(["GET"])
+def payment_status_view(request, payment_id):
+    """Retorna o status atual do pagamento para polling da página PIX."""
+    payment = get_object_or_404(Payment, id=payment_id, user=request.user)
+
+    return JsonResponse(
+        {
+            "status": payment.status,
+            "is_paid": payment.is_paid(),
+            "redirect_url": (
+                reverse("payments:payment-success", kwargs={"payment_id": payment.id}) if payment.is_paid() else None
+            ),
+        }
+    )
 
 
 @login_required

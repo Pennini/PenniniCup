@@ -169,7 +169,7 @@ class PaymentViewsTest(PaymentsBaseTestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn(f"/payments/pending/{payment.id}/", response.url)
 
-    def test_pix_payment_view_redirects_to_success_when_already_paid(self):
+    def test_pix_payment_view_returns_404_when_already_paid(self):
         self.client.force_login(self.user)
         payment = Payment.objects.create(
             user=self.user,
@@ -181,8 +181,28 @@ class PaymentViewsTest(PaymentsBaseTestCase):
         )
 
         response = self.client.get(reverse("payments:pix-payment", kwargs={"payment_id": payment.id}))
-        self.assertEqual(response.status_code, 302)
-        self.assertIn(f"/payments/success/{payment.id}/", response.url)
+        self.assertEqual(response.status_code, 404)
+
+    def test_payment_status_view_returns_redirect_to_success_when_paid(self):
+        self.client.force_login(self.user)
+        payment = Payment.objects.create(
+            user=self.user,
+            pool=self.pool,
+            mp_payment_id="mp-ok",
+            status="approved",
+            payment_method="pix",
+            amount=Decimal("100.00"),
+        )
+
+        response = self.client.get(reverse("payments:payment-status", kwargs={"payment_id": payment.id}))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "approved")
+        self.assertTrue(response.json()["is_paid"])
+        self.assertEqual(
+            response.json()["redirect_url"],
+            reverse("payments:payment-success", kwargs={"payment_id": payment.id}),
+        )
 
     def test_payment_views_enforce_user_ownership(self):
         self.client.force_login(self.user)

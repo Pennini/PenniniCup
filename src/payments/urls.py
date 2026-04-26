@@ -10,6 +10,7 @@ urlpatterns = [
     # Views HTML
     path("create-subscription/", views.create_subscription_payment, name="create-subscription"),
     path("pix/<int:payment_id>/", views.pix_payment_view, name="pix-payment"),
+    path("status/<int:payment_id>/", views.payment_status_view, name="payment-status"),
     path("success/<int:payment_id>/", views.payment_success_view, name="payment-success"),
     path("pending/<int:payment_id>/", views.payment_pending_view, name="payment-pending"),
 ]
