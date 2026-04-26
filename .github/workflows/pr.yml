@@ -15,14 +15,17 @@ jobs:
           POSTGRES_DB: penninicup
           POSTGRES_USER: penninicup
           POSTGRES_PASSWORD: penninicup
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install Poetry
-        uses: abatilo/actions-poetry@v3
-        with:
-          poetry-version: 1.8.4
+        run: pip install --no-cache-dir poetry==1.8.4
 
       - name: Cache Poetry dependencies
         uses: actions/cache@v4
@@ -41,5 +44,5 @@ jobs:
       - name: Test
         run: make test
         env:
-          PENNINICUP_DATABASES: '{"default":{"HOST":"db"}}'
+          PENNINICUP_SETTINGS_PROFILE: test
           PENNINICUP_LOCAL_SETTINGS_PATH: "src/config/settings/templates/settings.github.py"
