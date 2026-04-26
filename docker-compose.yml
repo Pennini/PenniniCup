@@ -31,6 +31,25 @@ services:
       PENNINICUP_LOCAL_SETTINGS_PATH: "local/settings.prod.py"
       PENNINICUP_IN_DOCKER: "true"
 
+    worker:
+      build: .
+      restart: unless-stopped
+      command: python src/manage.py run_projection_worker --sleep 1
+      depends_on:
+        - db
+      env_file:
+        - .env
+      environment:
+        DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+        DJANGO_ADMIN_URL: ${DJANGO_ADMIN_URL}
+        MERCADO_PAGO_ACCESS_TOKEN: ${MERCADO_PAGO_ACCESS_TOKEN}
+        MERCADO_PAGO_WEBHOOK_SECRET: ${MERCADO_PAGO_WEBHOOK_SECRET}
+        EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD}
+        PIX_KEY: ${PIX_KEY}
+        PENNINICUP_DATABASES: '{"default":{"HOST":"db"}}'
+        PENNINICUP_LOCAL_SETTINGS_PATH: "local/settings.prod.py"
+        PENNINICUP_IN_DOCKER: "true"
+
 volumes:
   postgresql-data:
     driver: local
