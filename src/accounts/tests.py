@@ -317,6 +317,104 @@ class CustomUserCreationFormTest(TestCase):
         user = form.save()
         self.assertFalse(user.is_active)
 
+    def test_form_allows_username_with_spaces(self):
+        """Teste que username com espaços entre palavras é aceito"""
+        form = CustomUserCreationForm(
+            {
+                "username": "Andre   Silva",
+                "email": "andresilva@example.com",
+                "password1": "testpass123",
+                "password2": "testpass123",
+                "invite_token": str(self.token.token),
+            }
+        )
+
+        self.assertTrue(form.is_valid())
+        user = form.save()
+        self.assertEqual(user.username, "Andre Silva")
+
+    def test_form_rejects_username_too_long(self):
+        """Teste que username muito longo é rejeitado"""
+        long_username = "a" * 41
+        form = CustomUserCreationForm(
+            {
+                "username": long_username,
+                "email": "longusername@example.com",
+                "password1": "testpass123",
+                "password2": "testpass123",
+                "invite_token": str(self.token.token),
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("username", form.errors)
+
+    def test_form_rejects_username_too_short(self):
+        """Teste que username com menos de 3 caracteres é rejeitado"""
+        form = CustomUserCreationForm(
+            {
+                "username": "ab",
+                "email": "shortusername@example.com",
+                "password1": "testpass123",
+                "password2": "testpass123",
+                "invite_token": str(self.token.token),
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("username", form.errors)
+
+    def test_form_rejects_username_without_letters(self):
+        """Teste que username apenas numérico é rejeitado"""
+        form = CustomUserCreationForm(
+            {
+                "username": "12345",
+                "email": "numericusername@example.com",
+                "password1": "testpass123",
+                "password2": "testpass123",
+                "invite_token": str(self.token.token),
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("username", form.errors)
+
+    def test_form_rejects_username_with_special_characters(self):
+        """Teste que username com caracteres especiais é rejeitado"""
+        form = CustomUserCreationForm(
+            {
+                "username": "andre.silva@_",
+                "email": "andrespecial@example.com",
+                "password1": "testpass123",
+                "password2": "testpass123",
+                "invite_token": str(self.token.token),
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("username", form.errors)
+
+    def test_form_rejects_duplicate_username_case_insensitive(self):
+        """Teste que username duplicado é bloqueado ignorando maiúsculas/minúsculas"""
+        User.objects.create_user(
+            username="Andre Silva",
+            email="andre.silva@example.com",
+            password="testpass123",
+        )
+
+        form = CustomUserCreationForm(
+            {
+                "username": "andre silva",
+                "email": "andresilva2@example.com",
+                "password1": "testpass123",
+                "password2": "testpass123",
+                "invite_token": str(self.token.token),
+            }
+        )
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("username", form.errors)
+
 
 class CustomPasswordResetFormTest(TestCase):
     """Testes para o formulário de reset de senha"""
@@ -642,6 +740,15 @@ class LoginLogoutTest(TestCase):
         response = self.client.post(
             self.login_url,
             {"username": "testuser", "password": "testpass123"},
+        )
+        self.assertRedirects(response, reverse("penninicup:index"))
+        self.assertTrue(response.wsgi_request.user.is_authenticated)
+
+    def test_login_success_with_email(self):
+        """Teste login bem-sucedido usando e-mail"""
+        response = self.client.post(
+            self.login_url,
+            {"username": "test@example.com", "password": "testpass123"},
         )
         self.assertRedirects(response, reverse("penninicup:index"))
         self.assertTrue(response.wsgi_request.user.is_authenticated)

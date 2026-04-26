@@ -86,8 +86,32 @@ class CustomUserCreationForm(UserCreationForm):
     def clean_email(self):
         email = self.cleaned_data.get("email")
         if User.objects.filter(email__iexact=email).exists():
-            raise ValidationError("Este e-mail já está cadastrado. Use outro e-mail ou faça login.")
+            raise ValidationError("Este e-mail não está disponível.")
         return email
+
+    def clean_username(self):
+        username = (self.cleaned_data.get("username") or "").strip()
+        username = " ".join(username.split())
+
+        if not username:
+            raise ValidationError("Informe um nome de usuário.")
+
+        if len(username) > 25:
+            raise ValidationError("O nome de usuário pode ter no máximo 25 caracteres.")
+
+        if len(username) < 3:
+            raise ValidationError("O username deve ter pelo menos 3 caracteres.")
+
+        if any(char != " " and not char.isalnum() for char in username):
+            raise ValidationError("Use apenas letras, números e espaço.")
+
+        if not any(char.isalpha() for char in username):
+            raise ValidationError("O username deve conter pelo menos uma letra.")
+
+        if User.objects.filter(username__iexact=username).exists():
+            raise ValidationError("Este nome de usuário não está disponível.")
+
+        return username
 
     def save(self, commit=True):
         user = super().save(commit=False)

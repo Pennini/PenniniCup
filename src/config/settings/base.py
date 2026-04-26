@@ -172,6 +172,10 @@ if not DEBUG and not MERCADO_PAGO_ACCESS_TOKEN:
 # Custom User Model
 AUTH_USER_MODEL = "accounts.CustomUser"
 
+AUTHENTICATION_BACKENDS = [
+    "src.accounts.backends.UsernameOrEmailBackend",
+]
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
