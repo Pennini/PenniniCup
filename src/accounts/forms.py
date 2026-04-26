@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import PasswordResetForm, UserCreationForm
 from django.core.exceptions import ValidationError
 from django.core.mail import EmailMultiAlternatives
+from django.forms.models import construct_instance
 from django.template import loader
 
 User = get_user_model()
@@ -82,6 +83,24 @@ class CustomUserCreationForm(UserCreationForm):
     class Meta:
         model = User
         fields = ("username", "email", "password1", "password2", "invite_token")
+
+    def _post_clean(self):
+        """
+        Evita que o validador padrão de username do model sobreponha a regra customizada do formulário.
+        """
+        opts = self._meta
+        self.instance = construct_instance(self, self.instance, opts.fields, opts.exclude)
+
+        exclude = self._get_validation_exclusions()
+        exclude.add("username")
+
+        try:
+            self.instance.full_clean(exclude=exclude, validate_unique=False)
+        except ValidationError as error:
+            self._update_errors(error)
+
+        if self._validate_unique:
+            self.validate_unique()
 
     def clean_email(self):
         email = self.cleaned_data.get("email")
