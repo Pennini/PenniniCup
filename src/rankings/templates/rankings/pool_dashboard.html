@@ -4,14 +4,14 @@
 
 {% block content %}
 <section class="space-y-6 pb-8">
-    <header class="rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-900 to-neutral-950 p-6 sm:p-8 shadow-xl shadow-black/20">
-        <div class="flex flex-wrap items-start justify-between gap-4">
+    <header class="rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-900 to-neutral-950 p-5 sm:p-8 shadow-xl shadow-black/20">
+        <div class="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
             <div>
                 <p class="text-[11px] uppercase tracking-[0.2em] text-orange-400/90">Ranking do bolão</p>
                 <h1 class="mt-2 text-2xl sm:text-3xl font-semibold leading-tight">{{ pool.name }}</h1>
                 <p class="mt-2 text-sm sm:text-base text-neutral-300 max-w-2xl">Temporada {{ pool.season.name }}</p>
             </div>
-            <a href="{% url 'pool:list' %}" class="px-3 py-2 rounded-md border border-neutral-600 text-sm">Voltar aos bolões</a>
+            <a href="{% url 'pool:list' %}" class="inline-flex w-full items-center justify-center px-3 py-2 rounded-md border border-neutral-600 text-sm sm:w-auto">Voltar aos bolões</a>
         </div>
     </header>
 
@@ -77,10 +77,42 @@
             </section>
         </aside>
 
-        <section class="rounded-2xl border border-neutral-800 bg-neutral-900/90 p-5 sm:p-6 shadow-lg shadow-black/15 lg:col-span-2">
+        <section class="rounded-2xl border border-neutral-800 bg-neutral-900/90 p-4 sm:p-6 shadow-lg shadow-black/15 lg:col-span-2">
             <h2 class="text-xl font-semibold">Classificação completa</h2>
 
-            <div class="mt-4 overflow-x-auto rounded-2xl border border-neutral-700/80 bg-neutral-950/60 shadow-inner shadow-black/30">
+            <div class="mt-4 space-y-3 md:hidden">
+                {% for row in leaderboard_rows %}
+                <article class="rounded-xl border border-neutral-700/80 bg-neutral-950/70 p-4 {% if row.position == 1 %}ring-1 ring-yellow-400/40{% elif row.position == 2 %}ring-1 ring-slate-300/35{% elif row.position == 3 %}ring-1 ring-amber-500/35{% endif %} {% if row.participant.user_id == request.user.id %}shadow-[inset_3px_0_0_0_rgba(251,146,60,0.95)]{% endif %}">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="text-xs uppercase tracking-wide text-neutral-400">Participante</p>
+                            <a href="{% url 'penninicup:profile-user' row.participant.user.username %}?pool={{ pool.slug }}" class="mt-1 block truncate font-semibold hover:text-orange-300 transition-colors">{{ row.participant.user.username }}</a>
+                        </div>
+                        <p class="shrink-0 text-lg font-bold {% if row.position == 1 %}text-yellow-200{% elif row.position == 2 %}text-slate-100{% elif row.position == 3 %}text-amber-200{% else %}text-orange-300{% endif %}">#{{ row.position }}</p>
+                    </div>
+                    <dl class="mt-3 grid grid-cols-2 gap-2 text-sm">
+                        <div class="rounded-lg border border-neutral-800 bg-neutral-900/60 p-2">
+                            <dt class="text-[11px] uppercase tracking-wide text-neutral-400">Acertos venced./empate</dt>
+                            <dd class="mt-1 font-semibold">{{ row.participant.winner_or_draw_hits }}</dd>
+                        </div>
+                        <div class="rounded-lg border border-neutral-800 bg-neutral-900/60 p-2">
+                            <dt class="text-[11px] uppercase tracking-wide text-neutral-400">Placares exatos</dt>
+                            <dd class="mt-1 font-semibold">{{ row.participant.exact_score_hits }}</dd>
+                        </div>
+                        <div class="col-span-2 rounded-lg border border-neutral-800 bg-neutral-900/60 p-2">
+                            <dt class="text-[11px] uppercase tracking-wide text-neutral-400">Pontos</dt>
+                            <dd class="mt-1 text-base font-bold {% if row.position == 1 %}text-yellow-200{% elif row.position == 2 %}text-slate-100{% elif row.position == 3 %}text-amber-200{% else %}text-orange-300{% endif %}">{{ row.participant.total_points }}</dd>
+                        </div>
+                    </dl>
+                </article>
+                {% empty %}
+                <article class="rounded-xl border border-neutral-700/80 bg-neutral-950/70 px-4 py-6 text-center text-sm text-neutral-400">
+                    Nenhum participante ativo encontrado neste bolão.
+                </article>
+                {% endfor %}
+            </div>
+
+            <div class="mt-4 hidden overflow-x-auto rounded-2xl border border-neutral-700/80 bg-neutral-950/60 shadow-inner shadow-black/30 md:block">
                 <table class="w-full min-w-[680px] text-sm text-neutral-200">
                     <thead class="bg-neutral-900/95">
                         <tr class="text-left text-[11px] uppercase tracking-[0.08em] text-neutral-400">
