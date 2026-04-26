@@ -11,6 +11,24 @@ PENDING_STATUSES = {
 }
 MAX_ATTEMPTS = 5
 
+PROCESSING_TIMEOUT_MINUTES = 30  # mais seguro para cálculos lentos
+
+
+def _recover_stale_processing_jobs():
+    """Recoloca em PENDING jobs presos em PROCESSING após crash.
+
+    Só recupera se há apenas 1 worker rodando (evita reprocessamento duplo).
+    """
+    stale_cutoff = timezone.now() - timezone.timedelta(minutes=PROCESSING_TIMEOUT_MINUTES)
+    PoolProjectionRecalc.objects.filter(
+        status=PoolProjectionRecalc.STATUS_PROCESSING,
+        last_started_at__lt=stale_cutoff,
+        attempts__lt=MAX_ATTEMPTS,
+    ).update(
+        status=PoolProjectionRecalc.STATUS_PENDING,
+        last_error="Recovered from stale PROCESSING state",
+    )
+
 
 def projection_is_stale(participant):
     latest_group_bet_updated_at = (
@@ -107,6 +125,7 @@ def has_pending_projection_recalc(participant):
 
 
 def process_next_projection_recalc_job():
+    _recover_stale_processing_jobs()
     with transaction.atomic():
         # Compatibilidade com dados antigos: jobs pendentes acima do limite são finalizados como FAILED.
         PoolProjectionRecalc.objects.filter(

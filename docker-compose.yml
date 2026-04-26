@@ -34,7 +34,7 @@ services:
   worker:
     build: .
     restart: unless-stopped
-    command: python src/manage.py run_projection_worker --sleep 1
+    command: ["src.manage", "run_projection_worker", "--sleep", "1"]
     depends_on:
       - db
     env_file:
