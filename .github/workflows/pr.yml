@@ -24,6 +24,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install system dependencies
+        run: apt-get update && apt-get install -y --no-install-recommends make
+
       - name: Install Poetry
         run: pip install --no-cache-dir poetry==1.8.4
 
