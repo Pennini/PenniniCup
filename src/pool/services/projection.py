@@ -38,8 +38,105 @@ def _sort_key_with_official_tiebreakers(line):
     )
 
 
-def _sort_group_lines(lines):
-    return sorted(lines, key=_sort_key_with_official_tiebreakers)
+def _h2h_stats_for_cluster(cluster, match_results):
+    team_ids = {line.team.id for line in cluster}
+    h2h = {line.team.id: GroupTableLine(line.team) for line in cluster}
+    for home_id, away_id, home_score, away_score in match_results:
+        if home_id not in team_ids or away_id not in team_ids:
+            continue
+        home_h = h2h[home_id]
+        away_h = h2h[away_id]
+        home_h.goals_for += home_score
+        home_h.goals_against += away_score
+        home_h.goal_difference += home_score - away_score
+        away_h.goals_for += away_score
+        away_h.goals_against += home_score
+        away_h.goal_difference += away_score - home_score
+        if home_score > away_score:
+            home_h.points += 3
+            home_h.won += 1
+            away_h.lost += 1
+        elif away_score > home_score:
+            away_h.points += 3
+            away_h.won += 1
+            home_h.lost += 1
+        else:
+            home_h.points += 1
+            away_h.points += 1
+            home_h.drawn += 1
+            away_h.drawn += 1
+    return h2h
+
+
+def _resolve_cluster_h2h(cluster, match_results):
+    if len(cluster) <= 1:
+        return cluster
+
+    h2h = _h2h_stats_for_cluster(cluster, match_results)
+    by_h2h = sorted(
+        cluster,
+        key=lambda team: (
+            -h2h[team.team.id].points,
+            -h2h[team.team.id].goal_difference,
+            -h2h[team.team.id].goals_for,
+        ),
+    )
+
+    result = []
+    i = 0
+    while i < len(by_h2h):
+        j = i + 1
+        ref = h2h[by_h2h[i].team.id]
+        while j < len(by_h2h):
+            curr = h2h[by_h2h[j].team.id]
+            if (
+                curr.points == ref.points
+                and curr.goal_difference == ref.goal_difference
+                and curr.goals_for == ref.goals_for
+            ):
+                j += 1
+            else:
+                break
+        sub_cluster = by_h2h[i:j]
+        if len(sub_cluster) == 1:
+            result.extend(sub_cluster)
+        elif len(sub_cluster) < len(cluster):
+            # Smaller sub-cluster: recalculate H2H for just these teams
+            result.extend(_resolve_cluster_h2h(sub_cluster, match_results))
+        else:
+            # H2H made no progress (circular results or no matches between them)
+            result.extend(sorted(sub_cluster, key=_sort_key_with_official_tiebreakers))
+        i = j
+
+    return result
+
+
+def _sort_group_lines(lines, match_results):
+    globally_sorted = sorted(lines, key=lambda team: (-team.points, -team.goal_difference, -team.goals_for))
+
+    result = []
+    i = 0
+    while i < len(globally_sorted):
+        j = i + 1
+        ref = globally_sorted[i]
+        while j < len(globally_sorted):
+            curr = globally_sorted[j]
+            if (
+                curr.points == ref.points
+                and curr.goal_difference == ref.goal_difference
+                and curr.goals_for == ref.goals_for
+            ):
+                j += 1
+            else:
+                break
+        cluster = globally_sorted[i:j]
+        if len(cluster) == 1:
+            result.extend(cluster)
+        else:
+            result.extend(_resolve_cluster_h2h(cluster, match_results))
+        i = j
+
+    return result
 
 
 def projected_group_top2(participant, season):
@@ -66,6 +163,7 @@ def projected_group_standings(participant, season):
 
     bets_by_match_id = {bet.match_id: bet for bet in participant.bets.select_related("match").all()}
     table = defaultdict(dict)
+    match_results_by_group = defaultdict(list)
 
     for match in matches:
         if phase_for_match(match) != PHASE_GROUP:
@@ -114,13 +212,15 @@ def projected_group_standings(participant, season):
             home_line.drawn += 1
             away_line.drawn += 1
 
+        match_results_by_group[group_id].append((match.home_team_id, match.away_team_id, home, away))
+
     projected_groups = []
     for group in Group.objects.filter(stage__season=season).order_by("name"):
         lines = list(table[group.id].values())
         if not lines:
             continue
 
-        ranking = _sort_group_lines(lines)
+        ranking = _sort_group_lines(lines, match_results_by_group[group.id])
         for position, line in enumerate(ranking, start=1):
             line.position = position
 

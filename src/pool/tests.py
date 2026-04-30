@@ -867,3 +867,208 @@ class SaveBetAjaxErrorMessageTest(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json().get("error"), "Erro interno, tente novamente.")
+
+
+class ProjectedGroupStandingsH2HTest(TestCase):
+    """
+    Validates that head-to-head (H2H) tiebreaker is applied before FIFA world ranking.
+
+    Scenario:
+      - A vs B: 1-0 → A wins
+      - A vs C: 1-2 → C wins
+      - B vs C: 1-0 → B wins
+
+    Global totals:
+      A: 3pts, GD=0, GF=2   (tied with C)
+      B: 3pts, GD=0, GF=1   (3rd — fewer goals)
+      C: 3pts, GD=0, GF=2   (tied with A)
+
+    H2H between {A, C}: C beat A 2-1 → C ranked above A.
+    Without H2H, A (ranking=10) would incorrectly beat C (ranking=20).
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="h2huser", email="h2h@example.com", password="123456Aa!")
+        self.competition = Competition.objects.create(fifa_id=500, name="Copa H2H")
+        self.season = Season.objects.create(
+            fifa_id=500,
+            competition=self.competition,
+            name="Temporada H2H",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="GROUP500", season=self.season, name="Group Stage", order=500)
+        self.group = Group.objects.create(fifa_id="G-H2H", stage=self.stage, name="H")
+
+        self.team_a = Team.objects.create(
+            fifa_id="H2H-A", name="H2H Alpha", name_norm="h2h-alpha", code="H2A", world_ranking=10, group=self.group
+        )
+        self.team_b = Team.objects.create(
+            fifa_id="H2H-B", name="H2H Beta", name_norm="h2h-beta", code="H2B", world_ranking=5, group=self.group
+        )
+        self.team_c = Team.objects.create(
+            fifa_id="H2H-C", name="H2H Gamma", name_norm="h2h-gamma", code="H2C", world_ranking=20, group=self.group
+        )
+
+        now = timezone.now()
+        self.match_ab = Match.objects.create(
+            fifa_id="M-H2H-AB",
+            season=self.season,
+            stage=self.stage,
+            group=self.group,
+            match_number=501,
+            match_date_utc=now,
+            match_date_local=now,
+            match_date_brasilia=now,
+            home_team=self.team_a,
+            away_team=self.team_b,
+        )
+        self.match_ac = Match.objects.create(
+            fifa_id="M-H2H-AC",
+            season=self.season,
+            stage=self.stage,
+            group=self.group,
+            match_number=502,
+            match_date_utc=now + timezone.timedelta(hours=1),
+            match_date_local=now + timezone.timedelta(hours=1),
+            match_date_brasilia=now + timezone.timedelta(hours=1),
+            home_team=self.team_a,
+            away_team=self.team_c,
+        )
+        self.match_bc = Match.objects.create(
+            fifa_id="M-H2H-BC",
+            season=self.season,
+            stage=self.stage,
+            group=self.group,
+            match_number=503,
+            match_date_utc=now + timezone.timedelta(hours=2),
+            match_date_local=now + timezone.timedelta(hours=2),
+            match_date_brasilia=now + timezone.timedelta(hours=2),
+            home_team=self.team_b,
+            away_team=self.team_c,
+        )
+
+        self.pool = Pool.objects.create(
+            name="Pool H2H",
+            slug="pool-h2h",
+            season=self.season,
+            created_by=self.user,
+            requires_payment=False,
+        )
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+
+        PoolBet.objects.create(participant=self.participant, match=self.match_ab, home_score_pred=1, away_score_pred=0)
+        PoolBet.objects.create(participant=self.participant, match=self.match_ac, home_score_pred=1, away_score_pred=2)
+        PoolBet.objects.create(participant=self.participant, match=self.match_bc, home_score_pred=1, away_score_pred=0)
+
+    def test_h2h_resolves_globally_tied_teams(self):
+        projected_groups = projected_group_standings(participant=self.participant, season=self.season)
+        standings = projected_groups[0]["standings"]
+
+        self.assertEqual(standings[0].team.id, self.team_c.id, "C beat A in H2H → C should be 1st")
+        self.assertEqual(standings[1].team.id, self.team_a.id, "A lost to C in H2H → A should be 2nd")
+        self.assertEqual(standings[2].team.id, self.team_b.id, "B has fewer global GF → B should be 3rd")
+
+    def test_h2h_takes_priority_over_world_ranking(self):
+        # A (ranking=10) has a better FIFA rank than C (ranking=20),
+        # but C won H2H against A, so C must rank above A.
+        projected_groups = projected_group_standings(participant=self.participant, season=self.season)
+        standings = projected_groups[0]["standings"]
+
+        pos_a = next(i for i, s in enumerate(standings) if s.team.id == self.team_a.id)
+        pos_c = next(i for i, s in enumerate(standings) if s.team.id == self.team_c.id)
+        self.assertLess(pos_c, pos_a, "C (worse ranking) should beat A (better ranking) because C won H2H")
+
+
+class ProjectedGroupStandingsH2HCircularTest(TestCase):
+    """
+    Validates circular H2H fallback to world ranking.
+
+    Scenario (circular): A beats B 2-1, B beats C 2-1, C beats A 2-1.
+    All three teams end up with identical global stats AND identical H2H stats.
+    Tiebreaker must fall back to FIFA world ranking: B(5) → A(10) → C(20).
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="circuser", email="circ@example.com", password="123456Aa!")
+        self.competition = Competition.objects.create(fifa_id=600, name="Copa Circular")
+        self.season = Season.objects.create(
+            fifa_id=600,
+            competition=self.competition,
+            name="Temporada Circular",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="GROUP600", season=self.season, name="Group Stage", order=600)
+        self.group = Group.objects.create(fifa_id="G-CIRC", stage=self.stage, name="Z")
+
+        self.team_a = Team.objects.create(
+            fifa_id="CR-A", name="Circ Alpha", name_norm="circ-alpha", code="CRA", world_ranking=10, group=self.group
+        )
+        self.team_b = Team.objects.create(
+            fifa_id="CR-B", name="Circ Beta", name_norm="circ-beta", code="CRB", world_ranking=5, group=self.group
+        )
+        self.team_c = Team.objects.create(
+            fifa_id="CR-C", name="Circ Gamma", name_norm="circ-gamma", code="CRC", world_ranking=20, group=self.group
+        )
+
+        now = timezone.now()
+        self.match_ab = Match.objects.create(
+            fifa_id="CM-AB",
+            season=self.season,
+            stage=self.stage,
+            group=self.group,
+            match_number=601,
+            match_date_utc=now,
+            match_date_local=now,
+            match_date_brasilia=now,
+            home_team=self.team_a,
+            away_team=self.team_b,
+        )
+        self.match_bc = Match.objects.create(
+            fifa_id="CM-BC",
+            season=self.season,
+            stage=self.stage,
+            group=self.group,
+            match_number=602,
+            match_date_utc=now + timezone.timedelta(hours=1),
+            match_date_local=now + timezone.timedelta(hours=1),
+            match_date_brasilia=now + timezone.timedelta(hours=1),
+            home_team=self.team_b,
+            away_team=self.team_c,
+        )
+        self.match_ca = Match.objects.create(
+            fifa_id="CM-CA",
+            season=self.season,
+            stage=self.stage,
+            group=self.group,
+            match_number=603,
+            match_date_utc=now + timezone.timedelta(hours=2),
+            match_date_local=now + timezone.timedelta(hours=2),
+            match_date_brasilia=now + timezone.timedelta(hours=2),
+            home_team=self.team_c,
+            away_team=self.team_a,
+        )
+
+        self.pool = Pool.objects.create(
+            name="Pool Circular",
+            slug="pool-circular",
+            season=self.season,
+            created_by=self.user,
+            requires_payment=False,
+        )
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+
+        PoolBet.objects.create(participant=self.participant, match=self.match_ab, home_score_pred=2, away_score_pred=1)
+        PoolBet.objects.create(participant=self.participant, match=self.match_bc, home_score_pred=2, away_score_pred=1)
+        PoolBet.objects.create(participant=self.participant, match=self.match_ca, home_score_pred=2, away_score_pred=1)
+
+    def test_circular_h2h_falls_back_to_world_ranking(self):
+        projected_groups = projected_group_standings(participant=self.participant, season=self.season)
+        standings = projected_groups[0]["standings"]
+
+        self.assertEqual(standings[0].team.id, self.team_b.id, "B has best FIFA ranking (5) → 1st")
+        self.assertEqual(standings[1].team.id, self.team_a.id, "A has mid FIFA ranking (10) → 2nd")
+        self.assertEqual(standings[2].team.id, self.team_c.id, "C has worst FIFA ranking (20) → 3rd")
