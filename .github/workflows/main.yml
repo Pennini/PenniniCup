@@ -39,4 +39,4 @@ jobs:
 
       - name: Run deploy
         run: |
-          ssh target "cd /home/ubuntu/PenniniCup && git pull && sudo docker compose up --build -d"
+          ssh target "cd /home/ubuntu/PenniniCup && git pull && sudo docker system prune -f && sudo docker compose up --build -d"
