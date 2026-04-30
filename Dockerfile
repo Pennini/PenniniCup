@@ -11,11 +11,7 @@ ENV PENNINICUP_IN_DOCKER=true
 ENV POETRY_VIRTUALENVS_CREATE=false
 
 # Install dependencies
-RUN set -xe \
-    && apt-get update \
-    && apt-get install -y --no-install-recommends build-essential libpq-dev \
-    && pip install --no-cache-dir poetry==1.8.4 setuptools \
-    && rm -rf /var/lib/apt/lists/*
+RUN pip install --no-cache-dir poetry==1.8.4 setuptools
 
 # Copy and install Python dependencies
 COPY ["poetry.lock", "pyproject.toml", "./"]
