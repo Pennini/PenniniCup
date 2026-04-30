@@ -14,7 +14,7 @@ ENV POETRY_VIRTUALENVS_CREATE=false
 RUN set -xe \
     && apt-get update \
     && apt-get install -y --no-install-recommends build-essential libpq-dev \
-    && pip install --no-cache-dir poetry==1.8.4 \
+    && pip install --no-cache-dir poetry==1.8.4 setuptools \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy and install Python dependencies
