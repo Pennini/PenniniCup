@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 
-from src.pool.models import Pool
+from src.pool.models import Pool, PoolParticipant
 
 from .models import Payment
 from .services.mercadopago import create_pix_payment, get_payment_status
@@ -26,30 +26,68 @@ def create_subscription_payment(request):
     Chamado quando o usuário clica em "Pagar inscrição".
     """
     try:
-        # Valor da inscrição deve vir no POST.
-        raw_amount = (request.POST.get("amount") or "").strip()
         pool_id = request.POST.get("pool_id")
         pool = None
 
         if pool_id:
             pool = get_object_or_404(Pool, id=pool_id, is_active=True)
 
-        if not raw_amount:
-            logger.error("Valor inválido: amount ausente")
-            return render(request, "payments/payment_failed.html", {"error": "Valor de inscrição inválido."})
+        # Determina o valor a partir do servidor — nunca do cliente.
+        if pool:
+            if not pool.requires_payment:
+                logger.warning(
+                    "Tentativa de pagamento em bolão gratuito: user_id=%s pool_id=%s",
+                    request.user.id,
+                    pool.id,
+                )
+                return render(request, "payments/payment_failed.html", {"error": "Este bolão não requer pagamento."})
 
-        try:
-            normalized_amount = raw_amount.replace(" ", "")
-            if "," in normalized_amount:
-                # Formato pt-BR: remove separador de milhar e troca vírgula por ponto decimal.
-                normalized_amount = normalized_amount.replace(".", "").replace(",", ".")
+            if pool.entry_fee <= 0:
+                logger.error(
+                    "entry_fee inválido no bolão: pool_id=%s entry_fee=%s",
+                    pool.id,
+                    pool.entry_fee,
+                )
+                return render(request, "payments/payment_failed.html", {"error": "Valor de inscrição inválido."})
 
-            amount = Decimal(normalized_amount)
-            if amount <= 0:
-                raise ValueError("Valor deve ser positivo")
-        except (InvalidOperation, ValueError, TypeError):
-            logger.error("Valor inválido: amount=%s", raw_amount)
-            return render(request, "payments/payment_failed.html", {"error": "Valor de inscrição inválido."})
+            if not PoolParticipant.objects.filter(pool=pool, user=request.user, is_active=True).exists():
+                logger.warning(
+                    "Tentativa de pagamento sem participação no bolão: user_id=%s pool_id=%s",
+                    request.user.id,
+                    pool.id,
+                )
+                return render(
+                    request, "payments/payment_failed.html", {"error": "Você não é participante deste bolão."}
+                )
+
+            if Payment.objects.filter(user=request.user, pool=pool, status="approved").exists():
+                logger.info(
+                    "Pagamento já aprovado, redirecionando: user_id=%s pool_id=%s",
+                    request.user.id,
+                    pool.id,
+                )
+                return redirect("pool:detail", slug=pool.slug)
+
+            amount = pool.entry_fee
+
+        else:
+            # Sem bolão associado: aceita valor informado pelo usuário.
+            raw_amount = (request.POST.get("amount") or "").strip()
+            if not raw_amount:
+                logger.error("Valor inválido: amount ausente e sem pool associado")
+                return render(request, "payments/payment_failed.html", {"error": "Valor de inscrição inválido."})
+
+            try:
+                normalized_amount = raw_amount.replace(" ", "")
+                if "," in normalized_amount:
+                    # Formato pt-BR: remove separador de milhar e troca vírgula por ponto decimal.
+                    normalized_amount = normalized_amount.replace(".", "").replace(",", ".")
+                amount = Decimal(normalized_amount)
+                if amount <= 0:
+                    raise ValueError("Valor deve ser positivo")
+            except (InvalidOperation, ValueError, TypeError):
+                logger.error("Valor inválido: amount=%s", raw_amount)
+                return render(request, "payments/payment_failed.html", {"error": "Valor de inscrição inválido."})
 
         try:
             with transaction.atomic():
@@ -62,9 +100,10 @@ def create_subscription_payment(request):
                 )
 
                 logger.info(
-                    "Pagamento criado: payment_id=%s user_id=%s amount=%s",
+                    "Pagamento criado: payment_id=%s user_id=%s pool_id=%s amount=%s",
                     payment.id,
                     request.user.id,
+                    pool.id if pool else None,
                     amount,
                 )
 

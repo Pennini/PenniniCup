@@ -124,7 +124,6 @@
                 <form method="post" action="{% url 'payments:create-subscription' %}" class="mt-4">
                     {% csrf_token %}
                     <input type="hidden" name="pool_id" value="{{ selected_pool.id }}" />
-                    <input type="hidden" name="amount" value="{{ selected_pool.entry_fee }}" />
                     <button type="submit" class="w-full rounded-lg bg-red-200 px-4 py-2.5 text-sm font-bold text-red-950 transition-colors hover:bg-red-100">
                         Ir para pagamento (R$ {{ selected_pool.entry_fee|floatformat:2 }})
                     </button>
