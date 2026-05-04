@@ -1,9 +1,13 @@
+import logging
+
 from django.db import transaction
 from django.db.utils import NotSupportedError
 from django.utils import timezone
 
 from src.pool.models import PoolParticipant, PoolProjectionRecalc
 from src.pool.services.projection import sync_persisted_group_standings, sync_persisted_third_places
+
+logger = logging.getLogger(__name__)
 
 PENDING_STATUSES = {
     PoolProjectionRecalc.STATUS_PENDING,
@@ -158,20 +162,47 @@ def process_next_projection_recalc_job():
 
     participant = job.participant
     try:
-        projected_groups = sync_persisted_group_standings(participant=participant)
-        sync_persisted_third_places(participant=participant, projected_groups=projected_groups)
+        with transaction.atomic():
+            projected_groups = sync_persisted_group_standings(participant=participant)
+            sync_persisted_third_places(participant=participant, projected_groups=projected_groups)
 
-        job.status = PoolProjectionRecalc.STATUS_IDLE
-        job.last_finished_at = timezone.now()
-        job.last_error = ""
-        job.save(update_fields=["status", "last_finished_at", "last_error"])
+            # CAS: só atualiza para IDLE se o job ainda está em PROCESSING.
+            # Um enqueue() concorrente pode ter voltado o status para PENDING enquanto
+            # o cálculo corria. Nesse caso preservamos o PENDING para o próximo ciclo.
+            updated = PoolProjectionRecalc.objects.filter(
+                id=job.id,
+                status=PoolProjectionRecalc.STATUS_PROCESSING,
+            ).update(
+                status=PoolProjectionRecalc.STATUS_IDLE,
+                last_finished_at=timezone.now(),
+                last_error="",
+            )
+
+        if not updated:
+            logger.info(
+                "Job re-enfileirado durante processamento, status PENDING preservado: participant_id=%s",
+                participant.id,
+            )
+
     except Exception as exc:  # pragma: no cover
-        if job.attempts >= MAX_ATTEMPTS:
-            job.status = PoolProjectionRecalc.STATUS_FAILED
-        else:
-            job.status = PoolProjectionRecalc.STATUS_PENDING
-        job.last_finished_at = timezone.now()
-        job.last_error = str(exc)
-        job.save(update_fields=["status", "last_finished_at", "last_error"])
+        logger.exception(
+            "Erro ao calcular projeção: participant_id=%s attempts=%s",
+            participant.id,
+            job.attempts,
+        )
+        new_status = (
+            PoolProjectionRecalc.STATUS_FAILED if job.attempts >= MAX_ATTEMPTS else PoolProjectionRecalc.STATUS_PENDING
+        )
+        # CAS idêntico: se re-enqueue já voltou para PENDING e ainda não atingiu
+        # o limite, preservamos o PENDING; se atingiu, o loop de limpeza do próximo
+        # ciclo marca como FAILED via attempts__gte=MAX_ATTEMPTS.
+        PoolProjectionRecalc.objects.filter(
+            id=job.id,
+            status=PoolProjectionRecalc.STATUS_PROCESSING,
+        ).update(
+            status=new_status,
+            last_finished_at=timezone.now(),
+            last_error=str(exc),
+        )
 
     return job

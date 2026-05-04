@@ -1,6 +1,8 @@
 from collections import defaultdict
 from itertools import groupby
 
+from django.db import transaction
+
 from src.football.models import AssignThird, Group, Match
 from src.pool.services.rules import PHASE_GROUP, phase_for_match
 
@@ -324,6 +326,7 @@ def load_assign_third_map(season, qualified_groups):
     return {_normalize_placeholder(row.placeholder): row.third_group.upper() for row in rows}
 
 
+@transaction.atomic
 def sync_persisted_group_standings(participant):
     from src.pool.models import PoolParticipantStanding
 
@@ -376,6 +379,7 @@ def load_persisted_third_places(participant):
     ]
 
 
+@transaction.atomic
 def sync_persisted_third_places(participant, projected_groups=None):
     from src.pool.models import PoolParticipantThirdPlace
 
