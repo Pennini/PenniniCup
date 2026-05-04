@@ -19,6 +19,9 @@ if IN_DOCKER or os.path.isfile("/.dockerenv"):  # type: ignore # noqa: F821
 
 
 if IN_DOCKER and not DEBUG:  # type: ignore[name-defined]
+    if "*" in ALLOWED_HOSTS or not ALLOWED_HOSTS:  # type: ignore[name-defined]
+        raise ValueError("DJANGO_ALLOWED_HOSTS deve ser configurado em produção (não use '*')")
+
     # Quando há TLS termination no proxy, o Django precisa deste header para marcar request como segura.
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
