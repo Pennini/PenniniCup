@@ -40,6 +40,7 @@ def _calculate_bonus(participant, scoring_config, official_result):
     return bonus_points, champion_hit, top_scorer_hit
 
 
+@transaction.atomic
 def recalculate_participant_scores(participant, scoring_config=None, official_result=None):
     scoring_config = scoring_config or participant.pool.get_scoring_config()
     official_result = official_result or participant.pool.get_official_results()

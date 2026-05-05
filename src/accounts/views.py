@@ -264,7 +264,7 @@ def resend_verification_email(request):
 
     try:
         user = User.objects.get(id=registered_user_id)
-        profile = user.profile
+        profile = UserProfile.objects.select_for_update().get(user=user)
     except (User.DoesNotExist, UserProfile.DoesNotExist):
         messages.error(request, "Usuário não encontrado.")
         return redirect("accounts:login")

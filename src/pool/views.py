@@ -322,7 +322,10 @@ def save_bets_bulk(request, slug):
         top_scorer_value = (request.POST.get("top_scorer_pred") or "").strip()
         top_scorer_before = participant.top_scorer_pred_id
         if top_scorer_value:
-            selected_player = _top_scorer_options_for_pool(pool).filter(id=top_scorer_value).first()
+            try:
+                selected_player = _top_scorer_options_for_pool(pool).filter(id=top_scorer_value).first()
+            except (ValueError, TypeError):
+                selected_player = None
             if selected_player is None:
                 validation_errors.append("Artilheiro inválido para esta temporada.")
             else:
