@@ -1,4 +1,5 @@
 import logging
+from io import BytesIO
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
@@ -7,6 +8,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
+from PIL import Image
 
 from src.accounts.models import UserProfile
 from src.common.logging_filters import RequestIdFilter
@@ -201,7 +203,10 @@ class ProfilePageTest(TestCase):
 
     def test_profile_post_updates_profile_image(self):
         self.client.login(username="profile-user", password="123456Aa!")
-        uploaded = SimpleUploadedFile("avatar.png", b"fake-image-content", content_type="image/png")
+        buf = BytesIO()
+        Image.new("RGB", (1, 1), color="red").save(buf, format="PNG")
+        buf.seek(0)
+        uploaded = SimpleUploadedFile("avatar.png", buf.read(), content_type="image/png")
 
         response = self.client.post(
             reverse("penninicup:profile"),
@@ -240,7 +245,7 @@ class ProfilePageTest(TestCase):
             data={"pool": self.pool.slug},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "ficarao visiveis apos o inicio da Copa")
+        self.assertContains(response, "ficarão visíveis após o início da Copa")
         self.assertNotContains(response, "Palpite:")
 
     def test_other_profile_shows_predictions_after_first_match_starts(self):

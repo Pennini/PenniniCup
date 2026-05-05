@@ -172,11 +172,6 @@ FIFA_API_COMPETITION = 17
 FIFA_API_SEASON = 285023
 FIFA_API_STAGE = 289273
 
-# Validação de credenciais do Mercado Pago
-if not DEBUG and not MERCADO_PAGO_ACCESS_TOKEN:
-    raise ValueError("MERCADO_PAGO_ACCESS_TOKEN deve ser configurado em produção")
-if not DEBUG and not MERCADO_PAGO_WEBHOOK_SECRET:
-    raise ValueError("MERCADO_PAGO_WEBHOOK_SECRET deve ser configurado em produção")
 
 # Custom User Model
 AUTH_USER_MODEL = "accounts.CustomUser"

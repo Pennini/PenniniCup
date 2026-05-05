@@ -28,6 +28,12 @@ if IN_DOCKER and not DEBUG:  # type: ignore[name-defined]
     if not os.getenv("DJANGO_ADMIN_URL"):
         raise ValueError("DJANGO_ADMIN_URL deve ser configurado em produção")
 
+    if not MERCADO_PAGO_ACCESS_TOKEN:  # type: ignore[name-defined]
+        raise ValueError("MERCADO_PAGO_ACCESS_TOKEN deve ser configurado em produção")
+
+    if not MERCADO_PAGO_WEBHOOK_SECRET:  # type: ignore[name-defined]
+        raise ValueError("MERCADO_PAGO_WEBHOOK_SECRET deve ser configurado em produção")
+
     # Quando há TLS termination no proxy, o Django precisa deste header para marcar request como segura.
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 

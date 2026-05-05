@@ -7,11 +7,13 @@ from django.core.cache import cache
 from django.db.models import Prefetch
 
 from src.football.models import Match, Player
-from src.pool.models import PoolBet, PoolParticipant
+from src.pool.models import PoolBet, PoolParticipant, PoolParticipantStanding, PoolParticipantThirdPlace
 from src.pool.services.projection import (
     build_projected_placeholder_map,
     load_assign_third_map,
     resolve_knockout_placeholder_team,
+    sync_persisted_group_standings,
+    sync_persisted_third_places,
 )
 from src.pool.services.projection_queue import enqueue_projection_recalc, has_pending_projection_recalc
 from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, phase_for_match
@@ -447,7 +449,21 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
         projected_standings=projected_standings,
         projected_third_places=projected_third_places,
     ):
-        enqueue_projection_recalc(participant)
+        if not projected_standings:
+            groups_data = sync_persisted_group_standings(participant=participant)
+            sync_persisted_third_places(participant=participant, projected_groups=groups_data)
+            projected_standings = list(
+                PoolParticipantStanding.objects.filter(participant=participant)
+                .select_related("group", "team")
+                .order_by("group__name", "position", "team__code")
+            )
+            projected_third_places = list(
+                PoolParticipantThirdPlace.objects.filter(participant=participant)
+                .select_related("group", "team")
+                .order_by("position_global", "group__name", "team__code")
+            )
+        else:
+            enqueue_projection_recalc(participant)
 
     projected_groups = _build_projected_groups_from_rows(projected_standings)
     third_rows = _build_third_rows_from_rows(projected_third_places)

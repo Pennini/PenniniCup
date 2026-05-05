@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import time
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -11,7 +12,7 @@ from django.urls import reverse
 from src.football.models import Competition, Season
 from src.payments.models import Payment, WebhookEvent
 from src.payments.services.mercadopago import create_pix_payment, get_payment_status
-from src.pool.models import Pool
+from src.pool.models import Pool, PoolParticipant
 
 User = get_user_model()
 
@@ -31,10 +32,19 @@ class PaymentsBaseTestCase(TestCase):
             start_date="2026-06-01",
             end_date="2026-07-30",
         )
-        self.pool = Pool.objects.create(name="Pool Payment", slug="pool-payment", season=season, created_by=self.user)
+        self.pool = Pool.objects.create(
+            name="Pool Payment",
+            slug="pool-payment",
+            season=season,
+            created_by=self.user,
+            entry_fee=Decimal("100.00"),
+        )
+        PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
 
     @staticmethod
-    def build_signature_headers(*, data_id: str, request_id: str = "req-abc-123", ts: str = "1710000000"):
+    def build_signature_headers(*, data_id: str, request_id: str = "req-abc-123", ts: str = None):
+        if ts is None:
+            ts = str(int(time.time()))
         manifest = f"id:{data_id};request-id:{request_id};ts:{ts};"
         expected_hash = hmac.new(
             key=b"secret123",
@@ -70,8 +80,9 @@ class PaymentModelTest(PaymentsBaseTestCase):
 
 class MercadoPagoServiceTest(PaymentsBaseTestCase):
     @patch("src.payments.services.mercadopago.uuid.uuid4", return_value="abc-uuid")
-    @patch("src.payments.services.mercadopago.sdk")
-    def test_create_pix_payment_success(self, sdk_mock, _uuid_mock):
+    @patch("src.payments.services.mercadopago._get_sdk")
+    def test_create_pix_payment_success(self, get_sdk_mock, _uuid_mock):
+        sdk_mock = get_sdk_mock.return_value
         payment = Payment.objects.create(
             user=self.user,
             pool=self.pool,
@@ -89,8 +100,9 @@ class MercadoPagoServiceTest(PaymentsBaseTestCase):
         self.assertEqual(response["id"], "mp-1")
         sdk_mock.payment.return_value.create.assert_called_once()
 
-    @patch("src.payments.services.mercadopago.sdk")
-    def test_create_pix_payment_failure_returns_none(self, sdk_mock):
+    @patch("src.payments.services.mercadopago._get_sdk")
+    def test_create_pix_payment_failure_returns_none(self, get_sdk_mock):
+        sdk_mock = get_sdk_mock.return_value
         payment = Payment.objects.create(
             user=self.user,
             pool=self.pool,
@@ -107,18 +119,19 @@ class MercadoPagoServiceTest(PaymentsBaseTestCase):
 
         self.assertIsNone(response)
 
-    @patch("src.payments.services.mercadopago.sdk")
-    def test_get_payment_status_non_200_returns_none(self, sdk_mock):
-        sdk_mock.payment.return_value.get.return_value = {"status": 404, "response": {}}
+    @patch("src.payments.services.mercadopago._get_sdk")
+    def test_get_payment_status_non_200_returns_none(self, get_sdk_mock):
+        get_sdk_mock.return_value.payment.return_value.get.return_value = {"status": 404, "response": {}}
         self.assertIsNone(get_payment_status("mp-404"))
 
 
 class PaymentViewsTest(PaymentsBaseTestCase):
     def test_create_subscription_invalid_amount_returns_error_page(self):
+        # Sem pool_id: percurso de valor livre — amount inválido deve rejeitar.
         self.client.force_login(self.user)
         response = self.client.post(
             reverse("payments:create-subscription"),
-            data={"amount": "invalid", "pool_id": self.pool.id},
+            data={"amount": "invalid"},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -131,12 +144,13 @@ class PaymentViewsTest(PaymentsBaseTestCase):
 
         response = self.client.post(
             reverse("payments:create-subscription"),
-            data={"amount": "1.234,56", "pool_id": self.pool.id},
+            data={"pool_id": self.pool.id},
         )
 
         self.assertEqual(response.status_code, 302)
         payment = Payment.objects.get(user=self.user)
-        self.assertEqual(payment.amount, Decimal("1234.56"))
+        # O servidor usa pool.entry_fee — valor enviado pelo cliente é ignorado.
+        self.assertEqual(payment.amount, Decimal("100.00"))
         self.assertIn(f"/payments/pix/{payment.id}/", response.url)
 
     @patch("src.payments.views.create_pix_payment")
@@ -146,7 +160,7 @@ class PaymentViewsTest(PaymentsBaseTestCase):
 
         response = self.client.post(
             reverse("payments:create-subscription"),
-            data={"amount": "100,00", "pool_id": self.pool.id},
+            data={"pool_id": self.pool.id},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -245,8 +259,9 @@ class MercadoPagoWebhookTest(PaymentsBaseTestCase):
 
     @patch("src.payments.webhooks.settings.MERCADO_PAGO_WEBHOOK_SECRET", "secret123")
     def test_webhook_invalid_signature_returns_401(self):
+        ts = str(int(time.time()))
         headers = {
-            "HTTP_X_SIGNATURE": "ts=1710000000,v1=invalid",
+            "HTTP_X_SIGNATURE": f"ts={ts},v1=invalidsignature",
             "HTTP_X_REQUEST_ID": "req-abc-123",
             "CONTENT_TYPE": "application/json",
         }

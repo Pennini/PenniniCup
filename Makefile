@@ -31,8 +31,9 @@ tailwind:
 	poetry run python -m src.manage tailwind start
 
 .PHONY: test
+test: export PENNINICUP_SETTINGS_PROFILE = test
 test:
-    PENNINICUP_SETTINGS_PROFILE=test poetry run python -m src.manage test --settings=src.config.settings --verbosity=2
+	poetry run python -m src.manage test --settings=src.config.settings --verbosity=2
 
 .PHONY: up-dependencies
 up-dependencies:
