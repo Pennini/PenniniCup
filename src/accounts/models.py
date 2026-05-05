@@ -2,8 +2,16 @@ import uuid
 import warnings
 
 from django.contrib.auth.models import AbstractUser
+from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
+
+_MAX_PROFILE_IMAGE_MB = 2
+
+
+def _validate_profile_image(image):
+    if image.size > _MAX_PROFILE_IMAGE_MB * 1024 * 1024:
+        raise ValidationError(f"A imagem não pode ser maior que {_MAX_PROFILE_IMAGE_MB}MB.")
 
 
 class CustomUser(AbstractUser):
@@ -35,7 +43,9 @@ class UserProfile(models.Model):
     email_verified = models.BooleanField(default=False)
     verification_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     token_created_at = models.DateTimeField(auto_now_add=True)
-    profile_image = models.FileField(upload_to="profiles/", blank=True, null=True)
+    profile_image = models.ImageField(
+        upload_to="profiles/", blank=True, null=True, validators=[_validate_profile_image]
+    )
     favorite_team = models.CharField(max_length=120, blank=True)
     world_cup_team = models.ForeignKey(
         "football.Team",

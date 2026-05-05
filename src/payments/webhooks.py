@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import logging
+import time
 
 from django.conf import settings
 from django.db import IntegrityError, transaction
@@ -61,6 +62,16 @@ def verify_webhook_signature(request) -> bool:
 
         if not ts or not received_hash:
             logger.warning("Formato de assinatura inválido")
+            return False
+
+        try:
+            ts_int = int(ts)
+        except ValueError:
+            logger.warning("Timestamp de assinatura inválido: ts=%s", ts)
+            return False
+
+        if abs(time.time() - ts_int) > 300:
+            logger.warning("Webhook fora da janela de tempo (possível replay): ts=%s", ts)
             return False
 
         # Reconstrói a string que deve ser validada

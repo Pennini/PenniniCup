@@ -22,6 +22,12 @@ if IN_DOCKER and not DEBUG:  # type: ignore[name-defined]
     if "*" in ALLOWED_HOSTS or not ALLOWED_HOSTS:  # type: ignore[name-defined]
         raise ValueError("DJANGO_ALLOWED_HOSTS deve ser configurado em produção (não use '*')")
 
+    if CORS_ALLOW_ALL_ORIGINS:  # type: ignore[name-defined]
+        raise ValueError("DJANGO_CORS_ALLOWED_ORIGINS deve ser configurado em produção")
+
+    if not os.getenv("DJANGO_ADMIN_URL"):
+        raise ValueError("DJANGO_ADMIN_URL deve ser configurado em produção")
+
     # Quando há TLS termination no proxy, o Django precisa deste header para marcar request como segura.
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 

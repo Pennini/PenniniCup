@@ -6,7 +6,14 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-sdk = mercadopago.SDK(settings.MERCADO_PAGO_ACCESS_TOKEN)
+_sdk = None
+
+
+def _get_sdk() -> mercadopago.SDK:
+    global _sdk
+    if _sdk is None:
+        _sdk = mercadopago.SDK(settings.MERCADO_PAGO_ACCESS_TOKEN)
+    return _sdk
 
 
 def create_pix_payment(payment) -> dict | None:
@@ -36,7 +43,7 @@ def create_pix_payment(payment) -> dict | None:
 
         logger.info("Criando pagamento PIX | payment_id=%s | user_id=%s", payment.id, payment.user.id)
 
-        response = sdk.payment().create(payload, request_options)
+        response = _get_sdk().payment().create(payload, request_options)
 
         status = response.get("status")
         body = response.get("response", {})
@@ -56,7 +63,7 @@ def create_pix_payment(payment) -> dict | None:
 
 def get_payment_status(payment_id: str) -> dict | None:
     try:
-        payment_response = sdk.payment().get(payment_id)
+        payment_response = _get_sdk().payment().get(payment_id)
 
         if payment_response.get("status") != 200:
             logger.error("Erro ao buscar status do pagamento: status=%s", payment_response.get("status"))

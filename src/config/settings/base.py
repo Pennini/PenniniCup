@@ -7,7 +7,14 @@ SECRET_KEY = NotImplemented
 DEBUG = False
 
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",") if h.strip()]
-CORS_ALLOW_ALL_ORIGINS = True
+
+_cors_origins_env = os.getenv("DJANGO_CORS_ALLOWED_ORIGINS", "")
+if _cors_origins_env:
+    CORS_ALLOW_ALL_ORIGINS = False
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in _cors_origins_env.split(",") if o.strip()]
+else:
+    CORS_ALLOW_ALL_ORIGINS = True
+
 CSRF_TRUSTED_ORIGINS = []
 
 

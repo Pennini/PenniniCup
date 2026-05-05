@@ -52,18 +52,19 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
     winner_or_draw_hits = 0
 
     bets = participant.bets.select_related("match", "match__stage").all()
+    scores_to_upsert = []
+
     for bet in bets:
         score_data = calculate_bet_points(bet, scoring_config=scoring_config)
-
-        PoolBetScore.objects.update_or_create(
-            bet=bet,
-            defaults={
-                "points": score_data["points"],
-                "exact_score": score_data["exact_score"],
-                "winner_or_draw": score_data["winner_or_draw"],
-                "winner_advancing": score_data["winner_advancing"],
-                "one_team_score": score_data["one_team_score"],
-            },
+        scores_to_upsert.append(
+            PoolBetScore(
+                bet=bet,
+                points=score_data["points"],
+                exact_score=score_data["exact_score"],
+                winner_or_draw=score_data["winner_or_draw"],
+                winner_advancing=score_data["winner_advancing"],
+                one_team_score=score_data["one_team_score"],
+            )
         )
 
         total_points += score_data["points"]
@@ -76,6 +77,21 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
             exact_score_hits += 1
         if score_data["winner_or_draw"]:
             winner_or_draw_hits += 1
+
+    if scores_to_upsert:
+        PoolBetScore.objects.bulk_create(
+            scores_to_upsert,
+            update_conflicts=True,
+            update_fields=[
+                "points",
+                "exact_score",
+                "winner_or_draw",
+                "winner_advancing",
+                "one_team_score",
+                "updated_at",
+            ],
+            unique_fields=["bet"],
+        )
 
     bonus_points, champion_hit, top_scorer_hit = _calculate_bonus(
         participant=participant,
