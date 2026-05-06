@@ -201,7 +201,8 @@
         form="pool-bets-form"
         name="submit_action"
         value="save_all"
-        class="absolute left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-md bg-orange-500 text-black text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+        data-topbar-save-btn
+        class="hidden absolute left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-md text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed bg-neutral-800 text-neutral-400"
         {% if not can_bet or group_locked and knockout_locked %}disabled{% endif %}
     >
         Salvar
