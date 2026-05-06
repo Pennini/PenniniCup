@@ -41,9 +41,9 @@ Parâmetros:
         <div class="flex flex-col items-end leading-none shrink-0">
             <span class="font-bold text-[1.02rem] text-brand-text text-right min-w-[1rem]">
                 {% if compact_mode == "bet_locked" and compact_bet %}
-                    {{ compact_bet.home_score|default:"—" }}
+                    {{ compact_bet.home_score|default_if_none:"—" }}
                 {% else %}
-                    {{ compact_match.home_score|default:"—" }}
+                    {{ compact_match.home_score|default_if_none:"—" }}
                 {% endif %}
             </span>
             {% if compact_match.winner_id %}
@@ -89,9 +89,9 @@ Parâmetros:
         <div class="flex flex-col items-end leading-none shrink-0">
             <span class="font-bold text-[1.02rem] text-brand-text text-right min-w-[1rem]">
                 {% if compact_mode == "bet_locked" and compact_bet %}
-                    {{ compact_bet.away_score|default:"—" }}
+                    {{ compact_bet.away_score|default_if_none:"—" }}
                 {% else %}
-                    {{ compact_match.away_score|default:"—" }}
+                    {{ compact_match.away_score|default_if_none:"—" }}
                 {% endif %}
             </span>
             {% if compact_match.winner_id %}

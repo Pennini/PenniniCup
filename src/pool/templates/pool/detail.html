@@ -26,23 +26,26 @@
     {% include "components/pool_bet_toggle_three_tabs.html" %}
 
     {% if active_tab == "bets" %}
-    <div class="flex items-center gap-3" id="phase2-progress-row">
-        <div class="flex-1 h-1.5 rounded-full bg-neutral-800">
-            <div
-                class="h-1.5 rounded-full bg-orange-500 transition-all"
-                style="width: {% widthratio saved_bets_count total_group_matches 100 %}%"
-            ></div>
+    <div class="space-y-3" id="phase2-progress-row">
+        <div class="flex items-center gap-3">
+            <span class="text-xs text-neutral-400 shrink-0">Palpites</span>
+            <div class="flex-1 h-2 rounded-full bg-neutral-800">
+                <div
+                    class="h-2 rounded-full bg-orange-500 transition-all"
+                    style="width: {% widthratio saved_bets_count total_group_matches 100 %}%"
+                ></div>
+            </div>
+            <span class="text-xs font-semibold text-neutral-300 whitespace-nowrap">
+                {{ saved_bets_count }}<span class="text-neutral-600">/{{ total_group_matches }}</span>
+            </span>
         </div>
-        <span class="text-xs text-neutral-400 whitespace-nowrap">
-            {{ saved_bets_count }}/{{ total_group_matches }}
-        </span>
 
-        <div class="flex rounded-lg border border-neutral-700 overflow-hidden shrink-0" id="grouping-toggle">
+        <div class="flex rounded-xl bg-neutral-950 border border-neutral-800 p-1 gap-1" id="grouping-toggle">
             <button type="button" id="toggle-by-date"
-                    class="px-2.5 py-1 text-xs font-semibold bg-neutral-800 text-orange-200 transition-colors"
+                    class="flex-1 text-center text-sm font-semibold rounded-lg py-2 transition-all duration-200 bg-neutral-800 text-orange-300 border border-orange-500/40"
                     aria-pressed="true">Por Data</button>
             <button type="button" id="toggle-by-group"
-                    class="px-2.5 py-1 text-xs font-semibold text-neutral-400 hover:text-neutral-200 transition-colors"
+                    class="flex-1 text-center text-sm font-semibold rounded-lg py-2 transition-all duration-200 text-neutral-500 border border-transparent hover:text-neutral-300"
                     aria-pressed="false">Por Grupo</button>
         </div>
     </div>
@@ -97,86 +100,96 @@
                  data-match-date="{{ row.match.match_date_brasilia|date:'Y-m-d' }}"
                  data-match-date-label="{{ row.match.match_date_brasilia|date:'d/m - l' }}"
                  data-match-group="{{ row.match.group.name|default:'' }}">
-            <div class="flex items-center justify-between gap-2 mb-3">
-                <div class="flex items-center gap-2 min-w-0">
-                    <p class="text-xs uppercase tracking-wide text-neutral-400 truncate">
-                        {% if row.phase == "GROUP" %}Grupo {{ row.match.group.name|default:"-" }}
-                        {% else %}{{ row.match.stage.name|default:"Mata-mata" }}{% endif %}
+            <div class="flex flex-wrap gap-3 items-center justify-between">
+                <div>
+                    <p class="text-xs uppercase tracking-wide text-neutral-400">
+                        {% if row.phase == "GROUP" %}
+                        Fase de Grupos - Grupo {{ row.match.group.name|default:"-" }}
+                        {% else %}
+                        Mata-mata - {{ row.match.stage.name|default:"-" }}
+                        {% endif %}
                     </p>
-                    <span class="text-xs text-neutral-600">#{{ row.match.match_number }}</span>
+                    <p class="text-xs text-neutral-500">Jogo #{{ row.match.match_number }}</p>
+                    <h2 class="text-lg font-semibold flex flex-wrap items-center gap-2">
+                        <span class="inline-flex items-center gap-2">
+                            {% if row.home_team and row.home_team.flag_image_url %}
+                            <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
+                                <img src="{{ row.home_team.flag_image_url }}" alt="Bandeira {{ row.home_team.name }}"
+                                     class="h-full w-full object-cover" loading="lazy" />
+                            </span>
+                            {% endif %}
+                            <span>{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
+                        </span>
+                        <span>x</span>
+                        <span class="inline-flex items-center gap-2">
+                            {% if row.away_team and row.away_team.flag_image_url %}
+                            <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
+                                <img src="{{ row.away_team.flag_image_url }}" alt="Bandeira {{ row.away_team.name }}"
+                                     class="h-full w-full object-cover" loading="lazy" />
+                            </span>
+                            {% endif %}
+                            <span>{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
+                        </span>
+                    </h2>
+                    <p class="text-xs text-neutral-400">{{ row.match.match_date_brasilia }}</p>
                 </div>
                 {% if row.locked %}
-                <span class="text-xs px-2 py-1 rounded-full border border-red-400 text-red-300 shrink-0">Fechado</span>
+                <span class="text-xs px-2 py-1 rounded-full border border-red-400 text-red-300">Fechado</span>
                 {% else %}
-                <span class="text-xs px-2 py-1 rounded-full border border-emerald-400 text-emerald-300 shrink-0">Aberto</span>
+                <span class="text-xs px-2 py-1 rounded-full border border-emerald-400 text-emerald-300">Aberto</span>
                 {% endif %}
             </div>
 
-            <div class="mt-3 flex items-center gap-2 w-full">
-                <div class="flex items-center gap-1.5 flex-1 justify-end min-w-0">
-                    {% if row.home_team and row.home_team.flag_image_url %}
-                    <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
-                        <img src="{{ row.home_team.flag_image_url }}" alt="Bandeira {{ row.home_team.name }}"
-                             class="h-full w-full object-cover" loading="lazy" />
-                    </span>
-                    {% endif %}
-                    <span class="truncate text-sm font-medium text-right">
-                        {{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}
-                    </span>
-                </div>
+            <div class="mt-4 rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 space-y-3">
+                <div class="grid gap-3 min-[900px]:grid-cols-2">
+                    <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                {% if row.home_team and row.home_team.flag_image_url %}
+                                <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
+                                    <img src="{{ row.home_team.flag_image_url }}" alt="Bandeira {{ row.home_team.name }}"
+                                         class="h-full w-full object-cover" loading="lazy" />
+                                </span>
+                                {% endif %}
+                                <span class="truncate text-sm font-medium text-neutral-100">{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
+                            </div>
+                            <span class="text-[11px] uppercase tracking-wide text-neutral-500">Casa</span>
+                        </div>
+                        <label class="mt-2 mb-1 block text-xs text-neutral-400">Gols de {{ row.home_team.name|default:row.match.home_placeholder|default:"Casa" }}</label>
+                        <input type="number" min="0"
+                               name="match_{{ row.match.id }}_home_score_pred"
+                               value="{% if row.bet %}{{ row.bet.home_score_pred|default_if_none:'' }}{% endif %}"
+                               data-score-home
+                               class="w-full rounded-md bg-black border border-neutral-700 px-3 py-2.5 text-center text-lg"
+                               placeholder="0"
+                               aria-label="Palpite de gols do time da casa"
+                               {% if row.locked or not can_bet %}disabled{% endif %} />
+                    </div>
 
-                <div class="flex items-center gap-1 shrink-0">
-                    <input type="number" min="0"
-                           name="match_{{ row.match.id }}_home_score_pred"
-                           value="{% if row.bet %}{{ row.bet.home_score_pred }}{% endif %}"
-                           data-score-home
-                           class="w-11 h-11 rounded-md bg-black border border-neutral-700 text-center text-lg font-bold"
-                           placeholder="0"
-                           aria-label="Palpite de gols do time da casa"
-                           {% if row.locked or not can_bet %}disabled{% endif %} />
-                    <span class="text-neutral-500 font-bold px-0.5">:</span>
-                    <input type="number" min="0"
-                           name="match_{{ row.match.id }}_away_score_pred"
-                           value="{% if row.bet %}{{ row.bet.away_score_pred }}{% endif %}"
-                           data-score-away
-                           class="w-11 h-11 rounded-md bg-black border border-neutral-700 text-center text-lg font-bold"
-                           placeholder="0"
-                           aria-label="Palpite de gols do time visitante"
-                           {% if row.locked or not can_bet %}disabled{% endif %} />
+                    <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                {% if row.away_team and row.away_team.flag_image_url %}
+                                <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
+                                    <img src="{{ row.away_team.flag_image_url }}" alt="Bandeira {{ row.away_team.name }}"
+                                         class="h-full w-full object-cover" loading="lazy" />
+                                </span>
+                                {% endif %}
+                                <span class="truncate text-sm font-medium text-neutral-100">{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
+                            </div>
+                            <span class="text-[11px] uppercase tracking-wide text-neutral-500">Visitante</span>
+                        </div>
+                        <label class="mt-2 mb-1 block text-xs text-neutral-400">Gols de {{ row.away_team.name|default:row.match.away_placeholder|default:"Visitante" }}</label>
+                        <input type="number" min="0"
+                               name="match_{{ row.match.id }}_away_score_pred"
+                               value="{% if row.bet %}{{ row.bet.away_score_pred|default_if_none:'' }}{% endif %}"
+                               data-score-away
+                               class="w-full rounded-md bg-black border border-neutral-700 px-3 py-2.5 text-center text-lg"
+                               placeholder="0"
+                               aria-label="Palpite de gols do time visitante"
+                               {% if row.locked or not can_bet %}disabled{% endif %} />
+                    </div>
                 </div>
-
-                <div class="flex items-center gap-1.5 flex-1 justify-start min-w-0">
-                    <span class="truncate text-sm font-medium">
-                        {{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}
-                    </span>
-                    {% if row.away_team and row.away_team.flag_image_url %}
-                    <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
-                        <img src="{{ row.away_team.flag_image_url }}" alt="Bandeira {{ row.away_team.name }}"
-                             class="h-full w-full object-cover" loading="lazy" />
-                    </span>
-                    {% endif %}
-                </div>
-            </div>
-
-                {% if row.phase == "KNOCKOUT" %}
-                <div data-winner-wrapper class="min-[900px]:max-w-sm min-[900px]:ml-auto">
-                    <select
-                        name="match_{{ row.match.id }}_winner_pred"
-                        data-winner-select
-                        data-base-disabled="{% if row.locked or not can_bet %}1{% else %}0{% endif %}"
-                        class="w-full rounded-md bg-black border border-neutral-700 px-3 py-2.5"
-                        {% if row.locked or not can_bet %}disabled{% endif %}
-                    >
-                        <option value="">Classificado</option>
-                        {% if row.home_team %}
-                        <option value="{{ row.home_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.home_team.id %}selected{% endif %}>{{ row.home_team.name }}</option>
-                        {% endif %}
-                        {% if row.away_team %}
-                        <option value="{{ row.away_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.away_team.id %}selected{% endif %}>{{ row.away_team.name }}</option>
-                        {% endif %}
-                    </select>
-                </div>
-                {% endif %}
             </div>
         </article>
         {% endfor %}
@@ -217,66 +230,92 @@
                  data-match-date="{{ row.match.match_date_brasilia|date:'Y-m-d' }}"
                  data-match-date-label="{{ row.match.match_date_brasilia|date:'d/m - l' }}"
                  data-stage="{{ row.match.stage.name|default:'' }}">
-            <div class="flex items-center justify-between gap-2 mb-3">
-                <div class="flex items-center gap-2 min-w-0">
-                    <p class="text-xs uppercase tracking-wide text-neutral-400 truncate">
-                        {% if row.phase == "GROUP" %}Grupo {{ row.match.group.name|default:"-" }}
-                        {% else %}{{ row.match.stage.name|default:"Mata-mata" }}{% endif %}
+            <div class="flex flex-wrap gap-3 items-center justify-between">
+                <div>
+                    <p class="text-xs uppercase tracking-wide text-neutral-400">
+                        Mata-mata - {{ row.match.stage.name|default:"-" }}
                     </p>
-                    <span class="text-xs text-neutral-600">#{{ row.match.match_number }}</span>
+                    <p class="text-xs text-neutral-500">Jogo #{{ row.match.match_number }}</p>
+                    <h2 class="text-lg font-semibold flex flex-wrap items-center gap-2">
+                        <span class="inline-flex items-center gap-2">
+                            {% if row.home_team and row.home_team.flag_image_url %}
+                            <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
+                                <img src="{{ row.home_team.flag_image_url }}" alt="Bandeira {{ row.home_team.name }}"
+                                     class="h-full w-full object-cover" loading="lazy" />
+                            </span>
+                            {% endif %}
+                            <span>{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
+                        </span>
+                        <span>x</span>
+                        <span class="inline-flex items-center gap-2">
+                            {% if row.away_team and row.away_team.flag_image_url %}
+                            <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
+                                <img src="{{ row.away_team.flag_image_url }}" alt="Bandeira {{ row.away_team.name }}"
+                                     class="h-full w-full object-cover" loading="lazy" />
+                            </span>
+                            {% endif %}
+                            <span>{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
+                        </span>
+                    </h2>
+                    <p class="text-xs text-neutral-400">{{ row.match.match_date_brasilia }}</p>
                 </div>
                 {% if row.locked %}
-                <span class="text-xs px-2 py-1 rounded-full border border-red-400 text-red-300 shrink-0">Fechado</span>
+                <span class="text-xs px-2 py-1 rounded-full border border-red-400 text-red-300">Fechado</span>
                 {% else %}
-                <span class="text-xs px-2 py-1 rounded-full border border-emerald-400 text-emerald-300 shrink-0">Aberto</span>
+                <span class="text-xs px-2 py-1 rounded-full border border-emerald-400 text-emerald-300">Aberto</span>
                 {% endif %}
             </div>
 
-            <div class="mt-3 flex items-center gap-2 w-full">
-                <div class="flex items-center gap-1.5 flex-1 justify-end min-w-0">
-                    {% if row.home_team and row.home_team.flag_image_url %}
-                    <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
-                        <img src="{{ row.home_team.flag_image_url }}" alt="Bandeira {{ row.home_team.name }}"
-                             class="h-full w-full object-cover" loading="lazy" />
-                    </span>
-                    {% endif %}
-                    <span class="truncate text-sm font-medium text-right">
-                        {{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}
-                    </span>
-                </div>
+            <div class="mt-4 rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 space-y-3">
+                <div class="grid gap-3 min-[900px]:grid-cols-2">
+                    <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                {% if row.home_team and row.home_team.flag_image_url %}
+                                <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
+                                    <img src="{{ row.home_team.flag_image_url }}" alt="Bandeira {{ row.home_team.name }}"
+                                         class="h-full w-full object-cover" loading="lazy" />
+                                </span>
+                                {% endif %}
+                                <span class="truncate text-sm font-medium text-neutral-100">{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
+                            </div>
+                            <span class="text-[11px] uppercase tracking-wide text-neutral-500">Casa</span>
+                        </div>
+                        <label class="mt-2 mb-1 block text-xs text-neutral-400">Gols de {{ row.home_team.name|default:row.match.home_placeholder|default:"Casa" }}</label>
+                        <input type="number" min="0"
+                               name="match_{{ row.match.id }}_home_score_pred"
+                               value="{% if row.bet %}{{ row.bet.home_score_pred|default_if_none:'' }}{% endif %}"
+                               data-score-home
+                               class="w-full rounded-md bg-black border border-neutral-700 px-3 py-2.5 text-center text-lg"
+                               placeholder="0"
+                               aria-label="Palpite de gols do time da casa"
+                               {% if row.locked or not can_bet %}disabled{% endif %} />
+                    </div>
 
-                <div class="flex items-center gap-1 shrink-0">
-                    <input type="number" min="0"
-                           name="match_{{ row.match.id }}_home_score_pred"
-                           value="{% if row.bet %}{{ row.bet.home_score_pred }}{% endif %}"
-                           data-score-home
-                           class="w-11 h-11 rounded-md bg-black border border-neutral-700 text-center text-lg font-bold"
-                           placeholder="0"
-                           aria-label="Palpite de gols do time da casa"
-                           {% if row.locked or not can_bet %}disabled{% endif %} />
-                    <span class="text-neutral-500 font-bold px-0.5">:</span>
-                    <input type="number" min="0"
-                           name="match_{{ row.match.id }}_away_score_pred"
-                           value="{% if row.bet %}{{ row.bet.away_score_pred }}{% endif %}"
-                           data-score-away
-                           class="w-11 h-11 rounded-md bg-black border border-neutral-700 text-center text-lg font-bold"
-                           placeholder="0"
-                           aria-label="Palpite de gols do time visitante"
-                           {% if row.locked or not can_bet %}disabled{% endif %} />
+                    <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3">
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex items-center gap-2 min-w-0">
+                                {% if row.away_team and row.away_team.flag_image_url %}
+                                <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
+                                    <img src="{{ row.away_team.flag_image_url }}" alt="Bandeira {{ row.away_team.name }}"
+                                         class="h-full w-full object-cover" loading="lazy" />
+                                </span>
+                                {% endif %}
+                                <span class="truncate text-sm font-medium text-neutral-100">{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
+                            </div>
+                            <span class="text-[11px] uppercase tracking-wide text-neutral-500">Visitante</span>
+                        </div>
+                        <label class="mt-2 mb-1 block text-xs text-neutral-400">Gols de {{ row.away_team.name|default:row.match.away_placeholder|default:"Visitante" }}</label>
+                        <input type="number" min="0"
+                               name="match_{{ row.match.id }}_away_score_pred"
+                               value="{% if row.bet %}{{ row.bet.away_score_pred|default_if_none:'' }}{% endif %}"
+                               data-score-away
+                               class="w-full rounded-md bg-black border border-neutral-700 px-3 py-2.5 text-center text-lg"
+                               placeholder="0"
+                               aria-label="Palpite de gols do time visitante"
+                               {% if row.locked or not can_bet %}disabled{% endif %} />
+                    </div>
                 </div>
-
-                <div class="flex items-center gap-1.5 flex-1 justify-start min-w-0">
-                    <span class="truncate text-sm font-medium">
-                        {{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}
-                    </span>
-                    {% if row.away_team and row.away_team.flag_image_url %}
-                    <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
-                        <img src="{{ row.away_team.flag_image_url }}" alt="Bandeira {{ row.away_team.name }}"
-                             class="h-full w-full object-cover" loading="lazy" />
-                    </span>
-                    {% endif %}
-                </div>
-            </div>
 
                 {% if row.phase == "KNOCKOUT" %}
                 <div data-winner-wrapper class="min-[900px]:max-w-sm min-[900px]:ml-auto">
@@ -308,6 +347,7 @@
             const form = document.getElementById('pool-bets-form');
             if (!form) return;
 
+            const groupList = document.getElementById('group-list');
             const cards = document.querySelectorAll('[data-match-card]');
             const dirtyCards = new Set();
             const initialPayloadByCard = new Map();
@@ -330,69 +370,173 @@
                 mobileTopBarBtn.classList.toggle('text-neutral-400', !pending);
             }
 
+            function clearGroupingArtifacts() {
+                if (groupList) {
+                    groupList.querySelectorAll('[data-group-grid]').forEach(function (grid) {
+                        grid.querySelectorAll('[data-match-card]').forEach(function (card) {
+                            groupList.appendChild(card);
+                        });
+                        grid.remove();
+                    });
+                    groupList.querySelectorAll('[data-grouping-header]').forEach(function (el) { el.remove(); });
+                }
+            }
+
             function applyGrouping(mode) {
-                document.querySelectorAll('[data-grouping-header]').forEach(function (el) { el.remove(); });
+                clearGroupingArtifacts();
 
-                const groupCards = document.querySelectorAll('#group-list [data-match-card][data-phase="GROUP"]');
-                let lastKey = null;
-                groupCards.forEach(function (card) {
-                    const key   = mode === 'date' ? card.dataset.matchDate      : card.dataset.matchGroup;
-                    const label = mode === 'date' ? card.dataset.matchDateLabel : 'Grupo ' + card.dataset.matchGroup;
-                    if (key !== lastKey) {
-                        const header = document.createElement('h3');
-                        header.setAttribute('data-grouping-header', '');
-                        header.className = 'text-xs uppercase tracking-wide text-neutral-400 mt-4 mb-2 px-1';
-                        header.textContent = label;
-                        card.parentNode.insertBefore(header, card);
-                        lastKey = key;
-                    }
-                });
+                if (!groupList) return;
 
-                const btnDate  = document.getElementById('toggle-by-date');
-                const btnGroup = document.getElementById('toggle-by-group');
+                var groupCards = Array.from(groupList.querySelectorAll('[data-match-card][data-phase="GROUP"]'));
+
+                if (mode === 'date') {
+                    // Sort cards by date ascending then wrap each date in a block
+                    groupCards.sort(function (a, b) {
+                        return a.dataset.matchDate < b.dataset.matchDate ? -1 : a.dataset.matchDate > b.dataset.matchDate ? 1 : 0;
+                    });
+
+                    var dateGrid = document.createElement('div');
+                    dateGrid.setAttribute('data-group-grid', '');
+                    dateGrid.className = 'flex flex-col gap-4';
+
+                    var dateMap = {};
+                    var dateOrder = [];
+
+                    groupCards.forEach(function (card) {
+                        var dateKey = card.dataset.matchDate;
+                        if (!dateMap[dateKey]) {
+                            var container = document.createElement('div');
+                            container.className = 'bg-neutral-900 border border-neutral-700 rounded-2xl p-4 flex flex-col gap-3';
+
+                            var headerRow = document.createElement('div');
+                            headerRow.className = 'flex items-center gap-3';
+                            headerRow.innerHTML =
+                                '<div class="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center shrink-0">' +
+                                    '<i data-lucide="calendar" class="w-4 h-4 text-neutral-300"></i>' +
+                                '</div>' +
+                                '<span class="font-semibold text-neutral-200 capitalize">' + card.dataset.matchDateLabel + '</span>';
+                            container.appendChild(headerRow);
+
+                            dateMap[dateKey] = container;
+                            dateOrder.push(dateKey);
+                            dateGrid.appendChild(container);
+                        }
+                        dateMap[dateKey].appendChild(card);
+                    });
+
+                    groupList.appendChild(dateGrid);
+                    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+
+                } else {
+                    // Group mode: create grid of group containers styled like group_stage_grid.html
+                    var grid = document.createElement('div');
+                    grid.setAttribute('data-group-grid', '');
+                    grid.className = 'grid grid-cols-1 md:grid-cols-2 gap-4';
+
+                    var groupMap = {};
+                    var groupOrder = [];
+
+                    groupCards.forEach(function (card) {
+                        var groupName = card.dataset.matchGroup;
+                        if (!groupName) return;
+                        if (!groupMap[groupName]) {
+                            var container = document.createElement('div');
+                            container.className = 'bg-neutral-900 border border-neutral-700 rounded-2xl p-4 flex flex-col gap-3';
+
+                            var headerRow = document.createElement('div');
+                            headerRow.className = 'flex items-center gap-3';
+                            headerRow.innerHTML =
+                                '<div class="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center shrink-0">' +
+                                    '<span class="text-white font-bold text-sm">' + groupName + '</span>' +
+                                '</div>' +
+                                '<span class="font-bold text-neutral-100">Grupo ' + groupName + '</span>';
+                            container.appendChild(headerRow);
+
+                            groupMap[groupName] = container;
+                            groupOrder.push(groupName);
+                            grid.appendChild(container);
+                        }
+                        groupMap[groupName].appendChild(card);
+                    });
+
+                    groupList.appendChild(grid);
+                }
+
+                var btnDate  = document.getElementById('toggle-by-date');
+                var btnGroup = document.getElementById('toggle-by-group');
                 if (btnDate && btnGroup) {
-                    btnDate.classList.toggle('bg-neutral-800',   mode === 'date');
-                    btnDate.classList.toggle('text-orange-200',  mode === 'date');
-                    btnDate.classList.toggle('text-neutral-400', mode !== 'date');
-                    btnGroup.classList.toggle('bg-neutral-800',   mode === 'group');
-                    btnGroup.classList.toggle('text-orange-200',  mode === 'group');
-                    btnGroup.classList.toggle('text-neutral-400', mode !== 'group');
+                    var activeClass  = ['bg-neutral-800', 'text-orange-300', 'border', 'border-orange-500/40'];
+                    var inactiveClass = ['text-neutral-500', 'border', 'border-transparent', 'hover:text-neutral-300'];
+
+                    [btnDate, btnGroup].forEach(function (btn) {
+                        activeClass.forEach(function (c) { btn.classList.remove(c); });
+                        inactiveClass.forEach(function (c) { btn.classList.remove(c); });
+                    });
+
+                    var activeBtn   = mode === 'date' ? btnDate : btnGroup;
+                    var inactiveBtn = mode === 'date' ? btnGroup : btnDate;
+                    activeClass.forEach(function (c) { activeBtn.classList.add(c); });
+                    inactiveClass.forEach(function (c) { inactiveBtn.classList.add(c); });
+
                     btnDate.setAttribute('aria-pressed',  mode === 'date'  ? 'true' : 'false');
                     btnGroup.setAttribute('aria-pressed', mode === 'group' ? 'true' : 'false');
                 }
             }
 
-            // Knockout always groups by stage (D-12) — independent of the Por Data / Por Grupo toggle.
             function applyKnockoutStageGrouping() {
-                const stageCards = document.querySelectorAll('#knockout-list [data-match-card][data-stage]');
-                let lastStage = null;
+                var knockoutList = document.getElementById('knockout-list');
+                if (!knockoutList) return;
+                var stageCards = Array.from(knockoutList.querySelectorAll('[data-match-card][data-stage]'));
+
+                var stageGrid = document.createElement('div');
+                stageGrid.setAttribute('data-group-grid', '');
+                stageGrid.className = 'flex flex-col gap-4';
+
+                var stageMap = {};
+                var stageOrder = [];
+
                 stageCards.forEach(function (card) {
-                    const stage = card.dataset.stage;
-                    if (stage && stage !== lastStage) {
-                        const header = document.createElement('h3');
-                        header.setAttribute('data-grouping-header', '');
-                        header.className = 'text-xs uppercase tracking-wide text-neutral-400 mt-4 mb-2 px-1';
-                        header.textContent = stage;
-                        card.parentNode.insertBefore(header, card);
-                        lastStage = stage;
+                    var stage = card.dataset.stage;
+                    if (!stageMap[stage]) {
+                        var container = document.createElement('div');
+                        container.className = 'bg-neutral-900 border border-sky-500/20 rounded-2xl p-4 flex flex-col gap-3';
+
+                        var headerRow = document.createElement('div');
+                        headerRow.className = 'flex items-center gap-3';
+                        headerRow.innerHTML =
+                            '<div class="w-8 h-8 rounded-full bg-sky-500/20 flex items-center justify-center shrink-0">' +
+                                '<i data-lucide="sword" class="w-4 h-4 text-sky-300"></i>' +
+                            '</div>' +
+                            '<span class="font-semibold text-sky-100">' + (stage || 'Mata-mata') + '</span>';
+                        container.appendChild(headerRow);
+
+                        stageMap[stage] = container;
+                        stageOrder.push(stage);
+                        stageGrid.appendChild(container);
                     }
+                    stageMap[stage].appendChild(card);
                 });
+
+                if (stageOrder.length > 0) {
+                    knockoutList.appendChild(stageGrid);
+                    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+                }
             }
 
             function hasPendingChanges() {
-                const topScorerChanged = topScorerSelect && !topScorerSelect.disabled && topScorerSelect.value !== initialTopScorerValue;
+                var topScorerChanged = topScorerSelect && !topScorerSelect.disabled && topScorerSelect.value !== initialTopScorerValue;
                 return !isSubmitting && (dirtyCards.size > 0 || topScorerChanged);
             }
 
             function payloadKeyFromValues(home, away, winner) {
-                return `${home}::${away}::${winner}`;
+                return home + '::' + away + '::' + winner;
             }
 
             function currentPayloadKey(card) {
-                const homeInput = card.querySelector('[data-score-home]');
-                const awayInput = card.querySelector('[data-score-away]');
-                const winnerSelect = card.querySelector('[data-winner-select]');
-                const winnerValue = winnerSelect && !winnerSelect.disabled ? winnerSelect.value : '';
+                var homeInput = card.querySelector('[data-score-home]');
+                var awayInput = card.querySelector('[data-score-away]');
+                var winnerSelect = card.querySelector('[data-winner-select]');
+                var winnerValue = winnerSelect && !winnerSelect.disabled ? winnerSelect.value : '';
                 return payloadKeyFromValues(homeInput ? homeInput.value : '', awayInput ? awayInput.value : '', winnerValue);
             }
 
@@ -402,9 +546,8 @@
             }
 
             function refreshDirtyState(card) {
-                const initialPayload = initialPayloadByCard.get(card);
-                const currentPayload = currentPayloadKey(card);
-
+                var initialPayload = initialPayloadByCard.get(card);
+                var currentPayload = currentPayloadKey(card);
                 if (initialPayload === currentPayload) {
                     dirtyCards.delete(card);
                 } else {
@@ -414,15 +557,15 @@
             }
 
             function applyWinnerVisibility(card) {
-                const phase = card.dataset.phase;
-                const homeInput = card.querySelector('[data-score-home]');
-                const awayInput = card.querySelector('[data-score-away]');
-                const wrapper = card.querySelector('[data-winner-wrapper]');
-                const select = card.querySelector('[data-winner-select]');
+                var phase = card.dataset.phase;
+                var homeInput = card.querySelector('[data-score-home]');
+                var awayInput = card.querySelector('[data-score-away]');
+                var wrapper = card.querySelector('[data-winner-wrapper]');
+                var select = card.querySelector('[data-winner-select]');
                 if (!wrapper || !select) return;
 
-                const show = phase === 'KNOCKOUT' && isDraw(homeInput.value, awayInput.value);
-                const baseDisabled = select.dataset.baseDisabled === '1';
+                var show = phase === 'KNOCKOUT' && isDraw(homeInput.value, awayInput.value);
+                var baseDisabled = select.dataset.baseDisabled === '1';
 
                 if (!show) {
                     wrapper.classList.add('hidden');
@@ -435,67 +578,60 @@
                 select.disabled = baseDisabled;
             }
 
-            cards.forEach((card) => {
-                const homeInput = card.querySelector('[data-score-home]');
-                const awayInput = card.querySelector('[data-score-away]');
-                const winnerSelect = card.querySelector('[data-winner-select]');
+            cards.forEach(function (card) {
+                var homeInput = card.querySelector('[data-score-home]');
+                var awayInput = card.querySelector('[data-score-away]');
+                var winnerSelect = card.querySelector('[data-winner-select]');
                 if (!homeInput || !awayInput) return;
 
                 applyWinnerVisibility(card);
                 initialPayloadByCard.set(card, currentPayloadKey(card));
 
-                [homeInput, awayInput].forEach((input) => {
+                [homeInput, awayInput].forEach(function (input) {
                     if (input.disabled) return;
-                    input.addEventListener('input', () => {
+                    input.addEventListener('input', function () {
                         applyWinnerVisibility(card);
                         refreshDirtyState(card);
                     });
-                    input.addEventListener('change', () => {
+                    input.addEventListener('change', function () {
                         applyWinnerVisibility(card);
                         refreshDirtyState(card);
                     });
                 });
 
                 if (winnerSelect) {
-                    winnerSelect.addEventListener('change', () => {
+                    winnerSelect.addEventListener('change', function () {
                         refreshDirtyState(card);
                     });
                 }
             });
 
-            if (topScorerSelect && !topScorerSelect.disabled) {
-                topScorerSelect.addEventListener('change', () => {
-                    // no-op: hasPendingChanges checks current select value against initial snapshot
-                });
-            }
-
-            form.addEventListener('submit', () => {
+            form.addEventListener('submit', function () {
                 isSubmitting = true;
                 dirtyCards.clear();
             });
 
-            window.addEventListener('beforeunload', (event) => {
+            window.addEventListener('beforeunload', function (event) {
                 if (!hasPendingChanges()) return;
                 event.preventDefault();
                 event.returnValue = '';
             });
 
-            document.addEventListener('click', (event) => {
-                const link = event.target.closest('a[href]');
+            document.addEventListener('click', function (event) {
+                var link = event.target.closest('a[href]');
                 if (!link) return;
                 if (!hasPendingChanges()) return;
-
-                const keepPage = window.confirm('Existem palpites não salvos. Clique em "Salvar palpites" para não perder seu progresso. Deseja sair mesmo assim?');
+                var keepPage = window.confirm('Existem palpites não salvos. Clique em "Salvar palpites" para não perder seu progresso. Deseja sair mesmo assim?');
                 if (!keepPage) {
                     event.preventDefault();
                 }
             });
 
-            const btnToggleDate  = document.getElementById('toggle-by-date');
-            const btnToggleGroup = document.getElementById('toggle-by-group');
+            var btnToggleDate  = document.getElementById('toggle-by-date');
+            var btnToggleGroup = document.getElementById('toggle-by-group');
             if (btnToggleDate)  btnToggleDate.addEventListener('click',  function () { applyGrouping('date'); });
             if (btnToggleGroup) btnToggleGroup.addEventListener('click', function () { applyGrouping('group'); });
-            // D-08 default: by date. D-11: do NOT read from localStorage / cookie.
+
             applyGrouping('date');
             applyKnockoutStageGrouping();
             syncTopBarButton();

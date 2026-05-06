@@ -85,7 +85,7 @@ DATABASES = {
         "USER": "penninicup",
         "PASSWORD": "penninicup",
         "HOST": "localhost",
-        "PORT": "5432",
+        "PORT": "5433",
         "ATOMIC_REQUESTS": True,
         "CONN_MAX_AGE": 600,
     }

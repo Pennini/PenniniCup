@@ -538,9 +538,10 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
 
     projected_knockout = _build_projected_knockout_payload(knockout_rows=knockout_rows)
 
-    # Progress counters for mobile progress bar (D-06).
-    total_group_matches = len(group_rows)
-    saved_bets_count = sum(1 for row in group_rows if row["bet"] and row["bet"].is_active)
+    # Progress counters for progress bar — all matches (group + knockout).
+    all_rows = group_rows + knockout_rows
+    total_group_matches = len(all_rows)
+    saved_bets_count = sum(1 for row in all_rows if row["bet"] and row["bet"].is_active)
 
     return {
         "match_rows": match_rows,
