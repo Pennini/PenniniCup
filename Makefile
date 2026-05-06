@@ -35,6 +35,14 @@ test: export PENNINICUP_SETTINGS_PROFILE = test
 test:
 	poetry run python -m src.manage test --settings=src.config.settings --verbosity=2
 
+.PHONY: coverage
+coverage: export PENNINICUP_SETTINGS_PROFILE = test
+coverage:
+	poetry run coverage run \
+		-m src.manage test --settings=src.config.settings --verbosity=2
+	poetry run coverage report
+	poetry run coverage html
+
 .PHONY: up-dependencies
 up-dependencies:
 	poetry run python -c "from pathlib import Path; Path('.env').touch(exist_ok=True)"
