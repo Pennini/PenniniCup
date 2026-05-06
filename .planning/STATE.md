@@ -1,17 +1,17 @@
 # Project State
 
 **Project:** PenniniCup
-**Last Updated:** 2026-05-06
+**Last Updated:** 2026-05-07
 **Current Phase:** Phase 2 — Palpites Mobile-First
 
 ## Status
 
-| Phase | Name                                | Status      |
-| ----- | ----------------------------------- | ----------- |
-| 1     | Qualidade Base — Testes e Cobertura | Complete ✓  |
-| 2     | Palpites Mobile-First               | Not Started |
-| 3     | Onboarding e Ranking                | Not Started |
-| 4     | Qualidade de Código                 | Not Started |
+| Phase | Name                                | Status                     |
+| ----- | ----------------------------------- | -------------------------- |
+| 1     | Qualidade Base — Testes e Cobertura | Complete ✓                 |
+| 2     | Palpites Mobile-First               | Ready to Execute (3 plans) |
+| 3     | Onboarding e Ranking                | Not Started                |
+| 4     | Qualidade de Código                 | Not Started                |
 
 ## What Was Done
 
@@ -24,10 +24,10 @@
 ## Next Action
 
 ```
-/gsd-plan-phase 2
+/gsd-execute-phase 2
 ```
 
-Context gathered: `.planning/02/02-CONTEXT.md`
+Plans ready: `.planning/02/02-01-PLAN.md`, `02-02-PLAN.md`, `02-03-PLAN.md`
 
 ## Key Context
 
@@ -39,9 +39,10 @@ Context gathered: `.planning/02/02-CONTEXT.md`
 
 ## Session History
 
-| Date       | Action                                                            |
-| ---------- | ----------------------------------------------------------------- |
-| 2026-05-05 | Inicialização GSD; PROJECT.md criado                              |
-| 2026-05-05 | Codebase mapeado (--fast)                                         |
-| 2026-05-05 | ingest-docs: REQUIREMENTS.md + ROADMAP.md + STATE.md criados      |
-| 2026-05-05 | Phase 1 executada e verificada (3 plans, 225 tests, coverage 77%) |
+| Date       | Action                                                                                  |
+| ---------- | --------------------------------------------------------------------------------------- |
+| 2026-05-05 | Inicialização GSD; PROJECT.md criado                                                    |
+| 2026-05-05 | Codebase mapeado (--fast)                                                               |
+| 2026-05-05 | ingest-docs: REQUIREMENTS.md + ROADMAP.md + STATE.md criados                            |
+| 2026-05-05 | Phase 1 executada e verificada (3 plans, 225 tests, coverage 77%)                       |
+| 2026-05-07 | Phase 2 planejada (3 plans, 2 waves): context_builder, top_nav/base, detail.html mobile |

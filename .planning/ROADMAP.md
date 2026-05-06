@@ -36,6 +36,14 @@ ______________________________________________________________________
 
 **Requirements:** FR-01, FR-03, FR-09
 
+**Plans:** 3 plans
+
+Plans:
+
+- [ ] 02-01-PLAN.md — Backend: progress counters + group_rows date sort em context_builder.py (+ testes)
+- [ ] 02-02-PLAN.md — Chrome: botão Salvar mobile contextual (top_nav.html) + toast auto-dismiss (base.html)
+- [ ] 02-03-PLAN.md — UI: refactor mobile-first de detail.html (cards, progress, toggle agrupamento, JS sync)
+
 ______________________________________________________________________
 
 ### Phase 3: Onboarding e Ranking
