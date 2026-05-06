@@ -56,7 +56,6 @@
 
     <form id="pool-bets-form" method="post" action="{% url 'pool:save-bets-bulk' pool.slug %}" class="space-y-3 pb-8">
         {% csrf_token %}
-        <div id="group-list">
         <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900">
             <div class="flex flex-wrap items-center justify-between gap-3">
                 <div>
@@ -89,6 +88,7 @@
             </div>
         </article>
 
+        <div id="group-list">
         {% for row in group_rows %}
         <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900"
                  data-match-card
@@ -315,6 +315,70 @@
             const initialTopScorerValue = topScorerSelect ? topScorerSelect.value : '';
             let isSubmitting = false;
 
+            const mobileTopBarBtn = document.querySelector('[data-topbar-save-btn]');
+            function syncTopBarButton() {
+                if (!mobileTopBarBtn) return;
+                if (mobileTopBarBtn.disabled) {
+                    mobileTopBarBtn.classList.add('hidden');
+                    return;
+                }
+                const pending = hasPendingChanges();
+                mobileTopBarBtn.classList.toggle('hidden', !pending);
+                mobileTopBarBtn.classList.toggle('bg-orange-500', pending);
+                mobileTopBarBtn.classList.toggle('text-black', pending);
+                mobileTopBarBtn.classList.toggle('bg-neutral-800', !pending);
+                mobileTopBarBtn.classList.toggle('text-neutral-400', !pending);
+            }
+
+            function applyGrouping(mode) {
+                document.querySelectorAll('[data-grouping-header]').forEach(function (el) { el.remove(); });
+
+                const groupCards = document.querySelectorAll('#group-list [data-match-card][data-phase="GROUP"]');
+                let lastKey = null;
+                groupCards.forEach(function (card) {
+                    const key   = mode === 'date' ? card.dataset.matchDate      : card.dataset.matchGroup;
+                    const label = mode === 'date' ? card.dataset.matchDateLabel : 'Grupo ' + card.dataset.matchGroup;
+                    if (key !== lastKey) {
+                        const header = document.createElement('h3');
+                        header.setAttribute('data-grouping-header', '');
+                        header.className = 'text-xs uppercase tracking-wide text-neutral-400 mt-4 mb-2 px-1';
+                        header.textContent = label;
+                        card.parentNode.insertBefore(header, card);
+                        lastKey = key;
+                    }
+                });
+
+                const btnDate  = document.getElementById('toggle-by-date');
+                const btnGroup = document.getElementById('toggle-by-group');
+                if (btnDate && btnGroup) {
+                    btnDate.classList.toggle('bg-neutral-800',   mode === 'date');
+                    btnDate.classList.toggle('text-orange-200',  mode === 'date');
+                    btnDate.classList.toggle('text-neutral-400', mode !== 'date');
+                    btnGroup.classList.toggle('bg-neutral-800',   mode === 'group');
+                    btnGroup.classList.toggle('text-orange-200',  mode === 'group');
+                    btnGroup.classList.toggle('text-neutral-400', mode !== 'group');
+                    btnDate.setAttribute('aria-pressed',  mode === 'date'  ? 'true' : 'false');
+                    btnGroup.setAttribute('aria-pressed', mode === 'group' ? 'true' : 'false');
+                }
+            }
+
+            // Knockout always groups by stage (D-12) — independent of the Por Data / Por Grupo toggle.
+            function applyKnockoutStageGrouping() {
+                const stageCards = document.querySelectorAll('#knockout-list [data-match-card][data-stage]');
+                let lastStage = null;
+                stageCards.forEach(function (card) {
+                    const stage = card.dataset.stage;
+                    if (stage && stage !== lastStage) {
+                        const header = document.createElement('h3');
+                        header.setAttribute('data-grouping-header', '');
+                        header.className = 'text-xs uppercase tracking-wide text-neutral-400 mt-4 mb-2 px-1';
+                        header.textContent = stage;
+                        card.parentNode.insertBefore(header, card);
+                        lastStage = stage;
+                    }
+                });
+            }
+
             function hasPendingChanges() {
                 const topScorerChanged = topScorerSelect && !topScorerSelect.disabled && topScorerSelect.value !== initialTopScorerValue;
                 return !isSubmitting && (dirtyCards.size > 0 || topScorerChanged);
@@ -346,6 +410,7 @@
                 } else {
                     dirtyCards.add(card);
                 }
+                syncTopBarButton();
             }
 
             function applyWinnerVisibility(card) {
@@ -425,6 +490,15 @@
                     event.preventDefault();
                 }
             });
+
+            const btnToggleDate  = document.getElementById('toggle-by-date');
+            const btnToggleGroup = document.getElementById('toggle-by-group');
+            if (btnToggleDate)  btnToggleDate.addEventListener('click',  function () { applyGrouping('date'); });
+            if (btnToggleGroup) btnToggleGroup.addEventListener('click', function () { applyGrouping('group'); });
+            // D-08 default: by date. D-11: do NOT read from localStorage / cookie.
+            applyGrouping('date');
+            applyKnockoutStageGrouping();
+            syncTopBarButton();
         })();
     </script>
     {% endif %}
