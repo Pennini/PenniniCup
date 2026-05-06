@@ -1,3 +1,4 @@
+import datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -6,11 +7,24 @@ from django.core.exceptions import ValidationError
 from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.timezone import now as tz_now
 
 from src.accounts.models import InviteToken
 from src.football.models import AssignThird, Competition, Group, Match, Player, Season, Stage, Team
 from src.payments.models import Payment
 from src.pool.models import Pool, PoolBet, PoolParticipant, PoolProjectionRecalc
+from src.pool.services.context_builder import (
+    _build_projected_groups_from_rows,
+    _build_third_rows_from_rows,
+    _build_winners_map,
+    _infer_advancing_team,
+    _infer_losing_team,
+    _make_pairs,
+    _projection_is_stale_from_prefetched,
+)
+from src.pool.services.context_builder import (
+    _normalize_stage_key as _cb_normalize_stage_key,
+)
 from src.pool.services.projection import (
     load_assign_third_map,
     projected_group_standings,
@@ -1377,3 +1391,418 @@ class PhaseForMatchTest(SimpleTestCase):
         """Match with None stage returns PHASE_KNOCKOUT (fallback)."""
         match = self._match(None)
         self.assertEqual(phase_for_match(match), PHASE_KNOCKOUT)
+
+
+class ContextBuilderPureHelpersTest(SimpleTestCase):
+    """Unit tests for pure helper functions from context_builder.py."""
+
+    def _team(self, id):
+        """Create a mock team with given ID."""
+        return SimpleNamespace(id=id)
+
+    def _bet(
+        self,
+        *,
+        is_active=True,
+        winner_pred_id=None,
+        winner_pred=None,
+        home_score_pred=None,
+        away_score_pred=None,
+        updated_at=None,
+        match=None,
+    ):
+        """Create a mock bet."""
+        return SimpleNamespace(
+            is_active=is_active,
+            winner_pred_id=winner_pred_id,
+            winner_pred=winner_pred,
+            home_score_pred=home_score_pred,
+            away_score_pred=away_score_pred,
+            updated_at=updated_at,
+            match=match,
+        )
+
+    def _match_obj(
+        self,
+        *,
+        id=1,
+        match_number=1,
+        winner_id=None,
+        winner=None,
+        home_team=None,
+        away_team=None,
+        home_team_id=None,
+        away_team_id=None,
+        group_id=None,
+    ):
+        """Create a mock match."""
+        return SimpleNamespace(
+            id=id,
+            match_number=match_number,
+            winner_id=winner_id,
+            winner=winner,
+            home_team=home_team,
+            away_team=away_team,
+            home_team_id=home_team_id,
+            away_team_id=away_team_id,
+            group_id=group_id,
+        )
+
+    # _make_pairs tests
+    def test_make_pairs_empty(self):
+        """Empty list returns empty list."""
+        self.assertEqual(_make_pairs([]), [])
+
+    def test_make_pairs_one(self):
+        """List with 1 element returns [[element]]."""
+        self.assertEqual(_make_pairs([1]), [[1]])
+
+    def test_make_pairs_two(self):
+        """List with 2 elements returns [[a, b]]."""
+        self.assertEqual(_make_pairs([1, 2]), [[1, 2]])
+
+    def test_make_pairs_three(self):
+        """List with 3 elements returns [[a, b], [c]]."""
+        self.assertEqual(_make_pairs([1, 2, 3]), [[1, 2], [3]])
+
+    def test_make_pairs_four(self):
+        """List with 4 elements returns [[a, b], [c, d]]."""
+        self.assertEqual(_make_pairs([1, 2, 3, 4]), [[1, 2], [3, 4]])
+
+    # _cb_normalize_stage_key tests (local version in context_builder)
+    def test_cb_normalize_none(self):
+        """stage=None returns empty string."""
+        self.assertEqual(_cb_normalize_stage_key(None), "")
+
+    def test_cb_normalize_sf_en(self):
+        """'Semi-Final' returns 'SF'."""
+        stage = SimpleNamespace(name="Semi-Final")
+        self.assertEqual(_cb_normalize_stage_key(stage), "SF")
+
+    def test_cb_normalize_sf_pt(self):
+        """'Semifinal' returns 'SF'."""
+        stage = SimpleNamespace(name="Semifinal")
+        self.assertEqual(_cb_normalize_stage_key(stage), "SF")
+
+    def test_cb_normalize_qf_en(self):
+        """'Quarter-Final' returns 'QF'."""
+        stage = SimpleNamespace(name="Quarter-Final")
+        self.assertEqual(_cb_normalize_stage_key(stage), "QF")
+
+    def test_cb_normalize_r16_en(self):
+        """'Round of 16' returns 'R16'."""
+        stage = SimpleNamespace(name="Round of 16")
+        self.assertEqual(_cb_normalize_stage_key(stage), "R16")
+
+    def test_cb_normalize_r16_pt(self):
+        """'Oitavas de Final' returns 'R16'."""
+        stage = SimpleNamespace(name="Oitavas de Final")
+        self.assertEqual(_cb_normalize_stage_key(stage), "R16")
+
+    def test_cb_normalize_final(self):
+        """'Final' returns 'FINAL'."""
+        stage = SimpleNamespace(name="Final")
+        self.assertEqual(_cb_normalize_stage_key(stage), "FINAL")
+
+    def test_cb_normalize_third(self):
+        """'Decisão 3o Lugar' returns 'THIRD'."""
+        stage = SimpleNamespace(name="Decisão 3o Lugar")
+        self.assertEqual(_cb_normalize_stage_key(stage), "THIRD")
+
+    def test_cb_normalize_unknown(self):
+        """'Mystery Stage' returns empty string."""
+        stage = SimpleNamespace(name="Mystery Stage")
+        self.assertEqual(_cb_normalize_stage_key(stage), "")
+
+    # _infer_advancing_team tests
+    def test_infer_match_has_winner(self):
+        """match.winner_id set → returns match.winner."""
+        winner_team = self._team(100)
+        match = self._match_obj(winner_id=100, winner=winner_team)
+        result = _infer_advancing_team(match, None, None, None)
+        self.assertIs(result, winner_team)
+
+    def test_infer_no_bet(self):
+        """match.winner_id None, bet=None → None."""
+        match = self._match_obj(winner_id=None)
+        result = _infer_advancing_team(match, None, None, None)
+        self.assertIsNone(result)
+
+    def test_infer_inactive_bet(self):
+        """match.winner_id None, bet.is_active=False → None."""
+        match = self._match_obj(winner_id=None)
+        bet = self._bet(is_active=False)
+        result = _infer_advancing_team(match, bet, None, None)
+        self.assertIsNone(result)
+
+    def test_infer_bet_has_winner_pred(self):
+        """match.winner_id None, bet.is_active=True, bet.winner_pred_id set → returns bet.winner_pred."""
+        winner_pred = self._team(50)
+        match = self._match_obj(winner_id=None)
+        bet = self._bet(is_active=True, winner_pred_id=50, winner_pred=winner_pred)
+        result = _infer_advancing_team(match, bet, None, None)
+        self.assertIs(result, winner_pred)
+
+    def test_infer_bet_home_pred_higher(self):
+        """match.winner_id None, bet active, home_pred=2 > away_pred=1 → returns home_team."""
+        home_team = self._team(1)
+        away_team = self._team(2)
+        match = self._match_obj(winner_id=None)
+        bet = self._bet(is_active=True, home_score_pred=2, away_score_pred=1)
+        result = _infer_advancing_team(match, bet, home_team, away_team)
+        self.assertIs(result, home_team)
+
+    def test_infer_bet_away_pred_higher(self):
+        """match.winner_id None, bet active, away_pred=2 > home_pred=1 → returns away_team."""
+        home_team = self._team(1)
+        away_team = self._team(2)
+        match = self._match_obj(winner_id=None)
+        bet = self._bet(is_active=True, home_score_pred=1, away_score_pred=2)
+        result = _infer_advancing_team(match, bet, home_team, away_team)
+        self.assertIs(result, away_team)
+
+    def test_infer_draw_pred(self):
+        """match.winner_id None, bet active, equal scores → None."""
+        home_team = self._team(1)
+        away_team = self._team(2)
+        match = self._match_obj(winner_id=None)
+        bet = self._bet(is_active=True, home_score_pred=1, away_score_pred=1)
+        result = _infer_advancing_team(match, bet, home_team, away_team)
+        self.assertIsNone(result)
+
+    # _infer_losing_team tests
+    def test_losing_winner_none(self):
+        """winner_team=None → None."""
+        result = _infer_losing_team(None, self._team(1), self._team(2))
+        self.assertIsNone(result)
+
+    def test_losing_home_none(self):
+        """home_team=None → None."""
+        result = _infer_losing_team(self._team(1), None, self._team(2))
+        self.assertIsNone(result)
+
+    def test_losing_away_none(self):
+        """away_team=None → None."""
+        result = _infer_losing_team(self._team(1), self._team(1), None)
+        self.assertIsNone(result)
+
+    def test_losing_winner_is_home(self):
+        """winner.id == home.id → returns away_team."""
+        winner = self._team(1)
+        home = self._team(1)
+        away = self._team(2)
+        result = _infer_losing_team(winner, home, away)
+        self.assertIs(result, away)
+
+    def test_losing_winner_is_away(self):
+        """winner.id == away.id → returns home_team."""
+        winner = self._team(2)
+        home = self._team(1)
+        away = self._team(2)
+        result = _infer_losing_team(winner, home, away)
+        self.assertIs(result, home)
+
+    # _build_winners_map tests
+    def test_winners_map_bet_with_winner_pred(self):
+        """bet active with winner_pred_id → uses winner_pred."""
+        winner_pred = self._team(100)
+        match = self._match_obj(match_number=1, id=1)
+        bet = self._bet(is_active=True, winner_pred_id=100, winner_pred=winner_pred)
+        bets_by_match_id = {1: bet}
+
+        result = _build_winners_map([match], bets_by_match_id)
+        self.assertEqual(result[1], winner_pred)
+
+    def test_winners_map_bet_scores_home_wins(self):
+        """bet active, home_score_pred > away_score_pred → uses match.home_team."""
+        home_team = self._team(1)
+        away_team = self._team(2)
+        match = self._match_obj(
+            match_number=1,
+            id=1,
+            home_team=home_team,
+            away_team=away_team,
+            home_team_id=1,
+            away_team_id=2,
+        )
+        bet = self._bet(is_active=True, home_score_pred=2, away_score_pred=1)
+        bets_by_match_id = {1: bet}
+
+        result = _build_winners_map([match], bets_by_match_id)
+        self.assertEqual(result[1], home_team)
+
+    def test_winners_map_bet_scores_away_wins(self):
+        """bet active, away_score_pred > home_score_pred → uses match.away_team."""
+        home_team = self._team(1)
+        away_team = self._team(2)
+        match = self._match_obj(
+            match_number=1,
+            id=1,
+            home_team=home_team,
+            away_team=away_team,
+            home_team_id=1,
+            away_team_id=2,
+        )
+        bet = self._bet(is_active=True, home_score_pred=1, away_score_pred=2)
+        bets_by_match_id = {1: bet}
+
+        result = _build_winners_map([match], bets_by_match_id)
+        self.assertEqual(result[1], away_team)
+
+    def test_winners_map_no_bet_match_has_winner(self):
+        """no bet, match has winner_id → uses match.winner."""
+        winner = self._team(100)
+        match = self._match_obj(match_number=1, id=1, winner_id=100, winner=winner)
+        bets_by_match_id = {}
+
+        result = _build_winners_map([match], bets_by_match_id)
+        self.assertEqual(result[1], winner)
+
+    def test_winners_map_no_bet_no_winner(self):
+        """no bet, no match.winner_id → not in map."""
+        match = self._match_obj(match_number=1, id=1, winner_id=None)
+        bets_by_match_id = {}
+
+        result = _build_winners_map([match], bets_by_match_id)
+        self.assertNotIn(1, result)
+
+    # _projection_is_stale_from_prefetched tests
+    def test_stale_no_active_group_bets(self):
+        """no active bets with group → False."""
+        # All bets inactive
+        match = self._match_obj(group_id=1)
+        bet = self._bet(is_active=False, match=match, updated_at=tz_now())
+        bets = [bet]
+        projected_standings = [SimpleNamespace(updated_at=tz_now())]
+        projected_third_places = [SimpleNamespace(updated_at=tz_now())]
+
+        result = _projection_is_stale_from_prefetched(bets, projected_standings, projected_third_places)
+        self.assertFalse(result)
+
+    def test_stale_no_group_id_in_bets(self):
+        """bets active but no group_id (knockout bets) → False."""
+        match = self._match_obj(group_id=None)  # knockout match
+        bet = self._bet(is_active=True, match=match, updated_at=tz_now())
+        bets = [bet]
+        projected_standings = [SimpleNamespace(updated_at=tz_now())]
+        projected_third_places = [SimpleNamespace(updated_at=tz_now())]
+
+        result = _projection_is_stale_from_prefetched(bets, projected_standings, projected_third_places)
+        self.assertFalse(result)
+
+    def test_stale_empty_standings(self):
+        """bets active + standings empty → True."""
+        match = self._match_obj(group_id=1)
+        bet_time = tz_now()
+        bet = self._bet(is_active=True, match=match, updated_at=bet_time)
+        bets = [bet]
+        projected_standings = []
+        projected_third_places = [SimpleNamespace(updated_at=bet_time)]
+
+        result = _projection_is_stale_from_prefetched(bets, projected_standings, projected_third_places)
+        self.assertTrue(result)
+
+    def test_stale_empty_third_places(self):
+        """bets active + third_places empty → True."""
+        match = self._match_obj(group_id=1)
+        bet_time = tz_now()
+        bet = self._bet(is_active=True, match=match, updated_at=bet_time)
+        bets = [bet]
+        projected_standings = [SimpleNamespace(updated_at=bet_time)]
+        projected_third_places = []
+
+        result = _projection_is_stale_from_prefetched(bets, projected_standings, projected_third_places)
+        self.assertTrue(result)
+
+    def test_stale_standings_older_than_bets(self):
+        """standings.updated_at < bet.updated_at → True."""
+        match = self._match_obj(group_id=1)
+        bet_time = tz_now()
+        old_time = bet_time - datetime.timedelta(minutes=10)
+        bet = self._bet(is_active=True, match=match, updated_at=bet_time)
+        bets = [bet]
+        projected_standings = [SimpleNamespace(updated_at=old_time)]
+        projected_third_places = [SimpleNamespace(updated_at=bet_time)]
+
+        result = _projection_is_stale_from_prefetched(bets, projected_standings, projected_third_places)
+        self.assertTrue(result)
+
+    def test_stale_third_older_than_bets(self):
+        """third_places.updated_at < bet.updated_at → True."""
+        match = self._match_obj(group_id=1)
+        bet_time = tz_now()
+        old_time = bet_time - datetime.timedelta(minutes=10)
+        bet = self._bet(is_active=True, match=match, updated_at=bet_time)
+        bets = [bet]
+        projected_standings = [SimpleNamespace(updated_at=bet_time)]
+        projected_third_places = [SimpleNamespace(updated_at=old_time)]
+
+        result = _projection_is_stale_from_prefetched(bets, projected_standings, projected_third_places)
+        self.assertTrue(result)
+
+    def test_not_stale_standings_current(self):
+        """standings and third_places current → False."""
+        match = self._match_obj(group_id=1)
+        bet_time = tz_now()
+        new_time = bet_time + datetime.timedelta(minutes=10)
+        bet = self._bet(is_active=True, match=match, updated_at=bet_time)
+        bets = [bet]
+        projected_standings = [SimpleNamespace(updated_at=new_time)]
+        projected_third_places = [SimpleNamespace(updated_at=new_time)]
+
+        result = _projection_is_stale_from_prefetched(bets, projected_standings, projected_third_places)
+        self.assertFalse(result)
+
+    # _build_projected_groups_from_rows tests
+    def test_build_groups_empty(self):
+        """Empty list → []."""
+        result = _build_projected_groups_from_rows([])
+        self.assertEqual(result, [])
+
+    def test_build_groups_same_group(self):
+        """2 rows same group → [{"group": group, "standings": [row1, row2]}]."""
+        group = SimpleNamespace(name="A")
+        row1 = SimpleNamespace(group=group, position=1)
+        row2 = SimpleNamespace(group=group, position=2)
+
+        result = _build_projected_groups_from_rows([row1, row2])
+        self.assertEqual(len(result), 1)
+        self.assertIs(result[0]["group"], group)
+        self.assertEqual(result[0]["standings"], [row1, row2])
+
+    def test_build_groups_two_groups(self):
+        """2 rows different groups → 2 dicts (must be sorted)."""
+        group_a = SimpleNamespace(name="A")
+        group_b = SimpleNamespace(name="B")
+        row1 = SimpleNamespace(group=group_a, position=1)
+        row2 = SimpleNamespace(group=group_b, position=1)
+
+        # itertools.groupby requires sorted input for proper grouping
+        result = _build_projected_groups_from_rows([row1, row2])
+        self.assertEqual(len(result), 2)
+        self.assertIs(result[0]["group"], group_a)
+        self.assertIs(result[1]["group"], group_b)
+
+    # _build_third_rows_from_rows tests
+    def test_build_third_empty(self):
+        """Empty list → []."""
+        result = _build_third_rows_from_rows([])
+        self.assertEqual(result, [])
+
+    def test_build_third_one_row(self):
+        """1 row → dict with group, line, score, position_global, is_qualified."""
+        group = SimpleNamespace(name="A")
+        row = SimpleNamespace(
+            group=group,
+            score=5,
+            position_global=1,
+            is_qualified=True,
+        )
+
+        result = _build_third_rows_from_rows([row])
+        self.assertEqual(len(result), 1)
+        self.assertIs(result[0]["group"], group)
+        self.assertIs(result[0]["line"], row)
+        self.assertEqual(result[0]["score"], 5)
+        self.assertEqual(result[0]["position_global"], 1)
+        self.assertTrue(result[0]["is_qualified"])
