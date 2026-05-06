@@ -1,8 +1,9 @@
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -17,6 +18,8 @@ from src.pool.services.projection import (
 )
 from src.pool.services.projection_queue import MAX_ATTEMPTS, process_next_projection_recalc_job
 from src.pool.services.ranking import recalculate_participant_scores
+from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, normalize_stage_key, phase_for_match
+from src.pool.services.scoring import _winner_from_score, calculate_bet_points
 
 User = get_user_model()
 
@@ -1072,3 +1075,305 @@ class ProjectedGroupStandingsH2HCircularTest(TestCase):
         self.assertEqual(standings[0].team.id, self.team_b.id, "B has best FIFA ranking (5) → 1st")
         self.assertEqual(standings[1].team.id, self.team_a.id, "A has mid FIFA ranking (10) → 2nd")
         self.assertEqual(standings[2].team.id, self.team_c.id, "C has worst FIFA ranking (20) → 3rd")
+
+
+# Pure-function tests for scoring.py and rules.py (no database required)
+
+
+class ScoringWinnerFromScoreTest(SimpleTestCase):
+    """Unit tests for _winner_from_score pure function."""
+
+    def test_home_wins(self):
+        """Home score > away score returns 'HOME'."""
+        self.assertEqual(_winner_from_score(2, 1), "HOME")
+
+    def test_away_wins(self):
+        """Away score > home score returns 'AWAY'."""
+        self.assertEqual(_winner_from_score(0, 1), "AWAY")
+
+    def test_draw(self):
+        """Equal scores return 'DRAW'."""
+        self.assertEqual(_winner_from_score(1, 1), "DRAW")
+
+    def test_draw_zero_zero(self):
+        """0-0 draw returns 'DRAW'."""
+        self.assertEqual(_winner_from_score(0, 0), "DRAW")
+
+
+class ScoringCalculateBetPointsTest(SimpleTestCase):
+    """Unit tests for calculate_bet_points pure function."""
+
+    def _make_scoring_config(self, **overrides):
+        """Create a scoring config with sensible defaults."""
+        defaults = dict(
+            group_winner_or_draw_points=6,
+            group_exact_score_points=4,
+            group_one_team_score_points=2,
+            knockout_winner_advancing_points=8,
+            knockout_exact_score_points=6,
+            knockout_one_team_score_points=2,
+        )
+        defaults.update(overrides)
+        return SimpleNamespace(**defaults)
+
+    def _make_group_bet(self, home_pred, away_pred, home_real, away_real, is_active=True):
+        """Create a group-stage bet for testing."""
+        stage = SimpleNamespace(name="Group Stage")
+        match = SimpleNamespace(
+            stage=stage,
+            home_score=home_real,
+            away_score=away_real,
+            winner_id=None,
+        )
+        return SimpleNamespace(
+            is_active=is_active,
+            home_score_pred=home_pred,
+            away_score_pred=away_pred,
+            winner_pred_id=None,
+            match=match,
+        )
+
+    def _make_knockout_bet(
+        self, home_pred, away_pred, home_real, away_real, winner_real_id=None, winner_pred_id=None, is_active=True
+    ):
+        """Create a knockout-stage bet for testing."""
+        stage = SimpleNamespace(name="Semi-Final")
+        match = SimpleNamespace(
+            stage=stage,
+            home_score=home_real,
+            away_score=away_real,
+            winner_id=winner_real_id,
+        )
+        return SimpleNamespace(
+            is_active=is_active,
+            home_score_pred=home_pred,
+            away_score_pred=away_pred,
+            winner_pred_id=winner_pred_id,
+            match=match,
+        )
+
+    # Early return tests
+    def test_inactive_bet(self):
+        """Inactive bet returns 0 points and all False."""
+        bet = self._make_group_bet(2, 1, 2, 1, is_active=False)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["exact_score"])
+        self.assertFalse(result["winner_or_draw"])
+        self.assertFalse(result["one_team_score"])
+
+    def test_no_home_pred(self):
+        """Bet with no home_score_pred returns 0 points and all False."""
+        bet = self._make_group_bet(None, 1, 2, 1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["exact_score"])
+        self.assertFalse(result["winner_or_draw"])
+        self.assertFalse(result["one_team_score"])
+
+    def test_no_match_score(self):
+        """Match with no home_score returns 0 points and all False."""
+        bet = self._make_group_bet(2, 1, None, 1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["exact_score"])
+        self.assertFalse(result["winner_or_draw"])
+        self.assertFalse(result["one_team_score"])
+
+    # Group stage tests
+    def test_group_exact_score(self):
+        """Exact score in group stage yields exact_score + winner_or_draw points."""
+        bet = self._make_group_bet(2, 1, 2, 1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        # 6 (winner_or_draw) + 4 (exact_score) = 10
+        self.assertEqual(result["points"], 10)
+        self.assertTrue(result["exact_score"])
+        self.assertTrue(result["winner_or_draw"])
+        self.assertFalse(result["one_team_score"])
+
+    def test_group_correct_winner_not_exact(self):
+        """Correct winner but not exact score in group stage."""
+        bet = self._make_group_bet(2, 1, 3, 1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        # 6 (winner_or_draw) + 2 (one_team_score: away_score matches) = 8
+        self.assertEqual(result["points"], 8)
+        self.assertFalse(result["exact_score"])
+        self.assertTrue(result["winner_or_draw"])
+        self.assertTrue(result["one_team_score"])
+
+    def test_group_one_team_score(self):
+        """One team score matches in group stage."""
+        bet = self._make_group_bet(2, 1, 2, 0)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        # 6 (winner_or_draw: home wins) + 2 (one_team_score: home matches) = 8
+        self.assertEqual(result["points"], 8)
+        self.assertFalse(result["exact_score"])
+        self.assertTrue(result["winner_or_draw"])
+        self.assertTrue(result["one_team_score"])
+
+    def test_group_draw_both(self):
+        """Both predictions and match are draws in group stage."""
+        bet = self._make_group_bet(1, 1, 0, 0)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        # 6 (winner_or_draw) = 6
+        self.assertEqual(result["points"], 6)
+        self.assertFalse(result["exact_score"])
+        self.assertTrue(result["winner_or_draw"])
+        self.assertFalse(result["one_team_score"])
+
+    def test_group_all_wrong(self):
+        """Completely wrong prediction in group stage."""
+        bet = self._make_group_bet(3, 2, 0, 1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        # 0 points (no matches at all)
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["exact_score"])
+        self.assertFalse(result["winner_or_draw"])
+        self.assertFalse(result["one_team_score"])
+
+    # Knockout stage tests
+    def test_knockout_correct_winner_exact_score(self):
+        """Correct winner and exact score in knockout."""
+        bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        # 8 (winner_advancing) + 6 (exact_score) = 14
+        self.assertEqual(result["points"], 14)
+        self.assertTrue(result["exact_score"])
+        self.assertTrue(result["winner_advancing"])
+
+    def test_knockout_correct_winner_wrong_score(self):
+        """Correct winner but wrong score in knockout."""
+        bet = self._make_knockout_bet(2, 1, 3, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        # 8 (winner_advancing) + 2 (one_team_score: away matches) = 10
+        self.assertEqual(result["points"], 10)
+        self.assertFalse(result["exact_score"])
+        self.assertTrue(result["winner_advancing"])
+        self.assertTrue(result["one_team_score"])
+
+    def test_knockout_wrong_winner(self):
+        """Wrong winner prediction in knockout."""
+        bet = self._make_knockout_bet(2, 1, 1, 2, winner_real_id=2, winner_pred_id=1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        # 0 points
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["exact_score"])
+        self.assertFalse(result["winner_advancing"])
+
+    def test_knockout_exact_score_wrong_winner(self):
+        """Exact score but wrong winner in knockout."""
+        bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=2, winner_pred_id=1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        # 6 (exact_score) = 6
+        self.assertEqual(result["points"], 6)
+        self.assertTrue(result["exact_score"])
+        self.assertFalse(result["winner_advancing"])
+
+    def test_knockout_inactive_bonus(self):
+        """Inactive bet in knockout returns 0 points."""
+        bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1, winner_pred_id=1, is_active=False)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        # 0 points
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["exact_score"])
+        self.assertFalse(result["winner_advancing"])
+
+
+class NormalizeStageKeyTest(SimpleTestCase):
+    """Unit tests for normalize_stage_key pure function."""
+
+    def _stage(self, name):
+        """Helper to create a stage object."""
+        return SimpleNamespace(name=name)
+
+    def test_stage_none(self):
+        """None stage returns empty string."""
+        self.assertEqual(normalize_stage_key(None), "")
+
+    def test_stage_name_none(self):
+        """Stage with name=None returns empty string."""
+        self.assertEqual(normalize_stage_key(self._stage(None)), "")
+
+    def test_stage_name_empty(self):
+        """Stage with empty name returns empty string."""
+        self.assertEqual(normalize_stage_key(self._stage("")), "")
+
+    def test_group_stage_en(self):
+        """'Group Stage' (English) returns 'GROUP'."""
+        self.assertEqual(normalize_stage_key(self._stage("Group Stage")), "GROUP")
+
+    def test_grupo_pt(self):
+        """'Grupo A' (Portuguese) returns 'GROUP'."""
+        self.assertEqual(normalize_stage_key(self._stage("Grupo A")), "GROUP")
+
+    def test_primeira_fase_pt(self):
+        """'Primeira Fase' (Portuguese) returns 'GROUP'."""
+        self.assertEqual(normalize_stage_key(self._stage("Primeira Fase")), "GROUP")
+
+    def test_r16_en(self):
+        """'Round of 16' (English) returns 'R16'."""
+        self.assertEqual(normalize_stage_key(self._stage("Round of 16")), "R16")
+
+    def test_r16_pt(self):
+        """'Oitavas de Final' (Portuguese) returns 'R16'."""
+        self.assertEqual(normalize_stage_key(self._stage("Oitavas de Final")), "R16")
+
+    def test_qf_en(self):
+        """'Quarter-Final' (English) returns 'QF'."""
+        self.assertEqual(normalize_stage_key(self._stage("Quarter-Final")), "QF")
+
+    def test_qf_pt(self):
+        """'Quartas de Final' (Portuguese) returns 'QF'."""
+        self.assertEqual(normalize_stage_key(self._stage("Quartas de Final")), "QF")
+
+    def test_sf_en(self):
+        """'Semi-Final' (English) returns 'SF'."""
+        self.assertEqual(normalize_stage_key(self._stage("Semi-Final")), "SF")
+
+    def test_sf_pt(self):
+        """'Semifinal' (Portuguese) returns 'SF'."""
+        self.assertEqual(normalize_stage_key(self._stage("Semifinal")), "SF")
+
+    def test_third_decisao(self):
+        """'Decisão 3o Lugar' (Portuguese) returns 'THIRD'."""
+        self.assertEqual(normalize_stage_key(self._stage("Decisão 3o Lugar")), "THIRD")
+
+    def test_third_terceiro(self):
+        """'Terceiro Lugar' (Portuguese) returns 'THIRD'."""
+        self.assertEqual(normalize_stage_key(self._stage("Terceiro Lugar")), "THIRD")
+
+    def test_final_exact(self):
+        """'Final' (exact match) returns 'FINAL'."""
+        self.assertEqual(normalize_stage_key(self._stage("Final")), "FINAL")
+
+    def test_final_grand(self):
+        """'Grand Final' returns 'FINAL'."""
+        self.assertEqual(normalize_stage_key(self._stage("Grand Final")), "FINAL")
+
+    def test_unknown(self):
+        """Unknown stage returns empty string."""
+        self.assertEqual(normalize_stage_key(self._stage("Mystery Stage")), "")
+
+
+class PhaseForMatchTest(SimpleTestCase):
+    """Unit tests for phase_for_match pure function."""
+
+    def _match(self, stage_name):
+        """Helper to create a match object."""
+        stage = SimpleNamespace(name=stage_name) if stage_name is not None else None
+        return SimpleNamespace(stage=stage)
+
+    def test_group_stage(self):
+        """Match with Group Stage returns PHASE_GROUP."""
+        match = self._match("Group Stage")
+        self.assertEqual(phase_for_match(match), PHASE_GROUP)
+
+    def test_knockout_stage(self):
+        """Match with Semi-Final returns PHASE_KNOCKOUT."""
+        match = self._match("Semi-Final")
+        self.assertEqual(phase_for_match(match), PHASE_KNOCKOUT)
+
+    def test_none_stage(self):
+        """Match with None stage returns PHASE_KNOCKOUT (fallback)."""
+        match = self._match(None)
+        self.assertEqual(phase_for_match(match), PHASE_KNOCKOUT)
