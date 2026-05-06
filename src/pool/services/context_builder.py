@@ -532,7 +532,15 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
             if losing_team is not None:
                 losers_map[match.match_number] = losing_team
 
+    # Ensure contiguous date blocks for {% regroup %} in template (D-08, D-09).
+    # Defensive: keeps existing order stable when dates already align with match_number.
+    group_rows.sort(key=lambda r: r["match"].match_date_brasilia)
+
     projected_knockout = _build_projected_knockout_payload(knockout_rows=knockout_rows)
+
+    # Progress counters for mobile progress bar (D-06).
+    total_group_matches = len(group_rows)
+    saved_bets_count = sum(1 for row in group_rows if row["bet"] and row["bet"].is_active)
 
     return {
         "match_rows": match_rows,
@@ -545,5 +553,7 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
         "projection_pending": has_pending_projection_recalc(participant),
         "top_scorer_options": _top_scorer_options_payload_for_pool(pool),
         "page_mode": "result",
+        "saved_bets_count": saved_bets_count,
+        "total_group_matches": total_group_matches,
         **projected_knockout,
     }
