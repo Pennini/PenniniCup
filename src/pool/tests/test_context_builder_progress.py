@@ -26,7 +26,8 @@ class ContextBuilderProgressTest(TestCase):
         )
         self.stage_group = Stage.objects.create(fifa_id="GROUP", season=self.season, name="Group Stage", order=1)
         self.group_a = Group.objects.create(
-            season=self.season,
+            fifa_id="GRP-A",
+            stage=self.stage_group,
             name="A",
         )
 
@@ -130,9 +131,9 @@ class ContextBuilderProgressTest(TestCase):
         PoolBet.objects.create(
             participant=self.participant,
             match=match3,
-            home_score_pred=0,
-            away_score_pred=0,
-            is_active=False,  # Inactive
+            home_score_pred=None,
+            away_score_pred=None,
+            # is_active recalculated by save(); None scores → is_active=False
         )
         # match4 has no bet
 

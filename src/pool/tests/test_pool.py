@@ -520,17 +520,19 @@ class PoolAutoBetLifecycleTest(TestCase):
         self.assertIsNotNone(knockout_rows[0]["home_team"])
         self.assertEqual(knockout_rows[0]["home_team"].id, self.team_a.id)
 
-    def test_bets_tab_orders_matches_by_match_number(self):
-        later = timezone.now() + timezone.timedelta(days=10)
-        early_number_match = Match.objects.create(
+    def test_bets_tab_orders_matches_by_match_date(self):
+        # Plan 02-01 changed sort to match_date_brasilia ascending.
+        # Give match_number=10 an earlier date so it sorts before self.group_match (match_number=70, date=now).
+        earlier = timezone.now() - timezone.timedelta(days=10)
+        early_date_match = Match.objects.create(
             fifa_id="GM4-ORDER",
             season=self.season,
             stage=self.stage_group,
             group=self.group_a,
             match_number=10,
-            match_date_utc=later,
-            match_date_local=later,
-            match_date_brasilia=later,
+            match_date_utc=earlier,
+            match_date_local=earlier,
+            match_date_brasilia=earlier,
             home_team=self.team_a,
             away_team=self.team_b,
         )
@@ -539,9 +541,10 @@ class PoolAutoBetLifecycleTest(TestCase):
         response = self.client.get(reverse("pool:detail", kwargs={"slug": self.pool.slug}))
         self.assertEqual(response.status_code, 200)
 
-        group_numbers = [row["match"].match_number for row in response.context["group_rows"]]
-        self.assertEqual(group_numbers, sorted(group_numbers))
-        self.assertIn(early_number_match.match_number, group_numbers)
+        dates = [row["match"].match_date_brasilia for row in response.context["group_rows"]]
+        self.assertEqual(dates, sorted(dates))
+        match_numbers = [row["match"].match_number for row in response.context["group_rows"]]
+        self.assertIn(early_date_match.match_number, match_numbers)
 
     def test_bets_tab_shows_phase_with_group_and_stage_name(self):
         self.client.force_login(self.user)
