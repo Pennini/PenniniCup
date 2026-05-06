@@ -24,6 +24,7 @@
             <div class="mb-4">
                 {% for message in messages %}
                 <div
+                    data-django-message
                     class="mb-2 rounded-md border px-4 py-3 text-sm {% if 'success' in message.tags %}border-green-500/30 bg-green-500/10 text-green-300{% elif 'warning' in message.tags %}border-amber-500/30 bg-amber-500/10 text-amber-300{% elif 'error' in message.tags %}border-red-500/30 bg-red-500/10 text-red-300{% else %}border-blue-500/30 bg-blue-500/10 text-blue-300{% endif %}"
                     role="alert"
                 >
@@ -37,6 +38,18 @@
         {% include "components/footer.html" %}
 
         {% include "components/bottom_nav.html" %} {% block extra_scripts %} {% endblock %}
+
+        <script>
+        (function () {
+            document.querySelectorAll('[data-django-message]').forEach(function (el) {
+                setTimeout(function () {
+                    el.style.transition = 'opacity 0.5s ease';
+                    el.style.opacity = '0';
+                    setTimeout(function () { el.remove(); }, 500);
+                }, 4000);
+            });
+        })();
+        </script>
 
         <script>
             lucide.createIcons();
