@@ -1,0 +1,12 @@
+[run]
+source = src
+branch = True
+omit =
+    src/*/migrations/*
+    src/config/settings/*
+
+[report]
+show_missing = True
+
+[html]
+directory = htmlcov

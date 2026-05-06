@@ -36,6 +36,7 @@ django-storages = "^1.14.6"
 [tool.poetry.group.dev.dependencies]
 pre-commit = "^4.5.1"
 colorlog = "^6.10.1"
+coverage = "^7.13.5"
 
 
 [tool.ruff]
