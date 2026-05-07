@@ -861,3 +861,38 @@ class EmailSendingTest(TestCase):
         verification_url = reverse("accounts:verify_email", kwargs={"token": user.profile.verification_token})
 
         self.assertIn(verification_url, mail.outbox[0].body)
+
+
+class SupporterStarBadgeTest(TestCase):
+    """Testes para exibição da estrela dourada de apoiador na página de perfil"""
+
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="staruser",
+            email="star@example.com",
+            password="testpass123",
+            is_active=True,
+        )
+        self.profile = UserProfile.objects.get_or_create(user=self.user)[0]
+        self.url = reverse("penninicup:profile-user", kwargs={"username": self.user.username})
+        self.client.login(username="staruser", password="testpass123")
+
+    def test_supporter_star_shown(self):
+        """Usuário apoiador exibe ícone de estrela no perfil"""
+        self.profile.is_supporter = True
+        self.profile.save()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-lucide="star"')
+
+    def test_supporter_star_hidden(self):
+        """Usuário não apoiador não exibe ícone de estrela no perfil"""
+        self.profile.is_supporter = False
+        self.profile.save()
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'data-lucide="star"')
