@@ -54,6 +54,7 @@ class UserProfile(models.Model):
         blank=True,
         related_name="supporter_profiles",
     )
+    is_supporter = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Profile: {self.user.username}"
