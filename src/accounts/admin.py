@@ -29,7 +29,8 @@ class InviteTokenAdmin(admin.ModelAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ["user", "email_verified", "favorite_team", "world_cup_team", "token_created_at"]
-    list_filter = ["email_verified", "favorite_team", "world_cup_team"]
+    list_display = ["user", "is_supporter", "email_verified", "favorite_team", "world_cup_team", "token_created_at"]
+    list_filter = ["is_supporter", "email_verified", "favorite_team", "world_cup_team"]
+    list_editable = ["is_supporter"]
     search_fields = ["user__username", "user__email", "favorite_team", "world_cup_team__name"]
     readonly_fields = ["verification_token", "token_created_at"]
