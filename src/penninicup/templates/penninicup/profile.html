@@ -44,7 +44,12 @@
                 {% endif %}
 
                 <div class="min-w-0">
-                    <h2 class="text-2xl font-semibold break-all">{{ profile_user.username }}</h2>
+                    <h2 class="text-2xl font-semibold break-all flex items-center gap-2">
+                        {{ profile_user.username }}
+                        {% if profile_obj.is_supporter %}
+                        <i data-lucide="star" class="inline h-5 w-5 text-yellow-400 fill-yellow-400 shrink-0"></i>
+                        {% endif %}
+                    </h2>
                     {% if is_owner_profile %}
                     <p class="text-sm text-neutral-400 mt-1">{{ profile_user.email }}</p>
                     {% endif %}
