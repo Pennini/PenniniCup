@@ -139,7 +139,7 @@
             Salvar palpites
         </button>
         {% endif %}
-        {% if user.is_superuser and current_view == 'rankings:pool-dashboard' %}
+        {% if user.is_superuser and current_view == 'rankings:pool-dashboard' or user.is_superuser and current_view == 'pool:ranking' %}
         <form method="post" action="{% url 'rankings:toggle-stars' pool.slug %}">
             {% csrf_token %}
             <button
@@ -219,7 +219,7 @@
         Salvar
     </button>
     {% endif %}
-    {% if user.is_superuser and current_view == 'rankings:pool-dashboard' %}
+    {% if user.is_superuser and current_view == 'rankings:pool-dashboard' or user.is_superuser and current_view == 'pool:ranking' %}
     <form method="post" action="{% url 'rankings:toggle-stars' pool.slug %}" class="absolute left-1/2 -translate-x-1/2">
         {% csrf_token %}
         <button

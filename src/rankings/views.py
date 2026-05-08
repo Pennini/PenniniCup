@@ -1,5 +1,4 @@
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.core.exceptions import PermissionDenied
 from django.http import HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect, render
 
@@ -70,8 +69,6 @@ def pool_ranking_dashboard(request, slug):
 @login_required
 @user_passes_test(lambda u: u.is_superuser)
 def toggle_supporter_stars(request, slug):
-    if not request.user.is_superuser:
-        raise PermissionDenied
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
     pool = get_object_or_404(Pool, slug=slug, is_active=True)

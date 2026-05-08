@@ -82,7 +82,7 @@
 
             <div class="mt-4 space-y-3 md:hidden">
                 {% for row in leaderboard_rows %}
-                <article class="rounded-xl border border-neutral-700/80 bg-neutral-950/70 p-4 cursor-pointer {% if row.position == 1 %}ring-1 ring-yellow-400/40{% elif row.position == 2 %}ring-1 ring-slate-300/35{% elif row.position == 3 %}ring-1 ring-amber-500/35{% endif %} {% if row.participant.user_id == request.user.id %}shadow-[inset_3px_0_0_0_rgba(251,146,60,0.95)]{% endif %}" onclick="window.location='{% url 'penninicup:profile-user' row.participant.user.username %}?pool={{ pool.slug }}'">
+                <article class="rounded-xl border border-neutral-700/80 bg-neutral-950/70 p-4 cursor-pointer {% if row.position == 1 %}ring-1 ring-yellow-400/40{% elif row.position == 2 %}ring-1 ring-slate-300/35{% elif row.position == 3 %}ring-1 ring-amber-500/35{% endif %} {% if row.participant.user_id == request.user.id %}shadow-[inset_3px_0_0_0_rgba(251,146,60,0.95)]{% endif %}" onclick="if(event.target.closest('a')||event.ctrlKey||event.metaKey||event.shiftKey||event.button!==0)return;window.location='{% url 'penninicup:profile-user' row.participant.user.username %}?pool={{ pool.slug }}'">
                     <div class="flex items-start justify-between gap-3">
                         <div class="min-w-0">
                             <p class="text-xs uppercase tracking-wide text-neutral-400">Participante</p>
@@ -128,7 +128,7 @@
                     </thead>
                     <tbody class="divide-y divide-neutral-800/90">
                         {% for row in leaderboard_rows %}
-                        <tr class="transition-colors duration-200 hover:bg-neutral-800/35 cursor-pointer {% if row.position == 1 %}bg-yellow-500/12{% elif row.position == 2 %}bg-slate-300/10{% elif row.position == 3 %}bg-amber-700/14{% endif %} {% if row.participant.user_id == request.user.id %}bg-orange-500/12 shadow-[inset_3px_0_0_0_rgba(251,146,60,0.95)]{% endif %}" onclick="window.location='{% url 'penninicup:profile-user' row.participant.user.username %}?pool={{ pool.slug }}'">
+                        <tr class="transition-colors duration-200 hover:bg-neutral-800/35 cursor-pointer {% if row.position == 1 %}bg-yellow-500/12{% elif row.position == 2 %}bg-slate-300/10{% elif row.position == 3 %}bg-amber-700/14{% endif %} {% if row.participant.user_id == request.user.id %}bg-orange-500/12 shadow-[inset_3px_0_0_0_rgba(251,146,60,0.95)]{% endif %}" onclick="if(event.target.closest('a')||event.ctrlKey||event.metaKey||event.shiftKey||event.button!==0)return;window.location='{% url 'penninicup:profile-user' row.participant.user.username %}?pool={{ pool.slug }}'">
                             <td class="px-4 py-3 font-semibold {% if row.position == 1 %}text-yellow-200{% elif row.position == 2 %}text-slate-100{% elif row.position == 3 %}text-amber-200{% endif %}">#{{ row.position }}</td>
                             <td class="px-4 py-3 font-medium">
                                 <span class="inline-flex items-center gap-1">
