@@ -30,6 +30,7 @@ class Pool(models.Model):
     third_place_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     requires_payment = models.BooleanField(default=True)
     is_active = models.BooleanField(default=True)
+    show_supporter_stars = models.BooleanField(default=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="pools_created")
 
     created_at = models.DateTimeField(auto_now_add=True)

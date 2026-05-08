@@ -1,5 +1,7 @@
-from django.contrib.auth.decorators import login_required
-from django.shortcuts import get_object_or_404, render
+from django.contrib.auth.decorators import login_required, user_passes_test
+from django.core.exceptions import PermissionDenied
+from django.http import HttpResponseNotAllowed
+from django.shortcuts import get_object_or_404, redirect, render
 
 from src.pool.models import Pool, PoolParticipant
 from src.rankings.services.leaderboard import build_pool_leaderboard
@@ -63,3 +65,16 @@ def pool_ranking_dashboard(request, slug):
         "third_place_amount": pool.third_place_amount,
     }
     return render(request, "rankings/pool_dashboard.html", context)
+
+
+@login_required
+@user_passes_test(lambda u: u.is_superuser)
+def toggle_supporter_stars(request, slug):
+    if not request.user.is_superuser:
+        raise PermissionDenied
+    if request.method != "POST":
+        return HttpResponseNotAllowed(["POST"])
+    pool = get_object_or_404(Pool, slug=slug, is_active=True)
+    pool.show_supporter_stars = not pool.show_supporter_stars
+    pool.save(update_fields=["show_supporter_stars"])
+    return redirect("rankings:pool-dashboard", slug=slug)

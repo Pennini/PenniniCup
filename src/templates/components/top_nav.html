@@ -140,13 +140,15 @@
         </button>
         {% endif %}
         {% if user.is_superuser and current_view == 'rankings:pool-dashboard' %}
-        <button
-            type="button"
-            data-star-toggle-btn
-            class="px-4 py-2 rounded-md border border-neutral-700 text-sm font-semibold text-neutral-300 hover:border-yellow-400/60 hover:text-yellow-300 transition-colors"
-        >
-            Ocultar estrelas
-        </button>
+        <form method="post" action="{% url 'rankings:toggle-stars' pool.slug %}">
+            {% csrf_token %}
+            <button
+                type="submit"
+                class="px-4 py-2 rounded-md border border-neutral-700 text-sm font-semibold text-neutral-300 hover:border-yellow-400/60 hover:text-yellow-300 transition-colors"
+            >
+                {% if pool.show_supporter_stars %}Ocultar estrelas{% else %}Mostrar estrelas{% endif %}
+            </button>
+        </form>
         {% endif %}
 
         <!-- Profile Dropdown -->
@@ -188,7 +190,7 @@
     {% endif %}
 </nav>
 
-<nav class="lg:hidden fixed inset-x-0 top-0 z-50 h-14 px-4 border-b border-neutral-800/70 bg-neutral-950/95 backdrop-blur relative flex items-center justify-center">
+<nav class="lg:hidden fixed inset-x-0 top-0 z-50 h-14 px-4 border-b border-neutral-800/70 bg-neutral-950/95 backdrop-blur flex items-center justify-center">
     <a href="{% url 'penninicup:index' %}" class="absolute left-4 flex items-center gap-2">
         <span class="text-base font-semibold">PenniniCup</span>
     </a>
@@ -218,14 +220,16 @@
     </button>
     {% endif %}
     {% if user.is_superuser and current_view == 'rankings:pool-dashboard' %}
-    <button
-        type="button"
-        data-topbar-star-toggle-btn
-        class="absolute left-1/2 -translate-x-1/2 inline-flex items-center justify-center rounded-md border border-neutral-700 p-2 text-yellow-400 transition-colors hover:border-yellow-400/60"
-        aria-label="Alternar exibição de estrelas"
-    >
-        <i data-lucide="star" class="w-4 h-4 fill-current"></i>
-    </button>
+    <form method="post" action="{% url 'rankings:toggle-stars' pool.slug %}" class="absolute left-1/2 -translate-x-1/2">
+        {% csrf_token %}
+        <button
+            type="submit"
+            class="inline-flex items-center justify-center rounded-md border border-neutral-700 p-2 transition-colors hover:border-yellow-400/60 {% if pool.show_supporter_stars %}text-yellow-400{% else %}text-neutral-500{% endif %}"
+            aria-label="Alternar exibição de estrelas"
+        >
+            <i data-lucide="star" class="w-4 h-4 fill-current"></i>
+        </button>
+    </form>
     {% endif %}
 </nav>
 {% endwith %}

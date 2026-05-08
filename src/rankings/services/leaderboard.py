@@ -51,7 +51,7 @@ def _sort_tie_group(group_participants, override_map):
 
 def build_pool_leaderboard(pool: Pool):
     participants_queryset = PoolParticipant.objects.filter(pool=pool, is_active=True).select_related(
-        "user", "user__userprofile"
+        "user", "user__profile"
     )
 
     if pool.requires_payment:
