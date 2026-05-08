@@ -6,4 +6,5 @@ app_name = "rankings"
 
 urlpatterns = [
     path("pool/<slug:slug>/", views.pool_ranking_dashboard, name="pool-dashboard"),
+    path("pool/<slug:slug>/toggle-stars/", views.toggle_supporter_stars, name="toggle-stars"),
 ]
