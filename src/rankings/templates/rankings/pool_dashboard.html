@@ -86,7 +86,10 @@
                     <div class="flex items-start justify-between gap-3">
                         <div class="min-w-0">
                             <p class="text-xs uppercase tracking-wide text-neutral-400">Participante</p>
-                            <a href="{% url 'penninicup:profile-user' row.participant.user.username %}?pool={{ pool.slug }}" class="mt-1 block truncate font-semibold hover:text-orange-300 transition-colors">{{ row.participant.user.username }}</a>
+                            <span class="mt-1 flex items-center gap-1">
+                                <a href="{% url 'penninicup:profile-user' row.participant.user.username %}?pool={{ pool.slug }}" class="block truncate font-semibold hover:text-orange-300 transition-colors">{{ row.participant.user.username }}</a>
+                                {% if row.participant.user.userprofile.is_supporter %}<span data-supporter-star class="inline-flex shrink-0"><i data-lucide="star" class="h-4 w-4 text-yellow-400 fill-yellow-400"></i></span>{% endif %}
+                            </span>
                         </div>
                         <p class="shrink-0 text-lg font-bold {% if row.position == 1 %}text-yellow-200{% elif row.position == 2 %}text-slate-100{% elif row.position == 3 %}text-amber-200{% else %}text-orange-300{% endif %}">#{{ row.position }}</p>
                     </div>
@@ -128,7 +131,10 @@
                         <tr class="transition-colors duration-200 hover:bg-neutral-800/35 {% if row.position == 1 %}bg-yellow-500/12{% elif row.position == 2 %}bg-slate-300/10{% elif row.position == 3 %}bg-amber-700/14{% endif %} {% if row.participant.user_id == request.user.id %}bg-orange-500/12 shadow-[inset_3px_0_0_0_rgba(251,146,60,0.95)]{% endif %}">
                             <td class="px-4 py-3 font-semibold {% if row.position == 1 %}text-yellow-200{% elif row.position == 2 %}text-slate-100{% elif row.position == 3 %}text-amber-200{% endif %}">#{{ row.position }}</td>
                             <td class="px-4 py-3 font-medium">
-                                <a href="{% url 'penninicup:profile-user' row.participant.user.username %}?pool={{ pool.slug }}" class="hover:text-orange-300 transition-colors">{{ row.participant.user.username }}</a>
+                                <span class="inline-flex items-center gap-1">
+                                    <a href="{% url 'penninicup:profile-user' row.participant.user.username %}?pool={{ pool.slug }}" class="hover:text-orange-300 transition-colors">{{ row.participant.user.username }}</a>
+                                    {% if row.participant.user.userprofile.is_supporter %}<span data-supporter-star class="inline-flex shrink-0"><i data-lucide="star" class="h-3.5 w-3.5 text-yellow-400 fill-yellow-400"></i></span>{% endif %}
+                                </span>
                             </td>
                             <td class="px-4 py-3">{{ row.participant.winner_or_draw_hits }}</td>
                             <td class="px-4 py-3">{{ row.participant.exact_score_hits }}</td>
@@ -145,4 +151,40 @@
         </section>
     </div>
 </section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+    var STORAGE_KEY = 'show_supporter_stars';
+    var stars = document.querySelectorAll('[data-supporter-star]');
+    var desktopBtn = document.querySelector('[data-star-toggle-btn]');
+    var mobileBtn = document.querySelector('[data-topbar-star-toggle-btn]');
+
+    function getState() {
+        return localStorage.getItem(STORAGE_KEY) !== 'false';
+    }
+
+    function applyState(show) {
+        stars.forEach(function (el) { el.classList.toggle('hidden', !show); });
+        if (desktopBtn) {
+            desktopBtn.textContent = show ? 'Ocultar estrelas' : 'Mostrar estrelas';
+        }
+        if (mobileBtn) {
+            mobileBtn.classList.toggle('text-yellow-400', show);
+            mobileBtn.classList.toggle('text-neutral-500', !show);
+        }
+    }
+
+    function toggle() {
+        var newState = !getState();
+        localStorage.setItem(STORAGE_KEY, String(newState));
+        applyState(newState);
+    }
+
+    applyState(getState());
+    if (desktopBtn) desktopBtn.addEventListener('click', toggle);
+    if (mobileBtn) mobileBtn.addEventListener('click', toggle);
+})();
+</script>
 {% endblock %}

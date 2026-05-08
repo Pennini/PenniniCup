@@ -139,6 +139,15 @@
             Salvar palpites
         </button>
         {% endif %}
+        {% if user.is_superuser and current_view == 'rankings:pool-dashboard' %}
+        <button
+            type="button"
+            data-star-toggle-btn
+            class="px-4 py-2 rounded-md border border-neutral-700 text-sm font-semibold text-neutral-300 hover:border-yellow-400/60 hover:text-yellow-300 transition-colors"
+        >
+            Ocultar estrelas
+        </button>
+        {% endif %}
 
         <!-- Profile Dropdown -->
         <div class="relative group">
@@ -206,6 +215,16 @@
         {% if not can_bet or group_locked and knockout_locked %}disabled{% endif %}
     >
         Salvar
+    </button>
+    {% endif %}
+    {% if user.is_superuser and current_view == 'rankings:pool-dashboard' %}
+    <button
+        type="button"
+        data-topbar-star-toggle-btn
+        class="absolute left-1/2 -translate-x-1/2 inline-flex items-center justify-center rounded-md border border-neutral-700 p-2 text-yellow-400 transition-colors hover:border-yellow-400/60"
+        aria-label="Alternar exibição de estrelas"
+    >
+        <i data-lucide="star" class="w-4 h-4 fill-current"></i>
     </button>
     {% endif %}
 </nav>
