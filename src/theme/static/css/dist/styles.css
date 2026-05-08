@@ -3112,6 +3112,9 @@
     --tw-gradient-to: var(--color-yellow-500);
     --tw-gradient-stops: var(--tw-gradient-via-stops, var(--tw-gradient-position), var(--tw-gradient-from) var(--tw-gradient-from-position), var(--tw-gradient-to) var(--tw-gradient-to-position));
   }
+  .fill-current {
+    fill: currentcolor;
+  }
   .fill-orange-500 {
     fill: var(--color-orange-500);
   }
@@ -3925,6 +3928,16 @@
     }
   }
   @media (hover: hover) {
+    .hover\:border-yellow-400\/60:hover {
+      border-color: color-mix(in srgb, oklch(85.2% 0.199 91.936) 60%, transparent);
+    }
+    @supports (color: color-mix(in lab, red, red)) {
+      .hover\:border-yellow-400\/60:hover {
+        border-color: color-mix(in oklab, var(--color-yellow-400) 60%, transparent);
+      }
+    }
+  }
+  @media (hover: hover) {
     .hover\:bg-blue-100:hover {
       background-color: var(--color-blue-100);
     }
@@ -4042,6 +4055,11 @@
   @media (hover: hover) {
     .hover\:text-white:hover {
       color: var(--color-white);
+    }
+  }
+  @media (hover: hover) {
+    .hover\:text-yellow-300:hover {
+      color: var(--color-yellow-300);
     }
   }
   @media (hover: hover) {
