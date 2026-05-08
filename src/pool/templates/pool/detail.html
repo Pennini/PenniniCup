@@ -606,6 +606,12 @@
                 }
             });
 
+            if (topScorerSelect && !topScorerSelect.disabled) {
+                topScorerSelect.addEventListener('change', function () {
+                    syncTopBarButton();
+                });
+            }
+
             form.addEventListener('submit', function () {
                 isSubmitting = true;
                 dirtyCards.clear();
