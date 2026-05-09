@@ -22,11 +22,15 @@ def _calculate_bonus(participant, scoring_config, official_result):
         and official_result.third_place_id
         and participant.third_place_pred_id == official_result.third_place_id
     )
-    top_scorer_hit = bool(
-        participant.top_scorer_pred_id
-        and official_result.top_scorer_id
-        and participant.top_scorer_pred_id == official_result.top_scorer_id
-    )
+    top_scorer_tied_ids = list(official_result.top_scorers.values_list("id", flat=True))
+    if top_scorer_tied_ids:
+        top_scorer_hit = bool(participant.top_scorer_pred_id and participant.top_scorer_pred_id in top_scorer_tied_ids)
+    else:
+        top_scorer_hit = bool(
+            participant.top_scorer_pred_id
+            and official_result.top_scorer_id
+            and participant.top_scorer_pred_id == official_result.top_scorer_id
+        )
 
     if champion_hit:
         bonus_points += scoring_config.bonus_champion_points
@@ -49,7 +53,7 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
     group_points = 0
     knockout_points = 0
     exact_score_hits = 0
-    winner_or_draw_hits = 0
+    advancing_correct_hits = 0
 
     bets = participant.bets.select_related("match", "match__stage").all()
     scores_to_upsert = []
@@ -61,9 +65,10 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
                 bet=bet,
                 points=score_data["points"],
                 exact_score=score_data["exact_score"],
-                winner_or_draw=score_data["winner_or_draw"],
-                winner_advancing=score_data["winner_advancing"],
-                one_team_score=score_data["one_team_score"],
+                advancing_correct=score_data["advancing_correct"],
+                advancing_goals_correct=score_data["advancing_goals_correct"],
+                diff_correct=score_data["diff_correct"],
+                eliminated_goals_correct=score_data["eliminated_goals_correct"],
             )
         )
 
@@ -75,8 +80,8 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
 
         if score_data["exact_score"]:
             exact_score_hits += 1
-        if score_data["winner_or_draw"]:
-            winner_or_draw_hits += 1
+        if score_data["advancing_correct"]:
+            advancing_correct_hits += 1
 
     if scores_to_upsert:
         PoolBetScore.objects.bulk_create(
@@ -85,9 +90,10 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
             update_fields=[
                 "points",
                 "exact_score",
-                "winner_or_draw",
-                "winner_advancing",
-                "one_team_score",
+                "advancing_correct",
+                "advancing_goals_correct",
+                "diff_correct",
+                "eliminated_goals_correct",
                 "updated_at",
             ],
             unique_fields=["bet"],
@@ -106,7 +112,7 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
     participant.knockout_points = knockout_points
     participant.bonus_points = bonus_points
     participant.exact_score_hits = exact_score_hits
-    participant.winner_or_draw_hits = winner_or_draw_hits
+    participant.advancing_hits = advancing_correct_hits
     participant.champion_hit = champion_hit
     participant.top_scorer_hit = top_scorer_hit
     participant.save(
@@ -116,7 +122,7 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
             "knockout_points",
             "bonus_points",
             "exact_score_hits",
-            "winner_or_draw_hits",
+            "advancing_hits",
             "champion_hit",
             "top_scorer_hit",
         ]

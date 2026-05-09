@@ -184,7 +184,7 @@ class PoolParticipant(models.Model):
     group_points = models.IntegerField(default=0)
     knockout_points = models.IntegerField(default=0)
     exact_score_hits = models.IntegerField(default=0)
-    winner_or_draw_hits = models.IntegerField(default=0)
+    advancing_hits = models.IntegerField(default=0)
     bonus_points = models.IntegerField(default=0)
     champion_hit = models.BooleanField(default=False)
     top_scorer_hit = models.BooleanField(default=False)
@@ -319,9 +319,10 @@ class PoolBetScore(models.Model):
     bet = models.OneToOneField(PoolBet, on_delete=models.CASCADE, related_name="score")
     points = models.IntegerField(default=0)
     exact_score = models.BooleanField(default=False)
-    winner_or_draw = models.BooleanField(default=False)
-    winner_advancing = models.BooleanField(default=False)
-    one_team_score = models.BooleanField(default=False)
+    advancing_correct = models.BooleanField(default=False)
+    advancing_goals_correct = models.BooleanField(default=False)
+    diff_correct = models.BooleanField(default=False)
+    eliminated_goals_correct = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -410,18 +411,23 @@ class PoolProjectionRecalc(models.Model):
 class PoolScoringConfig(models.Model):
     pool = models.OneToOneField(Pool, on_delete=models.CASCADE, related_name="scoring_config")
 
-    group_winner_or_draw_points = models.PositiveSmallIntegerField(default=6)
-    group_exact_score_points = models.PositiveSmallIntegerField(default=4)
-    group_one_team_score_points = models.PositiveSmallIntegerField(default=2)
+    group_exact_score = models.PositiveSmallIntegerField(default=25)
+    group_winner_and_winner_goals = models.PositiveSmallIntegerField(default=18)
+    group_winner_and_diff = models.PositiveSmallIntegerField(default=15)
+    group_winner_and_loser_goals = models.PositiveSmallIntegerField(default=12)
+    group_winner_only = models.PositiveSmallIntegerField(default=10)
 
-    knockout_winner_advancing_points = models.PositiveSmallIntegerField(default=8)
-    knockout_exact_score_points = models.PositiveSmallIntegerField(default=6)
-    knockout_one_team_score_points = models.PositiveSmallIntegerField(default=2)
+    knockout_exact_and_advancing = models.PositiveSmallIntegerField(default=35)
+    knockout_advancing_and_winner_goals = models.PositiveSmallIntegerField(default=25)
+    knockout_advancing_and_diff = models.PositiveSmallIntegerField(default=21)
+    knockout_advancing_and_loser_goals = models.PositiveSmallIntegerField(default=17)
+    knockout_advancing_only = models.PositiveSmallIntegerField(default=14)
+    knockout_exact_wrong_advancing = models.PositiveSmallIntegerField(default=10)
 
-    bonus_champion_points = models.PositiveSmallIntegerField(default=50)
-    bonus_runner_up_points = models.PositiveSmallIntegerField(default=30)
-    bonus_third_place_points = models.PositiveSmallIntegerField(default=20)
-    bonus_top_scorer_points = models.PositiveSmallIntegerField(default=50)
+    bonus_champion_points = models.PositiveSmallIntegerField(default=120)
+    bonus_runner_up_points = models.PositiveSmallIntegerField(default=60)
+    bonus_third_place_points = models.PositiveSmallIntegerField(default=30)
+    bonus_top_scorer_points = models.PositiveSmallIntegerField(default=100)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -463,6 +469,11 @@ class PoolOfficialResult(models.Model):
         blank=True,
         on_delete=models.SET_NULL,
         related_name="official_top_scorer_pools",
+    )
+    top_scorers = models.ManyToManyField(
+        "football.Player",
+        blank=True,
+        related_name="official_top_scorer_tied_pools",
     )
     updated_at = models.DateTimeField(auto_now=True)
 

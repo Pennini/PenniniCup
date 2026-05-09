@@ -55,7 +55,15 @@ class PoolBetAdmin(admin.ModelAdmin):
 
 @admin.register(PoolBetScore)
 class PoolBetScoreAdmin(admin.ModelAdmin):
-    list_display = ("bet", "points", "exact_score", "winner_or_draw", "winner_advancing", "one_team_score")
+    list_display = (
+        "bet",
+        "points",
+        "exact_score",
+        "advancing_correct",
+        "advancing_goals_correct",
+        "diff_correct",
+        "eliminated_goals_correct",
+    )
 
 
 @admin.register(PoolLockWindow)
@@ -119,12 +127,14 @@ class PoolProjectionRecalcAdmin(admin.ModelAdmin):
 class PoolScoringConfigAdmin(admin.ModelAdmin):
     list_display = (
         "pool",
-        "group_winner_or_draw_points",
-        "group_exact_score_points",
-        "group_one_team_score_points",
-        "knockout_winner_advancing_points",
-        "knockout_exact_score_points",
-        "knockout_one_team_score_points",
+        "group_exact_score",
+        "group_winner_and_winner_goals",
+        "group_winner_and_diff",
+        "group_winner_and_loser_goals",
+        "group_winner_only",
+        "knockout_exact_and_advancing",
+        "knockout_advancing_only",
+        "knockout_exact_wrong_advancing",
     )
     search_fields = ("pool__name", "pool__slug")
 
@@ -133,3 +143,4 @@ class PoolScoringConfigAdmin(admin.ModelAdmin):
 class PoolOfficialResultAdmin(admin.ModelAdmin):
     list_display = ("pool", "champion", "runner_up", "third_place", "top_scorer", "updated_at")
     search_fields = ("pool__name", "pool__slug", "champion__name", "top_scorer__name")
+    filter_horizontal = ("top_scorers",)

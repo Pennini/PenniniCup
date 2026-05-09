@@ -184,9 +184,7 @@ class PoolDynamicScoringConfigTest(TestCase):
         )
 
         self.pool.get_scoring_config()
-        self.pool.scoring_config.group_exact_score_points = 4
-        self.pool.scoring_config.group_winner_or_draw_points = 6
-        self.pool.scoring_config.group_one_team_score_points = 1
+        self.pool.scoring_config.group_exact_score = 8
         self.pool.scoring_config.bonus_champion_points = 9
         self.pool.scoring_config.bonus_runner_up_points = 7
         self.pool.scoring_config.bonus_third_place_points = 5
@@ -210,10 +208,10 @@ class PoolDynamicScoringConfigTest(TestCase):
         recalculate_participant_scores(self.participant)
         self.participant.refresh_from_db()
 
-        # 10 pontos do placar exato em grupos (6 vencedor + 4 exato) + 9 + 7 + 5 de bonus
-        self.assertEqual(self.participant.group_points, 10)
+        # 8 pontos do placar exato em grupos (group_exact_score=8) + 9 + 7 + 5 de bonus
+        self.assertEqual(self.participant.group_points, 8)
         self.assertEqual(self.participant.bonus_points, 21)
-        self.assertEqual(self.participant.total_points, 31)
+        self.assertEqual(self.participant.total_points, 29)
         self.assertTrue(self.participant.champion_hit)
 
 
@@ -1188,23 +1186,24 @@ class ScoringWinnerFromScoreTest(SimpleTestCase):
 
 
 class ScoringCalculateBetPointsTest(SimpleTestCase):
-    """Unit tests for calculate_bet_points pure function."""
-
     def _make_scoring_config(self, **overrides):
-        """Create a scoring config with sensible defaults."""
         defaults = dict(
-            group_winner_or_draw_points=6,
-            group_exact_score_points=4,
-            group_one_team_score_points=2,
-            knockout_winner_advancing_points=8,
-            knockout_exact_score_points=6,
-            knockout_one_team_score_points=2,
+            group_exact_score=25,
+            group_winner_and_winner_goals=18,
+            group_winner_and_diff=15,
+            group_winner_and_loser_goals=12,
+            group_winner_only=10,
+            knockout_exact_and_advancing=35,
+            knockout_advancing_and_winner_goals=25,
+            knockout_advancing_and_diff=21,
+            knockout_advancing_and_loser_goals=17,
+            knockout_advancing_only=14,
+            knockout_exact_wrong_advancing=10,
         )
         defaults.update(overrides)
         return SimpleNamespace(**defaults)
 
     def _make_group_bet(self, home_pred, away_pred, home_real, away_real, is_active=True):
-        """Create a group-stage bet for testing."""
         stage = SimpleNamespace(name="Group Stage")
         match = SimpleNamespace(
             stage=stage,
@@ -1221,15 +1220,24 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
         )
 
     def _make_knockout_bet(
-        self, home_pred, away_pred, home_real, away_real, winner_real_id=None, winner_pred_id=None, is_active=True
+        self,
+        home_pred,
+        away_pred,
+        home_real,
+        away_real,
+        winner_real_id=None,
+        winner_pred_id=None,
+        is_active=True,
+        home_team_id=1,
     ):
-        """Create a knockout-stage bet for testing."""
         stage = SimpleNamespace(name="Semi-Final")
         match = SimpleNamespace(
             stage=stage,
             home_score=home_real,
             away_score=away_real,
             winner_id=winner_real_id,
+            home_team_id=home_team_id,
+            away_team_id=2,
         )
         return SimpleNamespace(
             is_active=is_active,
@@ -1239,131 +1247,180 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
             match=match,
         )
 
-    # Early return tests
     def test_inactive_bet(self):
-        """Inactive bet returns 0 points and all False."""
         bet = self._make_group_bet(2, 1, 2, 1, is_active=False)
         result = calculate_bet_points(bet, self._make_scoring_config())
         self.assertEqual(result["points"], 0)
         self.assertFalse(result["exact_score"])
-        self.assertFalse(result["winner_or_draw"])
-        self.assertFalse(result["one_team_score"])
+        self.assertFalse(result["advancing_correct"])
 
     def test_no_home_pred(self):
-        """Bet with no home_score_pred returns 0 points and all False."""
         bet = self._make_group_bet(None, 1, 2, 1)
         result = calculate_bet_points(bet, self._make_scoring_config())
         self.assertEqual(result["points"], 0)
         self.assertFalse(result["exact_score"])
-        self.assertFalse(result["winner_or_draw"])
-        self.assertFalse(result["one_team_score"])
+        self.assertFalse(result["advancing_correct"])
 
     def test_no_match_score(self):
-        """Match with no home_score returns 0 points and all False."""
         bet = self._make_group_bet(2, 1, None, 1)
         result = calculate_bet_points(bet, self._make_scoring_config())
         self.assertEqual(result["points"], 0)
         self.assertFalse(result["exact_score"])
-        self.assertFalse(result["winner_or_draw"])
-        self.assertFalse(result["one_team_score"])
+        self.assertFalse(result["advancing_correct"])
 
-    # Group stage tests
     def test_group_exact_score(self):
-        """Exact score in group stage yields exact_score + winner_or_draw points."""
         bet = self._make_group_bet(2, 1, 2, 1)
         result = calculate_bet_points(bet, self._make_scoring_config())
-        # 6 (winner_or_draw) + 4 (exact_score) = 10
-        self.assertEqual(result["points"], 10)
+        self.assertEqual(result["points"], 25)
         self.assertTrue(result["exact_score"])
-        self.assertTrue(result["winner_or_draw"])
-        self.assertFalse(result["one_team_score"])
+        self.assertTrue(result["advancing_correct"])
 
-    def test_group_correct_winner_not_exact(self):
-        """Correct winner but not exact score in group stage."""
-        bet = self._make_group_bet(2, 1, 3, 1)
+    def test_group_winner_and_winner_goals(self):
+        bet = self._make_group_bet(2, 0, 2, 1)
         result = calculate_bet_points(bet, self._make_scoring_config())
-        # 6 (winner_or_draw) + 2 (one_team_score: away_score matches) = 8
-        self.assertEqual(result["points"], 8)
+        self.assertEqual(result["points"], 18)
         self.assertFalse(result["exact_score"])
-        self.assertTrue(result["winner_or_draw"])
-        self.assertTrue(result["one_team_score"])
+        self.assertTrue(result["advancing_correct"])
+        self.assertTrue(result["advancing_goals_correct"])
+        self.assertFalse(result["diff_correct"])
 
-    def test_group_one_team_score(self):
-        """One team score matches in group stage."""
-        bet = self._make_group_bet(2, 1, 2, 0)
+    def test_group_winner_and_diff(self):
+        bet = self._make_group_bet(3, 2, 2, 1)
         result = calculate_bet_points(bet, self._make_scoring_config())
-        # 6 (winner_or_draw: home wins) + 2 (one_team_score: home matches) = 8
-        self.assertEqual(result["points"], 8)
-        self.assertFalse(result["exact_score"])
-        self.assertTrue(result["winner_or_draw"])
-        self.assertTrue(result["one_team_score"])
+        self.assertEqual(result["points"], 15)
+        self.assertTrue(result["advancing_correct"])
+        self.assertTrue(result["diff_correct"])
+        self.assertFalse(result["advancing_goals_correct"])
 
-    def test_group_draw_both(self):
-        """Both predictions and match are draws in group stage."""
-        bet = self._make_group_bet(1, 1, 0, 0)
+    def test_group_winner_and_loser_goals(self):
+        bet = self._make_group_bet(3, 1, 2, 1)
         result = calculate_bet_points(bet, self._make_scoring_config())
-        # 6 (winner_or_draw) = 6
-        self.assertEqual(result["points"], 6)
-        self.assertFalse(result["exact_score"])
-        self.assertTrue(result["winner_or_draw"])
-        self.assertFalse(result["one_team_score"])
+        self.assertEqual(result["points"], 12)
+        self.assertTrue(result["advancing_correct"])
+        self.assertTrue(result["eliminated_goals_correct"])
 
-    def test_group_all_wrong(self):
-        """Completely wrong prediction in group stage."""
-        bet = self._make_group_bet(3, 2, 0, 1)
+    def test_group_winner_only(self):
+        bet = self._make_group_bet(1, 0, 2, 1)
         result = calculate_bet_points(bet, self._make_scoring_config())
-        # 0 points (no matches at all)
+        self.assertEqual(result["points"], 15)
+        self.assertTrue(result["advancing_correct"])
+        self.assertTrue(result["diff_correct"])
+
+    def test_group_wrong_winner(self):
+        bet = self._make_group_bet(0, 2, 2, 1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
         self.assertEqual(result["points"], 0)
-        self.assertFalse(result["exact_score"])
-        self.assertFalse(result["winner_or_draw"])
-        self.assertFalse(result["one_team_score"])
+        self.assertFalse(result["advancing_correct"])
 
-    # Knockout stage tests
-    def test_knockout_correct_winner_exact_score(self):
-        """Correct winner and exact score in knockout."""
+    def test_group_draw_wrong_winner(self):
+        bet = self._make_group_bet(1, 1, 2, 1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["advancing_correct"])
+
+    def test_group_draw_exact(self):
+        bet = self._make_group_bet(1, 1, 1, 1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 25)
+        self.assertTrue(result["exact_score"])
+        self.assertTrue(result["advancing_correct"])
+
+    def test_group_draw_diff_correct(self):
+        bet = self._make_group_bet(2, 2, 1, 1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 15)
+        self.assertTrue(result["advancing_correct"])
+        self.assertTrue(result["diff_correct"])
+
+    def test_group_draw_winner_only_impossible(self):
+        bet = self._make_group_bet(2, 1, 1, 1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["advancing_correct"])
+
+    def test_knockout_exact_and_advancing(self):
         bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1, winner_pred_id=1)
         result = calculate_bet_points(bet, self._make_scoring_config())
-        # 8 (winner_advancing) + 6 (exact_score) = 14
-        self.assertEqual(result["points"], 14)
+        self.assertEqual(result["points"], 35)
         self.assertTrue(result["exact_score"])
-        self.assertTrue(result["winner_advancing"])
+        self.assertTrue(result["advancing_correct"])
 
-    def test_knockout_correct_winner_wrong_score(self):
-        """Correct winner but wrong score in knockout."""
-        bet = self._make_knockout_bet(2, 1, 3, 1, winner_real_id=1, winner_pred_id=1)
+    def test_knockout_advancing_and_winner_goals(self):
+        bet = self._make_knockout_bet(2, 0, 2, 1, winner_real_id=1, winner_pred_id=1)
         result = calculate_bet_points(bet, self._make_scoring_config())
-        # 8 (winner_advancing) + 2 (one_team_score: away matches) = 10
+        self.assertEqual(result["points"], 25)
+        self.assertTrue(result["advancing_correct"])
+        self.assertTrue(result["advancing_goals_correct"])
+
+    def test_knockout_advancing_and_diff(self):
+        bet = self._make_knockout_bet(3, 2, 2, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 21)
+        self.assertTrue(result["advancing_correct"])
+        self.assertTrue(result["diff_correct"])
+
+    def test_knockout_advancing_and_loser_goals(self):
+        bet = self._make_knockout_bet(3, 1, 2, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 17)
+        self.assertTrue(result["advancing_correct"])
+        self.assertTrue(result["eliminated_goals_correct"])
+
+    def test_knockout_advancing_only(self):
+        bet = self._make_knockout_bet(1, 0, 2, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 21)
+        self.assertTrue(result["advancing_correct"])
+        self.assertTrue(result["diff_correct"])
+
+    def test_knockout_wrong_advancing(self):
+        bet = self._make_knockout_bet(0, 2, 2, 1, winner_real_id=1, winner_pred_id=2)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["advancing_correct"])
+
+    def test_knockout_exact_wrong_advancing(self):
+        bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1, winner_pred_id=2)
+        result = calculate_bet_points(bet, self._make_scoring_config())
         self.assertEqual(result["points"], 10)
-        self.assertFalse(result["exact_score"])
-        self.assertTrue(result["winner_advancing"])
-        self.assertTrue(result["one_team_score"])
-
-    def test_knockout_wrong_winner(self):
-        """Wrong winner prediction in knockout."""
-        bet = self._make_knockout_bet(2, 1, 1, 2, winner_real_id=2, winner_pred_id=1)
-        result = calculate_bet_points(bet, self._make_scoring_config())
-        # 0 points
-        self.assertEqual(result["points"], 0)
-        self.assertFalse(result["exact_score"])
-        self.assertFalse(result["winner_advancing"])
-
-    def test_knockout_exact_score_wrong_winner(self):
-        """Exact score but wrong winner in knockout."""
-        bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=2, winner_pred_id=1)
-        result = calculate_bet_points(bet, self._make_scoring_config())
-        # 6 (exact_score) = 6
-        self.assertEqual(result["points"], 6)
         self.assertTrue(result["exact_score"])
-        self.assertFalse(result["winner_advancing"])
+        self.assertFalse(result["advancing_correct"])
 
-    def test_knockout_inactive_bonus(self):
-        """Inactive bet in knockout returns 0 points."""
-        bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1, winner_pred_id=1, is_active=False)
+    def test_knockout_draw_exact_advancing_correct(self):
+        bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1, winner_pred_id=1)
         result = calculate_bet_points(bet, self._make_scoring_config())
-        # 0 points
+        self.assertEqual(result["points"], 35)
+        self.assertTrue(result["exact_score"])
+        self.assertTrue(result["advancing_correct"])
+
+    def test_knockout_draw_exact_advancing_wrong(self):
+        bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1, winner_pred_id=2)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 10)
+        self.assertTrue(result["exact_score"])
+        self.assertFalse(result["advancing_correct"])
+
+    def test_knockout_draw_advancing_and_diff(self):
+        bet = self._make_knockout_bet(2, 2, 1, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 21)
+        self.assertTrue(result["advancing_correct"])
+        self.assertTrue(result["diff_correct"])
+
+    def test_knockout_draw_advancing_and_winner_goals_wrong(self):
+        bet = self._make_knockout_bet(2, 1, 1, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 17)
+        self.assertTrue(result["advancing_correct"])
+        self.assertFalse(result["advancing_goals_correct"])
+        self.assertFalse(result["diff_correct"])
+        self.assertTrue(result["eliminated_goals_correct"])
+
+    def test_knockout_draw_wrong_advancing(self):
+        bet = self._make_knockout_bet(0, 2, 1, 1, winner_real_id=1, winner_pred_id=2)
+        result = calculate_bet_points(bet, self._make_scoring_config())
         self.assertEqual(result["points"], 0)
-        self.assertFalse(result["exact_score"])
-        self.assertFalse(result["winner_advancing"])
+        self.assertFalse(result["advancing_correct"])
 
 
 class NormalizeStageKeyTest(SimpleTestCase):

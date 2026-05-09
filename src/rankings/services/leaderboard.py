@@ -22,7 +22,7 @@ def _score_key(participant):
         participant.champion_hit,
         participant.exact_score_hits,
         participant.top_scorer_hit,
-        participant.winner_or_draw_hits,
+        participant.advancing_hits,
         participant.knockout_points,
         participant.group_points,
     )
@@ -70,7 +70,7 @@ def build_pool_leaderboard(pool: Pool):
             "-champion_hit",
             "-exact_score_hits",
             "-top_scorer_hit",
-            "-winner_or_draw_hits",
+            "-advancing_hits",
             "-knockout_points",
             "-group_points",
             "joined_at",
