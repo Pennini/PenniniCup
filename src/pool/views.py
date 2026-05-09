@@ -239,7 +239,7 @@ def save_bet(request, slug, match_id):
     form = PoolBetForm(request.POST, instance=existing_bet, match=match)
     is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
 
-    if phase_for_match(match) == PHASE_KNOCKOUT and not match.home_team_id and not match.away_team_id:
+    if phase_for_match(match) == PHASE_KNOCKOUT and (not match.home_team_id or not match.away_team_id):
         error_msg = "Os times desta partida ainda não foram definidos."
         if is_ajax:
             return JsonResponse({"ok": False, "error": error_msg}, status=400)
