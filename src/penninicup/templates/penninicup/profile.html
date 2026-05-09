@@ -57,6 +57,7 @@
             </div>
 
             <div class="grid gap-4 sm:grid-cols-2">
+                {% if is_owner_profile %}
                 <label class="space-y-2">
                     <span class="text-sm font-medium text-neutral-200">Time do coração</span>
                     <input
@@ -66,7 +67,6 @@
                         maxlength="120"
                         class="w-full rounded-lg bg-neutral-950 border border-neutral-700 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
                         placeholder="Ex.: Corinthians"
-                        {% if not is_owner_profile %}disabled{% endif %}
                     />
                     {% if profile_form.favorite_team.errors %}
                     <span class="text-xs text-red-400">{{ profile_form.favorite_team.errors.0 }}</span>
@@ -78,7 +78,6 @@
                     <select
                         name="world_cup_team"
                         class="w-full rounded-lg bg-neutral-950 border border-neutral-700 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
-                        {% if not is_owner_profile %}disabled{% endif %}
                     >
                         <option value="">Selecione um time</option>
                         {% for team in profile_form.fields.world_cup_team.queryset %}
@@ -89,6 +88,25 @@
                     <span class="text-xs text-red-400">{{ profile_form.world_cup_team.errors.0 }}</span>
                     {% endif %}
                 </label>
+                {% else %}
+                <div class="space-y-1.5">
+                    <span class="text-sm font-medium text-neutral-200">Time do coração</span>
+                    {% if profile_obj.favorite_team %}
+                    <p class="text-sm text-neutral-300">{{ profile_obj.favorite_team }}</p>
+                    {% else %}
+                    <p class="text-sm text-neutral-600 italic">Não informado</p>
+                    {% endif %}
+                </div>
+
+                <div class="space-y-1.5">
+                    <span class="text-sm font-medium text-neutral-200">Time que estou torcendo na copa{% if active_season %} ({{ active_season.year }}){% endif %}</span>
+                    {% if profile_obj.world_cup_team %}
+                    <p class="text-sm text-neutral-300">{{ profile_obj.world_cup_team.name }}</p>
+                    {% else %}
+                    <p class="text-sm text-neutral-600 italic">Não informado</p>
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
 
             {% if is_owner_profile %}
@@ -161,9 +179,25 @@
                 {% endif %}
             </article>
 
+            {% if group_rows %}
+            <div class="flex rounded-xl bg-neutral-950 border border-neutral-800 p-1 gap-1" id="profile-grouping-toggle">
+                <button type="button" id="profile-toggle-by-date"
+                        class="flex-1 text-center text-sm font-semibold rounded-lg py-2 transition-all duration-200 bg-neutral-800 text-orange-300 border border-orange-500/40"
+                        aria-pressed="true">Por Data</button>
+                <button type="button" id="profile-toggle-by-group"
+                        class="flex-1 text-center text-sm font-semibold rounded-lg py-2 transition-all duration-200 text-neutral-500 border border-transparent hover:text-neutral-300"
+                        aria-pressed="false">Por Grupo</button>
+            </div>
+            {% endif %}
+
+            <div id="profile-group-rows-list">
             {% for row in group_rows %}
-            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 space-y-2">
-                <p class="text-xs uppercase tracking-wide text-neutral-400">Fase de Grupos - Grupo {{ row.match.group.name|default:"-" }} - Jogo #{{ row.match.match_number }}</p>
+            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 space-y-2"
+                     data-match-item
+                     data-match-date="{{ row.match.match_date_brasilia|date:'Y-m-d' }}"
+                     data-match-date-label="{{ row.match.match_date_brasilia|date:'d/m - l' }}"
+                     data-match-group="{{ row.match.group.name|default:'' }}">
+                <p class="text-xs uppercase tracking-wide text-neutral-400">Fase de Grupos · Grupo {{ row.match.group.name|default:"-" }} · Jogo #{{ row.match.match_number }}</p>
                 <h3 class="text-base font-semibold flex flex-wrap items-center gap-2">
                     <span class="inline-flex items-center gap-2">
                         {% if row.home_team and row.home_team.flag_image_url %}
@@ -173,7 +207,7 @@
                         {% endif %}
                         <span>{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
                     </span>
-                    <span>x</span>
+                    <span class="text-neutral-500">×</span>
                     <span class="inline-flex items-center gap-2">
                         {% if row.away_team and row.away_team.flag_image_url %}
                         <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
@@ -184,42 +218,199 @@
                     </span>
                 </h3>
 
-                {% if row.bet and row.bet.is_active %}
-                <p class="text-sm text-neutral-200">Palpite: <span class="font-semibold">{{ row.bet.home_score_pred }} x {{ row.bet.away_score_pred }}</span></p>
-                {% else %}
-                <p class="text-sm text-neutral-400">Sem palpite registrado.</p>
-                {% endif %}
+                <div class="flex flex-wrap items-end gap-x-5 gap-y-2 pt-1">
+                    <div>
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Meu palpite</span>
+                        {% if row.bet and row.bet.is_active %}
+                        <span class="text-sm font-bold text-orange-300">{{ row.bet.home_score_pred }} × {{ row.bet.away_score_pred }}</span>
+                        {% else %}
+                        <span class="text-sm text-neutral-600">Sem palpite</span>
+                        {% endif %}
+                    </div>
+                    {% if row.match.home_score is not None %}
+                    <div class="hidden sm:block w-px h-7 bg-neutral-700 self-end mb-0.5"></div>
+                    <div>
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Resultado real</span>
+                        <span class="text-sm font-bold text-white">{{ row.match.home_score }} × {{ row.match.away_score }}</span>
+                    </div>
+                    {% endif %}
+                </div>
             </article>
             {% empty %}
             <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 text-sm text-neutral-400">Nenhum jogo de fase de grupos encontrado para este bolão.</article>
             {% endfor %}
+            </div>
 
             {% for row in knockout_rows %}
             <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 space-y-2">
-                <p class="text-xs uppercase tracking-wide text-neutral-400">Mata-mata - {{ row.match.stage.name|default:"-" }} - Jogo #{{ row.match.match_number }}</p>
+                <p class="text-xs uppercase tracking-wide text-neutral-400">Mata-mata · {{ row.match.stage.name|default:"-" }} · Jogo #{{ row.match.match_number }}</p>
                 <h3 class="text-base font-semibold flex flex-wrap items-center gap-2">
-                    <span>{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
-                    <span>x</span>
-                    <span>{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
+                    <span class="inline-flex items-center gap-2">
+                        {% if row.home_team and row.home_team.flag_image_url %}
+                        <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
+                            <img src="{{ row.home_team.flag_image_url }}" alt="Bandeira {{ row.home_team.name }}" class="h-full w-full object-cover" loading="lazy" />
+                        </span>
+                        {% endif %}
+                        <span>{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
+                    </span>
+                    <span class="text-neutral-500">×</span>
+                    <span class="inline-flex items-center gap-2">
+                        {% if row.away_team and row.away_team.flag_image_url %}
+                        <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
+                            <img src="{{ row.away_team.flag_image_url }}" alt="Bandeira {{ row.away_team.name }}" class="h-full w-full object-cover" loading="lazy" />
+                        </span>
+                        {% endif %}
+                        <span>{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
+                    </span>
                 </h3>
 
-                {% if row.bet and row.bet.is_active %}
-                <p class="text-sm text-neutral-200">Palpite: <span class="font-semibold">{{ row.bet.home_score_pred }} x {{ row.bet.away_score_pred }}</span></p>
-                <p class="text-sm text-neutral-200">Classificado:
-                    {% if row.bet.winner_pred %}
-                    <span class="font-semibold">{{ row.bet.winner_pred.name }}</span>
-                    {% else %}
-                    <span class="text-neutral-400">Não definido</span>
+                <div class="flex flex-wrap items-end gap-x-5 gap-y-2 pt-1">
+                    <div>
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Meu palpite</span>
+                        {% if row.bet and row.bet.is_active %}
+                        <span class="text-sm font-bold text-orange-300">{{ row.bet.home_score_pred }} × {{ row.bet.away_score_pred }}</span>
+                        {% else %}
+                        <span class="text-sm text-neutral-600">Sem palpite</span>
+                        {% endif %}
+                    </div>
+                    {% if row.match.home_score is not None %}
+                    <div class="hidden sm:block w-px h-7 bg-neutral-700 self-end mb-0.5"></div>
+                    <div>
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Resultado real</span>
+                        <span class="text-sm font-bold text-white">{{ row.match.home_score }} × {{ row.match.away_score }}</span>
+                    </div>
                     {% endif %}
-                </p>
-                {% else %}
-                <p class="text-sm text-neutral-400">Sem palpite registrado.</p>
-                {% endif %}
+                    {% if row.bet and row.bet.is_active %}
+                    <div class="w-full border-t border-neutral-800 pt-2 mt-1">
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Classificado apostado</span>
+                        {% if row.bet.winner_pred %}
+                        <span class="text-sm font-bold text-orange-300">{{ row.bet.winner_pred.name }}</span>
+                        {% else %}
+                        <span class="text-sm text-neutral-600">Não definido</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
             </article>
             {% empty %}
             <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 text-sm text-neutral-400">Nenhum jogo de mata-mata encontrado para este bolão.</article>
             {% endfor %}
         </div>
+
+        <script>
+        (function () {
+            var container = document.getElementById('profile-group-rows-list');
+            if (!container) return;
+
+            function clearGroupingArtifacts() {
+                container.querySelectorAll('[data-match-grid]').forEach(function (grid) {
+                    grid.querySelectorAll('[data-match-item]').forEach(function (item) {
+                        container.appendChild(item);
+                    });
+                    grid.remove();
+                });
+            }
+
+            function applyGrouping(mode) {
+                clearGroupingArtifacts();
+                var items = Array.from(container.querySelectorAll('[data-match-item]'));
+
+                if (mode === 'date') {
+                    items.sort(function (a, b) {
+                        return a.dataset.matchDate < b.dataset.matchDate ? -1 : a.dataset.matchDate > b.dataset.matchDate ? 1 : 0;
+                    });
+
+                    var grid = document.createElement('div');
+                    grid.setAttribute('data-match-grid', '');
+                    grid.className = 'flex flex-col gap-3';
+
+                    var dateMap = {};
+
+                    items.forEach(function (item) {
+                        var dateKey = item.dataset.matchDate;
+                        if (!dateMap[dateKey]) {
+                            var cont = document.createElement('div');
+                            cont.className = 'bg-neutral-900 border border-neutral-700 rounded-2xl p-4 flex flex-col gap-3';
+
+                            var headerRow = document.createElement('div');
+                            headerRow.className = 'flex items-center gap-3';
+                            headerRow.innerHTML =
+                                '<div class="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center shrink-0">' +
+                                    '<i data-lucide="calendar" class="w-4 h-4 text-neutral-300"></i>' +
+                                '</div>' +
+                                '<span class="font-semibold text-neutral-200 capitalize">' + item.dataset.matchDateLabel + '</span>';
+                            cont.appendChild(headerRow);
+
+                            dateMap[dateKey] = cont;
+                            grid.appendChild(cont);
+                        }
+                        dateMap[dateKey].appendChild(item);
+                    });
+
+                    container.appendChild(grid);
+                    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+
+                } else {
+                    var grid = document.createElement('div');
+                    grid.setAttribute('data-match-grid', '');
+                    grid.className = 'grid grid-cols-1 sm:grid-cols-2 gap-4';
+
+                    var groupMap = {};
+
+                    items.forEach(function (item) {
+                        var groupName = item.dataset.matchGroup;
+                        if (!groupName) return;
+                        if (!groupMap[groupName]) {
+                            var cont = document.createElement('div');
+                            cont.className = 'bg-neutral-900 border border-neutral-700 rounded-2xl p-4 flex flex-col gap-3';
+
+                            var headerRow = document.createElement('div');
+                            headerRow.className = 'flex items-center gap-3';
+                            headerRow.innerHTML =
+                                '<div class="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center shrink-0">' +
+                                    '<span class="text-white font-bold text-sm">' + groupName + '</span>' +
+                                '</div>' +
+                                '<span class="font-bold text-neutral-100">Grupo ' + groupName + '</span>';
+                            cont.appendChild(headerRow);
+
+                            groupMap[groupName] = cont;
+                            grid.appendChild(cont);
+                        }
+                        groupMap[groupName].appendChild(item);
+                    });
+
+                    container.appendChild(grid);
+                }
+
+                var btnDate  = document.getElementById('profile-toggle-by-date');
+                var btnGroup = document.getElementById('profile-toggle-by-group');
+                if (btnDate && btnGroup) {
+                    var activeClass   = ['bg-neutral-800', 'text-orange-300', 'border', 'border-orange-500/40'];
+                    var inactiveClass = ['text-neutral-500', 'border', 'border-transparent', 'hover:text-neutral-300'];
+
+                    [btnDate, btnGroup].forEach(function (btn) {
+                        activeClass.forEach(function (c) { btn.classList.remove(c); });
+                        inactiveClass.forEach(function (c) { btn.classList.remove(c); });
+                    });
+
+                    var activeBtn   = mode === 'date' ? btnDate  : btnGroup;
+                    var inactiveBtn = mode === 'date' ? btnGroup : btnDate;
+                    activeClass.forEach(function (c) { activeBtn.classList.add(c); });
+                    inactiveClass.forEach(function (c) { inactiveBtn.classList.add(c); });
+
+                    btnDate.setAttribute('aria-pressed',  mode === 'date'  ? 'true' : 'false');
+                    btnGroup.setAttribute('aria-pressed', mode === 'group' ? 'true' : 'false');
+                }
+            }
+
+            var btnDate  = document.getElementById('profile-toggle-by-date');
+            var btnGroup = document.getElementById('profile-toggle-by-group');
+            if (btnDate)  btnDate.addEventListener('click',  function () { applyGrouping('date'); });
+            if (btnGroup) btnGroup.addEventListener('click', function () { applyGrouping('group'); });
+
+            applyGrouping('date');
+        })();
+        </script>
         {% endif %}
         {% endif %}
         {% endif %}
