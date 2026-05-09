@@ -27,6 +27,8 @@ class PoolBetForm(forms.ModelForm):
 
         has_any_value = home_score_pred is not None or away_score_pred is not None or winner_pred is not None
         if not has_any_value:
+            if self.instance.pk and self.instance.is_active:
+                raise forms.ValidationError("Não é possível apagar um palpite já confirmado.")
             return cleaned_data
 
         if home_score_pred is None or away_score_pred is None:

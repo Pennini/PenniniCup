@@ -684,7 +684,7 @@ class PoolAutoBetLifecycleTest(TestCase):
         self.assertEqual(standings[0].points, 1)
         self.assertEqual(standings[1].points, 1)
 
-    def test_bulk_save_is_atomic_for_entire_batch(self):
+    def test_bulk_save_skips_invalid_bets_and_saves_valid_ones(self):
         future = timezone.now() + timezone.timedelta(days=1)
         self.group_match.match_date_utc = future
         self.group_match.match_date_local = future
@@ -711,13 +711,20 @@ class PoolAutoBetLifecycleTest(TestCase):
         )
         self.assertEqual(response.status_code, 302)
 
+        # Valid bets must be saved despite the invalid knockout bet
         self.participant.refresh_from_db()
-        self.assertIsNone(self.participant.top_scorer_pred_id)
+        self.assertEqual(self.participant.top_scorer_pred_id, self.player_a.id)
 
         group_bet = PoolBet.objects.get(participant=self.participant, match=self.group_match)
-        self.assertIsNone(group_bet.home_score_pred)
-        self.assertIsNone(group_bet.away_score_pred)
-        self.assertFalse(group_bet.is_active)
+        self.assertEqual(group_bet.home_score_pred, 2)
+        self.assertEqual(group_bet.away_score_pred, 1)
+        self.assertTrue(group_bet.is_active)
+
+        # Invalid knockout bet must not be saved
+        knockout_bet = PoolBet.objects.get(participant=self.participant, match=self.knockout_match)
+        self.assertIsNone(knockout_bet.home_score_pred)
+        self.assertIsNone(knockout_bet.away_score_pred)
+        self.assertFalse(knockout_bet.is_active)
 
 
 class AssignThirdPlaceholderNormalizationTest(TestCase):
