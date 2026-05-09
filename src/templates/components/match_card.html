@@ -84,13 +84,13 @@ card_match=match card_mode="bet_active" card_form=form %} Exemplo — palpite en
             <div
                 class="w-10 h-10 bg-[#2a2a2a] border border-brand-border rounded-lg flex items-center justify-center font-bold text-[1.05rem] text-brand-text"
             >
-                {{ card_match.home_score|default:"—" }}
+                {{ card_match.home_score|default_if_none:"—" }}
             </div>
             <span class="text-gray-500 font-bold text-sm">×</span>
             <div
                 class="w-10 h-10 bg-[#2a2a2a] border border-brand-border rounded-lg flex items-center justify-center font-bold text-[1.05rem] text-brand-text"
             >
-                {{ card_match.away_score|default:"—" }}
+                {{ card_match.away_score|default_if_none:"—" }}
             </div>
             {% endif %}
         </div>

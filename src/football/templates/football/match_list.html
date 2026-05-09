@@ -13,7 +13,145 @@ Partidas — PenniniCup
     {% if active_tab == "classification" %}
     {% include "football/partials/group_standings_grid.html" %}
     {% elif active_tab == "group" %}
-    {% include "football/partials/group_stage_grid.html" %}
+    <div class="flex rounded-xl bg-neutral-950 border border-neutral-800 p-1 gap-1" id="grouping-toggle">
+        <button type="button" id="toggle-by-date"
+                class="flex-1 text-center text-sm font-semibold rounded-lg py-2 transition-all duration-200 bg-neutral-800 text-orange-300 border border-orange-500/40"
+                aria-pressed="true">Por Data</button>
+        <button type="button" id="toggle-by-group"
+                class="flex-1 text-center text-sm font-semibold rounded-lg py-2 transition-all duration-200 text-neutral-500 border border-transparent hover:text-neutral-300"
+                aria-pressed="false">Por Grupo</button>
+    </div>
+
+    <div id="match-list">
+        {% for item in groups %}
+            {% for match in item.matches %}
+            <div data-match-item
+                 data-match-date="{{ match.match_date_brasilia|date:'Y-m-d' }}"
+                 data-match-date-label="{{ match.match_date_brasilia|date:'d/m - l' }}"
+                 data-match-group="{{ item.group.name }}">
+                {% include "components/match_card.html" with card_match=match card_mode="result" %}
+            </div>
+            {% endfor %}
+        {% empty %}
+        <div class="flex flex-col items-center justify-center py-16 gap-3 text-gray-500">
+            <i data-lucide="calendar-x" class="w-10 h-10 opacity-40"></i>
+            <p class="text-sm">Nenhum grupo encontrado.</p>
+        </div>
+        {% endfor %}
+    </div>
+
+    <script>
+    (function () {
+        var matchList = document.getElementById('match-list');
+        if (!matchList) return;
+
+        function clearGroupingArtifacts() {
+            matchList.querySelectorAll('[data-match-grid]').forEach(function (grid) {
+                grid.querySelectorAll('[data-match-item]').forEach(function (item) {
+                    matchList.appendChild(item);
+                });
+                grid.remove();
+            });
+        }
+
+        function applyGrouping(mode) {
+            clearGroupingArtifacts();
+            var items = Array.from(matchList.querySelectorAll('[data-match-item]'));
+
+            if (mode === 'date') {
+                items.sort(function (a, b) {
+                    return a.dataset.matchDate < b.dataset.matchDate ? -1 : a.dataset.matchDate > b.dataset.matchDate ? 1 : 0;
+                });
+
+                var grid = document.createElement('div');
+                grid.setAttribute('data-match-grid', '');
+                grid.className = 'flex flex-col gap-4';
+
+                var dateMap = {};
+
+                items.forEach(function (item) {
+                    var dateKey = item.dataset.matchDate;
+                    if (!dateMap[dateKey]) {
+                        var cont = document.createElement('div');
+                        cont.className = 'bg-neutral-900 border border-neutral-700 rounded-2xl p-4 flex flex-col gap-3';
+
+                        var headerRow = document.createElement('div');
+                        headerRow.className = 'flex items-center gap-3';
+                        headerRow.innerHTML =
+                            '<div class="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center shrink-0">' +
+                                '<i data-lucide="calendar" class="w-4 h-4 text-neutral-300"></i>' +
+                            '</div>' +
+                            '<span class="font-semibold text-neutral-200 capitalize">' + item.dataset.matchDateLabel + '</span>';
+                        cont.appendChild(headerRow);
+
+                        dateMap[dateKey] = cont;
+                        grid.appendChild(cont);
+                    }
+                    dateMap[dateKey].appendChild(item);
+                });
+
+                matchList.appendChild(grid);
+                if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+
+            } else {
+                var grid = document.createElement('div');
+                grid.setAttribute('data-match-grid', '');
+                grid.className = 'grid grid-cols-1 md:grid-cols-2 gap-4';
+
+                var groupMap = {};
+
+                items.forEach(function (item) {
+                    var groupName = item.dataset.matchGroup;
+                    if (!groupName) return;
+                    if (!groupMap[groupName]) {
+                        var cont = document.createElement('div');
+                        cont.className = 'bg-neutral-900 border border-neutral-700 rounded-2xl p-4 flex flex-col gap-3';
+
+                        var headerRow = document.createElement('div');
+                        headerRow.className = 'flex items-center gap-3';
+                        headerRow.innerHTML =
+                            '<div class="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center shrink-0">' +
+                                '<span class="text-white font-bold text-sm">' + groupName + '</span>' +
+                            '</div>' +
+                            '<span class="font-bold text-neutral-100">Grupo ' + groupName + '</span>';
+                        cont.appendChild(headerRow);
+
+                        groupMap[groupName] = cont;
+                        grid.appendChild(cont);
+                    }
+                    groupMap[groupName].appendChild(item);
+                });
+
+                matchList.appendChild(grid);
+            }
+
+            var btnDate  = document.getElementById('toggle-by-date');
+            var btnGroup = document.getElementById('toggle-by-group');
+            if (btnDate && btnGroup) {
+                var activeClass   = ['bg-neutral-800', 'text-orange-300', 'border', 'border-orange-500/40'];
+                var inactiveClass = ['text-neutral-500', 'border', 'border-transparent', 'hover:text-neutral-300'];
+
+                [btnDate, btnGroup].forEach(function (btn) {
+                    activeClass.forEach(function (c) { btn.classList.remove(c); });
+                    inactiveClass.forEach(function (c) { btn.classList.remove(c); });
+                });
+
+                var activeBtn   = mode === 'date' ? btnDate  : btnGroup;
+                var inactiveBtn = mode === 'date' ? btnGroup : btnDate;
+                activeClass.forEach(function (c) { activeBtn.classList.add(c); });
+                inactiveClass.forEach(function (c) { inactiveBtn.classList.add(c); });
+
+                btnDate.setAttribute('aria-pressed',  mode === 'date'  ? 'true' : 'false');
+                btnGroup.setAttribute('aria-pressed', mode === 'group' ? 'true' : 'false');
+            }
+        }
+
+        document.getElementById('toggle-by-date').addEventListener('click', function () { applyGrouping('date'); });
+        document.getElementById('toggle-by-group').addEventListener('click', function () { applyGrouping('group'); });
+
+        applyGrouping('date');
+    })();
+    </script>
     {% else %}
     {% include "football/partials/knockout_bracket.html" %}
     {% endif %}
