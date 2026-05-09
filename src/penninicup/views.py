@@ -309,16 +309,8 @@ def rules(request):
         "scoring_config": scoring_config,
         "group_lock_at": group_lock_at,
         "knockout_lock_at": knockout_lock_at,
-        "group_max_points": (
-            scoring_config.group_winner_or_draw_points + scoring_config.group_exact_score_points
-            if scoring_config
-            else 0
-        ),
-        "knockout_max_points": (
-            scoring_config.knockout_winner_advancing_points + scoring_config.knockout_exact_score_points
-            if scoring_config
-            else 0
-        ),
+        "group_max_points": (scoring_config.group_exact_score if scoring_config else 0),
+        "knockout_max_points": (scoring_config.knockout_exact_and_advancing if scoring_config else 0),
         "bonus_total_points": (
             scoring_config.bonus_champion_points
             + scoring_config.bonus_runner_up_points

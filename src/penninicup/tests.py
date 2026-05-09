@@ -54,20 +54,18 @@ class RulesPageTest(TestCase):
         )
 
         config_a = self.pool_a.get_scoring_config()
-        config_a.group_exact_score_points = 13
-        config_a.knockout_winner_advancing_points = 11
-        config_a.knockout_exact_score_points = 7
+        config_a.group_exact_score = 13
         config_a.save()
 
     def test_rules_page_loads_and_uses_default_pool(self):
         response = self.client.get(reverse("penninicup:rules"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Pool Regras A")
-        self.assertContains(response, "Acertar placar exato: +13")
+        self.assertContains(response, "13 pts")
 
     def test_rules_page_respects_selected_pool(self):
         config_b = self.pool_b.get_scoring_config()
-        config_b.group_exact_score_points = 21
+        config_b.group_exact_score = 21
         config_b.save()
 
         response = self.client.get(reverse("penninicup:rules"), data={"pool": self.pool_b.slug})
