@@ -381,12 +381,6 @@ def save_bets_bulk(request, slug):
         bet_obj.match = match
         bets_to_save.append((bet_obj, before_state, phase, match.match_number))
 
-    if validation_errors:
-        for error in validation_errors:
-            messages.error(request, error)
-        messages.error(request, "Não foi possível salvar os palpites. Corrija os erros e tente novamente.")
-        return redirect("pool:detail", slug=pool.slug)
-
     try:
         with transaction.atomic():
             if not pool.is_phase_locked(PHASE_GROUP) and top_scorer_changed:
@@ -415,12 +409,15 @@ def save_bets_bulk(request, slug):
         messages.error(request, "Não foi possível salvar os palpites. Tente novamente.")
         return redirect("pool:detail", slug=pool.slug)
 
+    for error in validation_errors:
+        messages.error(request, error)
+
     if saved_group_count:
         enqueue_projection_recalc(participant)
 
     total_changes = saved_count + (1 if top_scorer_changed else 0)
 
-    if not total_changes:
+    if not total_changes and not validation_errors:
         messages.info(request, "Nenhuma alteração para salvar.")
     elif saved_group_count:
         messages.warning(
