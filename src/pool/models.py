@@ -419,9 +419,9 @@ class PoolScoringConfig(models.Model):
 
     knockout_exact_and_advancing = models.PositiveSmallIntegerField(default=35)
     knockout_advancing_and_winner_goals = models.PositiveSmallIntegerField(default=25)
-    knockout_advancing_and_diff = models.PositiveSmallIntegerField(default=21)
+    knockout_advancing_and_diff = models.PositiveSmallIntegerField(default=20)
     knockout_advancing_and_loser_goals = models.PositiveSmallIntegerField(default=17)
-    knockout_advancing_only = models.PositiveSmallIntegerField(default=14)
+    knockout_advancing_only = models.PositiveSmallIntegerField(default=15)
     knockout_exact_wrong_advancing = models.PositiveSmallIntegerField(default=10)
 
     bonus_champion_points = models.PositiveSmallIntegerField(default=120)

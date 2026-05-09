@@ -1195,9 +1195,9 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
             group_winner_only=10,
             knockout_exact_and_advancing=35,
             knockout_advancing_and_winner_goals=25,
-            knockout_advancing_and_diff=21,
+            knockout_advancing_and_diff=20,
             knockout_advancing_and_loser_goals=17,
-            knockout_advancing_only=14,
+            knockout_advancing_only=15,
             knockout_exact_wrong_advancing=10,
         )
         defaults.update(overrides)
@@ -1355,7 +1355,7 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
     def test_knockout_advancing_and_diff(self):
         bet = self._make_knockout_bet(3, 2, 2, 1, winner_real_id=1, winner_pred_id=1)
         result = calculate_bet_points(bet, self._make_scoring_config())
-        self.assertEqual(result["points"], 21)
+        self.assertEqual(result["points"], 20)
         self.assertTrue(result["advancing_correct"])
         self.assertTrue(result["diff_correct"])
 
@@ -1367,11 +1367,13 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
         self.assertTrue(result["eliminated_goals_correct"])
 
     def test_knockout_advancing_only(self):
-        bet = self._make_knockout_bet(1, 0, 2, 1, winner_real_id=1, winner_pred_id=1)
+        bet = self._make_knockout_bet(1, 0, 3, 1, winner_real_id=1, winner_pred_id=1)
         result = calculate_bet_points(bet, self._make_scoring_config())
-        self.assertEqual(result["points"], 21)
+        self.assertEqual(result["points"], 15)
         self.assertTrue(result["advancing_correct"])
-        self.assertTrue(result["diff_correct"])
+        self.assertFalse(result["advancing_goals_correct"])
+        self.assertFalse(result["diff_correct"])
+        self.assertFalse(result["eliminated_goals_correct"])
 
     def test_knockout_wrong_advancing(self):
         bet = self._make_knockout_bet(0, 2, 2, 1, winner_real_id=1, winner_pred_id=2)
@@ -1403,7 +1405,7 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
     def test_knockout_draw_advancing_and_diff(self):
         bet = self._make_knockout_bet(2, 2, 1, 1, winner_real_id=1, winner_pred_id=1)
         result = calculate_bet_points(bet, self._make_scoring_config())
-        self.assertEqual(result["points"], 21)
+        self.assertEqual(result["points"], 20)
         self.assertTrue(result["advancing_correct"])
         self.assertTrue(result["diff_correct"])
 
