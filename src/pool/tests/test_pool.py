@@ -481,6 +481,8 @@ class PoolAutoBetLifecycleTest(TestCase):
             match_date_brasilia=now + timezone.timedelta(hours=1),
             home_placeholder="W70",
             away_placeholder="W70",
+            home_team=self.team_a,
+            away_team=self.team_b,
         )
 
         self.pool = Pool.objects.create(
@@ -625,6 +627,46 @@ class PoolAutoBetLifecycleTest(TestCase):
         job = self.participant.projection_recalc
         self.assertEqual(job.status, PoolProjectionRecalc.STATUS_PENDING)
 
+    def test_bulk_save_skips_knockout_match_without_teams(self):
+        future = timezone.now() + timezone.timedelta(days=1)
+        match_no_teams = Match.objects.create(
+            fifa_id="KM4NT",
+            season=self.season,
+            stage=self.stage_r16,
+            match_number=99,
+            match_date_utc=future,
+            match_date_local=future,
+            match_date_brasilia=future,
+            home_placeholder="W69",
+            away_placeholder="W70",
+        )
+        self.group_match.match_date_utc = future
+        self.group_match.match_date_local = future
+        self.group_match.match_date_brasilia = future
+        self.group_match.save(update_fields=["match_date_utc", "match_date_local", "match_date_brasilia"])
+
+        self.client.force_login(self.user)
+        response = self.client.post(
+            reverse("pool:save-bets-bulk", kwargs={"slug": self.pool.slug}),
+            data={
+                f"match_{self.group_match.id}_home_score_pred": "2",
+                f"match_{self.group_match.id}_away_score_pred": "1",
+                f"match_{match_no_teams.id}_home_score_pred": "1",
+                f"match_{match_no_teams.id}_away_score_pred": "0",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        # Group match bet must be saved despite the invalid knockout bet
+        group_bet = PoolBet.objects.get(participant=self.participant, match=self.group_match)
+        self.assertEqual(group_bet.home_score_pred, 2)
+        self.assertEqual(group_bet.away_score_pred, 1)
+
+        # Knockout match without teams must not be saved
+        knockout_bet = PoolBet.objects.get(participant=self.participant, match=match_no_teams)
+        self.assertIsNone(knockout_bet.home_score_pred)
+        self.assertIsNone(knockout_bet.away_score_pred)
+
     def test_knockout_draw_without_winner_is_saved_inactive(self):
         bet = PoolBet(
             participant=self.participant,
@@ -725,6 +767,27 @@ class PoolAutoBetLifecycleTest(TestCase):
         self.assertIsNone(knockout_bet.home_score_pred)
         self.assertIsNone(knockout_bet.away_score_pred)
         self.assertFalse(knockout_bet.is_active)
+
+    def test_bulk_save_updates_updated_at_on_changed_bets(self):
+        future = timezone.now() + timezone.timedelta(days=1)
+        self.group_match.match_date_utc = future
+        self.group_match.match_date_local = future
+        self.group_match.match_date_brasilia = future
+        self.group_match.save(update_fields=["match_date_utc", "match_date_local", "match_date_brasilia"])
+
+        self.client.force_login(self.user)
+
+        timestamp_before = timezone.now()
+        self.client.post(
+            reverse("pool:save-bets-bulk", kwargs={"slug": self.pool.slug}),
+            data={
+                f"match_{self.group_match.id}_home_score_pred": "2",
+                f"match_{self.group_match.id}_away_score_pred": "1",
+            },
+        )
+
+        bet = PoolBet.objects.get(participant=self.participant, match=self.group_match)
+        self.assertGreater(bet.updated_at, timestamp_before)
 
 
 class AssignThirdPlaceholderNormalizationTest(TestCase):

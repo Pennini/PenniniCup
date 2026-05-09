@@ -7,6 +7,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from django_ratelimit.decorators import ratelimit
 
@@ -14,6 +15,7 @@ from src.football.models import Match, Player
 from src.pool.forms import PoolBetForm
 from src.pool.models import Pool, PoolBet, PoolParticipant
 from src.pool.services.context_builder import build_pool_participant_view_context as build_pool_context_service
+from src.pool.services.context_builder import resolve_knockout_match_teams
 from src.pool.services.projection_queue import (
     enqueue_projection_recalc,
     has_pending_projection_recalc,
@@ -237,6 +239,13 @@ def save_bet(request, slug, match_id):
     form = PoolBetForm(request.POST, instance=existing_bet, match=match)
     is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
 
+    if phase_for_match(match) == PHASE_KNOCKOUT and not match.home_team_id and not match.away_team_id:
+        error_msg = "Os times desta partida ainda não foram definidos."
+        if is_ajax:
+            return JsonResponse({"ok": False, "error": error_msg}, status=400)
+        messages.error(request, error_msg)
+        return redirect("pool:detail", slug=pool.slug)
+
     if getattr(request, "limited", False):
         if is_ajax:
             return JsonResponse({"ok": False, "error": "Muitas tentativas. Aguarde e tente novamente."}, status=429)
@@ -302,13 +311,33 @@ def save_bets_bulk(request, slug):
 
     matches = list(
         Match.objects.filter(season=pool.season)
-        .select_related("stage")
+        .select_related("stage", "home_team", "away_team")
         .order_by("match_number", "match_date_brasilia")
+    )
+    prefetched_bets = list(
+        PoolBet.objects.filter(participant=participant, match__season=pool.season).select_related(
+            "match", "winner_pred"
+        )
     )
     existing_bets = _ensure_participant_bets(
         participant=participant,
         matches=matches,
         can_bet=participant.can_bet(),
+        existing_bets=prefetched_bets,
+    )
+
+    _needs_projection = any(
+        phase_for_match(m) == PHASE_KNOCKOUT and (not m.home_team_id or not m.away_team_id) for m in matches
+    )
+    resolved_knockout = (
+        resolve_knockout_match_teams(
+            participant=participant,
+            matches=matches,
+            season=pool.season,
+            bets_by_match_id=existing_bets,
+        )
+        if _needs_projection
+        else {}
     )
 
     saved_count = 0
@@ -351,6 +380,15 @@ def save_bets_bulk(request, slug):
         away_value = (request.POST.get(away_key) or "").strip()
         winner_value = (request.POST.get(winner_key) or "").strip()
 
+        if phase == PHASE_KNOCKOUT and (not match.home_team_id or not match.away_team_id):
+            proj_home, proj_away = resolved_knockout.get(match.id, (None, None))
+            if proj_home is None or proj_away is None:
+                if home_value or away_value:
+                    validation_errors.append(
+                        f"Jogo {match.match_number}: Os times desta partida ainda não foram definidos."
+                    )
+                continue
+
         payload = {
             "home_score_pred": home_value,
             "away_score_pred": away_value,
@@ -381,6 +419,9 @@ def save_bets_bulk(request, slug):
         bet_obj.match = match
         bets_to_save.append((bet_obj, before_state, phase, match.match_number))
 
+    now = timezone.now()
+    bets_to_bulk_update = []
+
     try:
         with transaction.atomic():
             if not pool.is_phase_locked(PHASE_GROUP) and top_scorer_changed:
@@ -388,8 +429,7 @@ def save_bets_bulk(request, slug):
                 participant.save(update_fields=["top_scorer_pred"])
 
             for bet_obj, before_state, phase, _ in bets_to_save:
-                bet_obj.full_clean()
-                bet_obj.save()
+                bet_obj.full_clean()  # clean() already calls refresh_is_active()
                 after_state = (
                     bet_obj.home_score_pred,
                     bet_obj.away_score_pred,
@@ -397,9 +437,17 @@ def save_bets_bulk(request, slug):
                     bet_obj.is_active,
                 )
                 if after_state != before_state:
+                    bet_obj.updated_at = now
+                    bets_to_bulk_update.append(bet_obj)
                     saved_count += 1
                     if phase == PHASE_GROUP:
                         saved_group_count += 1
+
+            if bets_to_bulk_update:
+                PoolBet.objects.bulk_update(
+                    bets_to_bulk_update,
+                    fields=["home_score_pred", "away_score_pred", "winner_pred", "is_active", "updated_at"],
+                )
     except Exception as exc:
         logger.exception(
             "Falha ao salvar lote de palpites: participant=%s error=%s",
