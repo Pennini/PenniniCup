@@ -419,6 +419,73 @@ def _build_third_rows_from_rows(projected_third_places):
     ]
 
 
+def resolve_knockout_match_teams(*, participant, matches, season, bets_by_match_id=None):
+    """
+    Returns {match_id: (home_team, away_team)} for all knockout matches, resolving
+    teams via the participant's own bet projections when official team IDs are absent.
+    Matches must be ordered by match_number so winners cascade into later rounds.
+    Pass bets_by_match_id (with winner_pred select_related) to avoid an extra DB query.
+    """
+    projected_standings = list(
+        participant.projected_standings.select_related("group", "team").order_by(
+            "group__name", "position", "team__code"
+        )
+    )
+    projected_third_places = list(
+        participant.projected_third_places.select_related("group", "team").order_by(
+            "position_global", "group__name", "team__code"
+        )
+    )
+
+    projected_groups = _build_projected_groups_from_rows(projected_standings)
+    third_rows = _build_third_rows_from_rows(projected_third_places)
+    projected_slots = build_projected_placeholder_map(projected_groups=projected_groups, third_rows=third_rows)
+    qualified_groups = sorted([row["group"].name for row in third_rows if row["is_qualified"]])
+    assign_third_map = load_assign_third_map(season=season, qualified_groups=qualified_groups)
+
+    if bets_by_match_id is None:
+        bets_by_match_id = {bet.match_id: bet for bet in participant.bets.select_related("winner_pred").all()}
+    winners_map = {}
+    losers_map = {}
+
+    result = {}
+    for match in matches:
+        if phase_for_match(match) != PHASE_KNOCKOUT:
+            continue
+
+        home_team = match.home_team
+        away_team = match.away_team
+
+        if home_team is None:
+            home_team = _resolve_match_team_from_placeholder(
+                placeholder=match.home_placeholder,
+                projected_slots=projected_slots,
+                assign_third_map=assign_third_map,
+                winners_map=winners_map,
+                losers_map=losers_map,
+            )
+        if away_team is None:
+            away_team = _resolve_match_team_from_placeholder(
+                placeholder=match.away_placeholder,
+                projected_slots=projected_slots,
+                assign_third_map=assign_third_map,
+                winners_map=winners_map,
+                losers_map=losers_map,
+            )
+
+        result[match.id] = (home_team, away_team)
+
+        bet = bets_by_match_id.get(match.id)
+        advancing = _infer_advancing_team(match=match, bet=bet, home_team=home_team, away_team=away_team)
+        if advancing is not None:
+            winners_map[match.match_number] = advancing
+            losing = _infer_losing_team(winner_team=advancing, home_team=home_team, away_team=away_team)
+            if losing is not None:
+                losers_map[match.match_number] = losing
+
+    return result
+
+
 def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
     participant = _hydrate_participant_for_context(pool=pool, participant=participant)
 

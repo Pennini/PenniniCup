@@ -1,5 +1,5 @@
-from django.contrib.auth.decorators import login_required, user_passes_test
-from django.http import HttpResponseNotAllowed
+from django.contrib.auth.decorators import login_required
+from django.http import HttpResponseForbidden, HttpResponseNotAllowed
 from django.shortcuts import get_object_or_404, redirect, render
 
 from src.pool.models import Pool, PoolParticipant
@@ -67,10 +67,11 @@ def pool_ranking_dashboard(request, slug):
 
 
 @login_required
-@user_passes_test(lambda u: u.is_superuser)
 def toggle_supporter_stars(request, slug):
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
+    if not request.user.is_superuser:
+        return HttpResponseForbidden()
     pool = get_object_or_404(Pool, slug=slug, is_active=True)
     pool.show_supporter_stars = not pool.show_supporter_stars
     pool.save(update_fields=["show_supporter_stars"])
