@@ -291,6 +291,17 @@
                         <span class="text-sm font-bold text-white">{{ row.match.home_score }} × {{ row.match.away_score }}</span>
                     </div>
                     {% endif %}
+                    {% if row.match.home_score is not None and row.bet and row.bet.is_active and row.bet_score %}
+                    <div class="hidden sm:block w-px h-7 bg-neutral-700 self-end mb-0.5"></div>
+                    <div>
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Pontos</span>
+                        {% if row.bet_score.points > 0 %}
+                        <span class="text-sm font-bold text-green-400">+{{ row.bet_score.points }} pts</span>
+                        {% else %}
+                        <span class="text-sm font-bold text-neutral-500">0 pts</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
                     {% if row.bet and row.bet.is_active %}
                     <div class="w-full border-t border-neutral-800 pt-2 mt-1">
                         <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Classificado apostado</span>

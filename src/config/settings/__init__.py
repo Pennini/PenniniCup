@@ -39,9 +39,9 @@ settings_modules = [
 ]
 
 if RUNNING_TESTS:
-    # Insert after logging.py so test.py's LOGGING override wins, while still
-    # preceding custom.py/envvars.py/docker.py which don't touch DB or email.
-    settings_modules.insert(3, "test.py")
+    # Append test.py LAST so it overrides all other settings including local dev settings.
+    # This ensures test-specific DATABASE and RUNNING_TESTS are properly set.
+    settings_modules.append("test.py")
 
 include(*settings_modules)
 
