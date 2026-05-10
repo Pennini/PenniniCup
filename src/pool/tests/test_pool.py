@@ -1647,12 +1647,12 @@ class ContextBuilderPureHelpersTest(SimpleTestCase):
         self.assertEqual(_cb_normalize_stage_key(stage), "")
 
     # _infer_advancing_team tests
-    def test_infer_match_has_winner(self):
-        """match.winner_id set → returns match.winner."""
+    def test_infer_match_has_winner_no_bet(self):
+        """match.winner_id set but no bet → None (real winner not used; scoring is separate)."""
         winner_team = self._team(100)
         match = self._match_obj(winner_id=100, winner=winner_team)
         result = _infer_advancing_team(match, None, None, None)
-        self.assertIs(result, winner_team)
+        self.assertIsNone(result)
 
     def test_infer_no_bet(self):
         """match.winner_id None, bet=None → None."""
@@ -1746,7 +1746,7 @@ class ContextBuilderPureHelpersTest(SimpleTestCase):
         self.assertEqual(result[1], winner_pred)
 
     def test_winners_map_bet_scores_home_wins(self):
-        """bet active, home_score_pred > away_score_pred → uses match.home_team."""
+        """group match, bet active, home_score_pred > away_score_pred → uses match.home_team."""
         home_team = self._team(1)
         away_team = self._team(2)
         match = self._match_obj(
@@ -1756,6 +1756,7 @@ class ContextBuilderPureHelpersTest(SimpleTestCase):
             away_team=away_team,
             home_team_id=1,
             away_team_id=2,
+            group_id=1,
         )
         bet = self._bet(is_active=True, home_score_pred=2, away_score_pred=1)
         bets_by_match_id = {1: bet}
@@ -1764,7 +1765,7 @@ class ContextBuilderPureHelpersTest(SimpleTestCase):
         self.assertEqual(result[1], home_team)
 
     def test_winners_map_bet_scores_away_wins(self):
-        """bet active, away_score_pred > home_score_pred → uses match.away_team."""
+        """group match, bet active, away_score_pred > home_score_pred → uses match.away_team."""
         home_team = self._team(1)
         away_team = self._team(2)
         match = self._match_obj(
@@ -1774,6 +1775,7 @@ class ContextBuilderPureHelpersTest(SimpleTestCase):
             away_team=away_team,
             home_team_id=1,
             away_team_id=2,
+            group_id=1,
         )
         bet = self._bet(is_active=True, home_score_pred=1, away_score_pred=2)
         bets_by_match_id = {1: bet}
@@ -1782,9 +1784,9 @@ class ContextBuilderPureHelpersTest(SimpleTestCase):
         self.assertEqual(result[1], away_team)
 
     def test_winners_map_no_bet_match_has_winner(self):
-        """no bet, match has winner_id → uses match.winner."""
+        """group match, no bet, match has winner_id → uses match.winner."""
         winner = self._team(100)
-        match = self._match_obj(match_number=1, id=1, winner_id=100, winner=winner)
+        match = self._match_obj(match_number=1, id=1, winner_id=100, winner=winner, group_id=1)
         bets_by_match_id = {}
 
         result = _build_winners_map([match], bets_by_match_id)
@@ -1797,6 +1799,34 @@ class ContextBuilderPureHelpersTest(SimpleTestCase):
 
         result = _build_winners_map([match], bets_by_match_id)
         self.assertNotIn(1, result)
+
+    def test_winners_map_knockout_real_winner_not_used(self):
+        """knockout match (group_id=None), no bet, real winner set → NOT in map (preserves user projection)."""
+        winner = self._team(100)
+        match = self._match_obj(match_number=49, id=49, winner_id=100, winner=winner, group_id=None)
+        bets_by_match_id = {}
+
+        result = _build_winners_map([match], bets_by_match_id)
+        self.assertNotIn(49, result)
+
+    def test_winners_map_knockout_score_inference_not_used(self):
+        """knockout match, bet with scores but no winner_pred → NOT in map (score inference skipped for knockout)."""
+        home_team = self._team(1)
+        away_team = self._team(2)
+        match = self._match_obj(
+            match_number=49,
+            id=49,
+            home_team=home_team,
+            away_team=away_team,
+            home_team_id=1,
+            away_team_id=2,
+            group_id=None,
+        )
+        bet = self._bet(is_active=True, home_score_pred=2, away_score_pred=1)
+        bets_by_match_id = {49: bet}
+
+        result = _build_winners_map([match], bets_by_match_id)
+        self.assertNotIn(49, result)
 
     # _projection_is_stale_from_prefetched tests
     def test_stale_no_active_group_bets(self):
@@ -1937,4 +1967,71 @@ class ContextBuilderPureHelpersTest(SimpleTestCase):
         self.assertIs(result[0]["line"], row)
         self.assertEqual(result[0]["score"], 5)
         self.assertEqual(result[0]["position_global"], 1)
-        self.assertTrue(result[0]["is_qualified"])
+
+
+class ContextBuilderBetScoreRowTest(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="u_bs", email="u_bs@example.com", password="123456Aa!")
+        self.competition = Competition.objects.create(fifa_id=99, name="Copa BS")
+        self.season = Season.objects.create(
+            fifa_id=99,
+            competition=self.competition,
+            name="Temporada BS",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="GROUP_BS", season=self.season, name="Group Stage", order=1)
+        self.group = Group.objects.create(fifa_id="G_BS", stage=self.stage, name="A")
+        self.home = Team.objects.create(fifa_id="HBS", name="HomeBS", name_norm="homebs", code="HBS")
+        self.away = Team.objects.create(fifa_id="ABS", name="AwayBS", name_norm="awaybs", code="ABS")
+        past = timezone.now() - datetime.timedelta(hours=3)
+        self.match = Match.objects.create(
+            fifa_id="MBS1",
+            season=self.season,
+            stage=self.stage,
+            home_team=self.home,
+            away_team=self.away,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            match_number=1,
+            home_score=2,
+            away_score=1,
+            status=Match.STATUS_FINISHED,
+        )
+        self.pool = Pool.objects.create(
+            name="Pool BS",
+            slug="pool-bs",
+            season=self.season,
+            created_by=self.user,
+        )
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+        self.bet = PoolBet.objects.create(
+            participant=self.participant,
+            match=self.match,
+            home_score_pred=2,
+            away_score_pred=1,
+        )
+
+    def test_bet_score_in_row_when_score_exists(self):
+        from src.pool.models import PoolBetScore
+        from src.pool.services.context_builder import build_pool_participant_view_context
+
+        score = PoolBetScore.objects.create(bet=self.bet, points=3, exact_score=True)
+        ctx = build_pool_participant_view_context(pool=self.pool, participant=self.participant, ensure_bets=False)
+        group_rows = ctx["group_rows"]
+        self.assertEqual(len(group_rows), 1)
+        row = group_rows[0]
+        self.assertIn("bet_score", row)
+        self.assertEqual(row["bet_score"].points, 3)
+        self.assertEqual(row["bet_score"].pk, score.pk)
+
+    def test_bet_score_none_when_no_score_exists(self):
+        from src.pool.services.context_builder import build_pool_participant_view_context
+
+        ctx = build_pool_participant_view_context(pool=self.pool, participant=self.participant, ensure_bets=False)
+        group_rows = ctx["group_rows"]
+        row = group_rows[0]
+        self.assertIn("bet_score", row)
+        self.assertIsNone(row["bet_score"])

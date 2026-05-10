@@ -65,6 +65,7 @@ def _build_winners_map(matches, bets_by_match_id):
     winners_map = {}
     for match in matches:
         bet = bets_by_match_id.get(match.id)
+        is_group = match.group_id is not None
         if bet and bet.is_active and bet.winner_pred_id:
             winners_map[match.match_number] = bet.winner_pred
             continue
@@ -75,6 +76,7 @@ def _build_winners_map(matches, bets_by_match_id):
             and bet.away_score_pred is not None
             and match.home_team_id
             and match.away_team_id
+            and is_group
         ):
             if bet.home_score_pred > bet.away_score_pred:
                 winners_map[match.match_number] = match.home_team
@@ -82,20 +84,23 @@ def _build_winners_map(matches, bets_by_match_id):
             if bet.away_score_pred > bet.home_score_pred:
                 winners_map[match.match_number] = match.away_team
                 continue
-        if match.winner_id:
+        if is_group and match.winner_id:
             winners_map[match.match_number] = match.winner
     return winners_map
 
 
 def _infer_advancing_team(match, bet, home_team, away_team):
-    if match.winner_id and match.winner:
-        return match.winner
-
     if not bet or not bet.is_active:
         return None
 
     if bet.winner_pred_id:
-        return bet.winner_pred
+        # If projected teams are unknown, trust winner_pred directly.
+        # When projected teams are known, only accept winner_pred if it matches one of them
+        # (guards against clean() auto-assigning real teams when projected ≠ real).
+        if home_team is None and away_team is None:
+            return bet.winner_pred
+        if (home_team and bet.winner_pred_id == home_team.id) or (away_team and bet.winner_pred_id == away_team.id):
+            return bet.winner_pred
 
     if home_team is None or away_team is None or bet.home_score_pred is None or bet.away_score_pred is None:
         return None
@@ -496,7 +501,7 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
     )
 
     participant_can_bet = participant.can_bet()
-    preloaded_bets = list(participant.bets.all())
+    preloaded_bets = list(participant.bets.select_related("score").all())
 
     if ensure_bets:
         bets_by_match_id = _ensure_participant_bets(
@@ -546,27 +551,28 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
     knockout_rows = []
     for match in matches:
         phase = phase_for_match(match)
-        home_team = match.home_team
-        away_team = match.away_team
         bet = bets_by_match_id.get(match.id)
 
         if phase == PHASE_KNOCKOUT:
-            if home_team is None:
-                home_team = _resolve_match_team_from_placeholder(
-                    placeholder=match.home_placeholder,
-                    projected_slots=projected,
-                    assign_third_map=assign_third_map,
-                    winners_map=winners_map,
-                    losers_map=losers_map,
-                )
-            if away_team is None:
-                away_team = _resolve_match_team_from_placeholder(
-                    placeholder=match.away_placeholder,
-                    projected_slots=projected,
-                    assign_third_map=assign_third_map,
-                    winners_map=winners_map,
-                    losers_map=losers_map,
-                )
+            # Always resolve from user's projected placeholder map so bet cards
+            # show the teams the user predicted, not the real match teams.
+            home_team = _resolve_match_team_from_placeholder(
+                placeholder=match.home_placeholder,
+                projected_slots=projected,
+                assign_third_map=assign_third_map,
+                winners_map=winners_map,
+                losers_map=losers_map,
+            )
+            away_team = _resolve_match_team_from_placeholder(
+                placeholder=match.away_placeholder,
+                projected_slots=projected,
+                assign_third_map=assign_third_map,
+                winners_map=winners_map,
+                losers_map=losers_map,
+            )
+        else:
+            home_team = match.home_team
+            away_team = match.away_team
 
         row = {
             "match": match,
@@ -574,6 +580,7 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
             "home_team": home_team,
             "away_team": away_team,
             "bet": bet,
+            "bet_score": getattr(bet, "score", None) if bet else None,
             "locked": pool.is_phase_locked(phase),
         }
         match_rows.append(row)
