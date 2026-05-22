@@ -32,7 +32,7 @@ from src.pool.services.projection import (
 )
 from src.pool.services.projection_queue import MAX_ATTEMPTS, process_next_projection_recalc_job
 from src.pool.services.ranking import recalculate_participant_scores
-from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, normalize_stage_key, phase_for_match
+from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, POOL_TYPE_2, normalize_stage_key, phase_for_match
 from src.pool.services.scoring import _winner_from_score, calculate_bet_points
 
 User = get_user_model()
@@ -1382,8 +1382,9 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
         self.assertFalse(result["advancing_correct"])
 
     def test_knockout_exact_wrong_advancing(self):
+        # Tipo 2: exact score but predicted wrong team — only possible with team-specific advancing
         bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1, winner_pred_id=2)
-        result = calculate_bet_points(bet, self._make_scoring_config())
+        result = calculate_bet_points(bet, self._make_scoring_config(), pool_type=POOL_TYPE_2)
         self.assertEqual(result["points"], 10)
         self.assertTrue(result["exact_score"])
         self.assertFalse(result["advancing_correct"])
@@ -1396,8 +1397,9 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
         self.assertTrue(result["advancing_correct"])
 
     def test_knockout_draw_exact_advancing_wrong(self):
+        # Tipo 2: draw with exact score but predicted wrong team (via extra time)
         bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1, winner_pred_id=2)
-        result = calculate_bet_points(bet, self._make_scoring_config())
+        result = calculate_bet_points(bet, self._make_scoring_config(), pool_type=POOL_TYPE_2)
         self.assertEqual(result["points"], 10)
         self.assertTrue(result["exact_score"])
         self.assertFalse(result["advancing_correct"])
@@ -1410,8 +1412,9 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
         self.assertTrue(result["diff_correct"])
 
     def test_knockout_draw_advancing_and_winner_goals_wrong(self):
+        # Tipo 2: predicted 2-1 but real is 1-1 decided by extra time; team identity match gives advancing bonus
         bet = self._make_knockout_bet(2, 1, 1, 1, winner_real_id=1, winner_pred_id=1)
-        result = calculate_bet_points(bet, self._make_scoring_config())
+        result = calculate_bet_points(bet, self._make_scoring_config(), pool_type=POOL_TYPE_2)
         self.assertEqual(result["points"], 17)
         self.assertTrue(result["advancing_correct"])
         self.assertFalse(result["advancing_goals_correct"])

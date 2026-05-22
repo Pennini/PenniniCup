@@ -16,9 +16,17 @@ from src.pool.models import (
 
 @admin.register(Pool)
 class PoolAdmin(admin.ModelAdmin):
-    list_display = ("name", "season", "entry_fee", "admin_fee_percentage", "requires_payment", "is_active")
+    list_display = (
+        "name",
+        "season",
+        "pool_type",
+        "entry_fee",
+        "admin_fee_percentage",
+        "requires_payment",
+        "is_active",
+    )
     search_fields = ("name", "slug")
-    list_filter = ("is_active", "requires_payment", "season")
+    list_filter = ("is_active", "requires_payment", "season", "pool_type")
 
 
 @admin.register(PoolParticipant)
@@ -31,6 +39,7 @@ class PoolParticipantAdmin(admin.ModelAdmin):
         "group_points",
         "knockout_points",
         "bonus_points",
+        "qualifier_bonus_points",
         "champion_hit",
         "top_scorer_hit",
     )
@@ -135,6 +144,9 @@ class PoolScoringConfigAdmin(admin.ModelAdmin):
         "knockout_exact_and_advancing",
         "knockout_advancing_only",
         "knockout_exact_wrong_advancing",
+        "group_qualifier_points",
+        "group_qualifier_position_bonus",
+        "knockout_team_advancement_bonus",
     )
     search_fields = ("pool__name", "pool__slug")
 

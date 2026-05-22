@@ -10,10 +10,24 @@ from django.utils import timezone
 from src.accounts.models import InviteToken
 from src.football.models import Group, Match, Season, Team
 from src.payments.models import Payment
-from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, phase_for_match
+from src.pool.services.rules import (
+    PHASE_GROUP,
+    PHASE_KNOCKOUT,
+    POOL_TYPE_1,
+    POOL_TYPE_2,
+    is_type2_bet_open,
+    phase_for_match,
+)
 
 
 class Pool(models.Model):
+    POOL_TYPE_1 = POOL_TYPE_1
+    POOL_TYPE_2 = POOL_TYPE_2
+    POOL_TYPE_CHOICES = (
+        (POOL_TYPE_1, "Tipo 1 — Classificados travados, placar livre"),
+        (POOL_TYPE_2, "Tipo 2 — Palpite progressivo"),
+    )
+
     name = models.CharField(max_length=120, unique=True)
     slug = models.SlugField(max_length=120, unique=True)
     season = models.ForeignKey(Season, on_delete=models.CASCADE, related_name="pools")
@@ -28,6 +42,7 @@ class Pool(models.Model):
     first_place_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     second_place_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
     third_place_amount = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0.00"))
+    pool_type = models.IntegerField(choices=POOL_TYPE_CHOICES, default=POOL_TYPE_1)
     requires_payment = models.BooleanField(default=True)
     is_active = models.BooleanField(default=True)
     show_supporter_stars = models.BooleanField(default=True)
@@ -186,6 +201,7 @@ class PoolParticipant(models.Model):
     exact_score_hits = models.IntegerField(default=0)
     advancing_hits = models.IntegerField(default=0)
     bonus_points = models.IntegerField(default=0)
+    qualifier_bonus_points = models.IntegerField(default=0)
     champion_hit = models.BooleanField(default=False)
     top_scorer_hit = models.BooleanField(default=False)
     champion_pred = models.ForeignKey(
@@ -287,8 +303,13 @@ class PoolBet(models.Model):
             self.is_active = False
             return
 
+        pool = self.participant.pool
         phase = phase_for_match(self.match)
-        if self.participant.pool.is_phase_locked(phase):
+
+        if phase == PHASE_KNOCKOUT and pool.pool_type == POOL_TYPE_2:
+            if not is_type2_bet_open(self.match, pool.season):
+                raise ValidationError("Partida ainda aguardando classificacao ou encerrada.")
+        elif pool.is_phase_locked(phase):
             raise ValidationError("Janela de palpites desta fase esta fechada.")
 
         if not self.participant.can_bet():
@@ -323,6 +344,7 @@ class PoolBetScore(models.Model):
     advancing_goals_correct = models.BooleanField(default=False)
     diff_correct = models.BooleanField(default=False)
     eliminated_goals_correct = models.BooleanField(default=False)
+    team_advancement_bonus = models.BooleanField(default=False)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
@@ -428,6 +450,10 @@ class PoolScoringConfig(models.Model):
     bonus_runner_up_points = models.PositiveSmallIntegerField(default=60)
     bonus_third_place_points = models.PositiveSmallIntegerField(default=30)
     bonus_top_scorer_points = models.PositiveSmallIntegerField(default=100)
+
+    group_qualifier_points = models.PositiveSmallIntegerField(default=10)
+    group_qualifier_position_bonus = models.PositiveSmallIntegerField(default=5)
+    knockout_team_advancement_bonus = models.PositiveSmallIntegerField(default=15)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

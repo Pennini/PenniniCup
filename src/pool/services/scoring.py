@@ -1,4 +1,4 @@
-from src.pool.services.rules import PHASE_GROUP, phase_for_match
+from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_1, phase_for_match
 
 
 def _winner_from_score(home_score, away_score):
@@ -25,7 +25,7 @@ def _is_loser_goals_correct(actual_winner, guess_home, guess_away, home, away):
     return False
 
 
-def calculate_bet_points(bet, scoring_config):
+def calculate_bet_points(bet, scoring_config, pool_type=POOL_TYPE_1):
     match = bet.match
     if (
         not bet.is_active
@@ -87,8 +87,18 @@ def calculate_bet_points(bet, scoring_config):
         }
 
     else:
-        is_advancing_correct = bool(match.winner_id and bet.winner_pred_id == match.winner_id)
+        # Tipo 1: advancing_correct by position (same direction wins, not same team)
+        # Tipo 2: advancing_correct by team identity (current logic)
+        if pool_type == POOL_TYPE_1:
+            actual_direction = _winner_from_score(home, away)
+            guess_direction = _winner_from_score(guess_home, guess_away)
+            is_advancing_correct = actual_direction == guess_direction
+        else:
+            is_advancing_correct = bool(match.winner_id and bet.winner_pred_id == match.winner_id)
 
+        # Goal comparisons are positional (home slot vs home slot, away slot vs away slot).
+        # Using match.winner_id to identify the "advancing side" slot works for both types:
+        # for Tipo 1 this equals the positional direction check.
         if match.winner_id == match.home_team_id:
             _raw_advancing_goals = guess_home == home
             _raw_eliminated_goals = guess_away == away

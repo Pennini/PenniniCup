@@ -1,7 +1,7 @@
 from django.db import transaction
 
 from src.pool.models import Pool, PoolBetScore, PoolParticipant
-from src.pool.services.rules import PHASE_GROUP, phase_for_match
+from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_1, phase_for_match
 from src.pool.services.scoring import calculate_bet_points
 
 
@@ -44,10 +44,89 @@ def _calculate_bonus(participant, scoring_config, official_result):
     return bonus_points, champion_hit, top_scorer_hit
 
 
+def _calculate_group_qualifier_bonus(participant, scoring_config):
+    """Award points for correctly predicting group-stage qualifiers (top 2 per group).
+
+    +group_qualifier_points per team that advanced correctly.
+    +group_qualifier_position_bonus additional if position (1st vs 2nd) also correct.
+    Applies to both pool types.
+    """
+    from src.football.models import Standing
+
+    season = participant.pool.season
+
+    real_top2 = {}
+    for s in Standing.objects.filter(season=season, position__lte=2).values("group_id", "position", "team_id"):
+        real_top2.setdefault(s["group_id"], {})[s["position"]] = s["team_id"]
+
+    if not real_top2:
+        return 0
+
+    proj_top2 = {}
+    for s in participant.projected_standings.filter(position__lte=2).values("group_id", "position", "team_id"):
+        proj_top2.setdefault(s["group_id"], {})[s["position"]] = s["team_id"]
+
+    total = 0
+    for group_id, real_positions in real_top2.items():
+        proj_positions = proj_top2.get(group_id, {})
+        real_qualifiers = set(real_positions.values())
+        for position, team_id in proj_positions.items():
+            if team_id in real_qualifiers:
+                total += scoring_config.group_qualifier_points
+                if real_positions.get(position) == team_id:
+                    total += scoring_config.group_qualifier_position_bonus
+
+    return total
+
+
+def _calculate_team_advancement_bonus(bets_by_stage, scoring_config):
+    """Tipo 1 only: award bonus if predicted winner advanced from that stage (anywhere in the stage).
+
+    Returns (team_advancement dict {bet_id: bool}, total bonus points).
+    """
+    from src.football.models import Match as FootballMatch
+
+    stage_winners_cache = {}
+    team_advancement = {}
+    total = 0
+
+    for stage_id, bets in bets_by_stage.items():
+        if stage_id not in stage_winners_cache:
+            stage_winners_cache[stage_id] = set(
+                FootballMatch.objects.filter(stage_id=stage_id, winner_id__isnull=False).values_list(
+                    "winner_id", flat=True
+                )
+            )
+        real_winners = stage_winners_cache[stage_id]
+        for bet in bets:
+            advanced = bool(bet.winner_pred_id and bet.winner_pred_id in real_winners)
+            team_advancement[bet.id] = advanced
+            if advanced:
+                total += scoring_config.knockout_team_advancement_bonus
+
+    return team_advancement, total
+
+
 @transaction.atomic
 def recalculate_participant_scores(participant, scoring_config=None, official_result=None):
     scoring_config = scoring_config or participant.pool.get_scoring_config()
     official_result = official_result or participant.pool.get_official_results()
+    pool_type = participant.pool.pool_type
+
+    bets = list(participant.bets.select_related("match", "match__stage").all())
+
+    # Tipo 1: pre-calculate team advancement bonus (needs cross-match lookup per stage)
+    team_advancement = {}
+    team_advancement_bonus_total = 0
+    if pool_type == POOL_TYPE_1:
+        knockout_bets_by_stage = {}
+        for bet in bets:
+            if phase_for_match(bet.match) != PHASE_GROUP:
+                knockout_bets_by_stage.setdefault(bet.match.stage_id, []).append(bet)
+        if knockout_bets_by_stage:
+            team_advancement, team_advancement_bonus_total = _calculate_team_advancement_bonus(
+                knockout_bets_by_stage, scoring_config
+            )
 
     total_points = 0
     group_points = 0
@@ -55,11 +134,9 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
     exact_score_hits = 0
     advancing_correct_hits = 0
 
-    bets = participant.bets.select_related("match", "match__stage").all()
     scores_to_upsert = []
-
     for bet in bets:
-        score_data = calculate_bet_points(bet, scoring_config=scoring_config)
+        score_data = calculate_bet_points(bet, scoring_config=scoring_config, pool_type=pool_type)
         scores_to_upsert.append(
             PoolBetScore(
                 bet=bet,
@@ -69,6 +146,7 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
                 advancing_goals_correct=score_data["advancing_goals_correct"],
                 diff_correct=score_data["diff_correct"],
                 eliminated_goals_correct=score_data["eliminated_goals_correct"],
+                team_advancement_bonus=team_advancement.get(bet.id, False),
             )
         )
 
@@ -83,6 +161,10 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
         if score_data["advancing_correct"]:
             advancing_correct_hits += 1
 
+    # Include team advancement bonus in knockout_points
+    knockout_points += team_advancement_bonus_total
+    total_points += team_advancement_bonus_total
+
     if scores_to_upsert:
         PoolBetScore.objects.bulk_create(
             scores_to_upsert,
@@ -94,6 +176,7 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
                 "advancing_goals_correct",
                 "diff_correct",
                 "eliminated_goals_correct",
+                "team_advancement_bonus",
                 "updated_at",
             ],
             unique_fields=["bet"],
@@ -105,12 +188,15 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
         official_result=official_result,
     )
 
-    total_points += bonus_points
+    qualifier_bonus_points = _calculate_group_qualifier_bonus(participant, scoring_config)
+
+    total_points += bonus_points + qualifier_bonus_points
 
     participant.total_points = total_points
     participant.group_points = group_points
     participant.knockout_points = knockout_points
     participant.bonus_points = bonus_points
+    participant.qualifier_bonus_points = qualifier_bonus_points
     participant.exact_score_hits = exact_score_hits
     participant.advancing_hits = advancing_correct_hits
     participant.champion_hit = champion_hit
@@ -121,6 +207,7 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
             "group_points",
             "knockout_points",
             "bonus_points",
+            "qualifier_bonus_points",
             "exact_score_hits",
             "advancing_hits",
             "champion_hit",
