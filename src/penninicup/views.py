@@ -13,7 +13,7 @@ from src.accounts.models import UserProfile
 from src.football.models import Match, Season, Team
 from src.pool.models import Pool, PoolBet, PoolParticipant
 from src.pool.services.context_builder import build_pool_participant_view_context
-from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, POOL_TYPE_1, POOL_TYPE_2
+from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, POOL_TYPE_1, POOL_TYPE_2, normalize_stage_key
 from src.rankings.services.leaderboard import build_pool_leaderboard
 
 from .forms import ProfilePreferencesForm
@@ -54,8 +54,9 @@ _KNOCKOUT_STAGE_LABELS = {
 
 def _build_knockout_by_phase(knockout_rows, scoring_config):
     bonus_pts_each = scoring_config.knockout_team_advancement_bonus if scoring_config else 0
+    sorted_rows = sorted(knockout_rows, key=lambda r: normalize_stage_key(r["match"].stage))
     phases = []
-    for stage_name, rows in groupby(knockout_rows, key=lambda r: r["match"].stage.name):
+    for stage_key, rows in groupby(sorted_rows, key=lambda r: normalize_stage_key(r["match"].stage)):
         rows = list(rows)
         predicted = [r["bet"].winner_pred for r in rows if r.get("bet") and r["bet"] and r["bet"].winner_pred]
         real_winners = [r["match"].winner for r in rows if r["match"].winner]
@@ -63,8 +64,8 @@ def _build_knockout_by_phase(knockout_rows, scoring_config):
         bonus_count = len(bonus_rows)
         phases.append(
             {
-                "stage_name": stage_name,
-                "stage_label": _KNOCKOUT_STAGE_LABELS.get(stage_name, stage_name),
+                "stage_name": stage_key,
+                "stage_label": _KNOCKOUT_STAGE_LABELS.get(stage_key, stage_key),
                 "rows": rows,
                 "predicted_winners": predicted,
                 "real_winners": real_winners,

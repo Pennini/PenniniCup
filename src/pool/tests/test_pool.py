@@ -1433,6 +1433,24 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
         self.assertEqual(result["points"], 0)
         self.assertFalse(result["advancing_correct"])
 
+    def test_tipo1_penalty_decision_correct_positional_pick_scores(self):
+        # Real match 1-1 in regulation, HOME advances on penalties. User predicts
+        # 2-1 (HOME wins) — positionally correct, even though score is wrong.
+        bet = self._make_knockout_bet(2, 1, 1, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertTrue(result["advancing_correct"])
+        self.assertNotEqual(result["points"], 0)
+
+    def test_tipo1_penalty_decision_draw_guess_wrong_winner_pred(self):
+        # Real match 1-1, HOME advances on penalties. User hedges with 1-1 but
+        # picks AWAY team via winner_pred — wrong positional pick, should not get
+        # the full exact_and_advancing tier.
+        bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1, winner_pred_id=2)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertFalse(result["advancing_correct"])
+        self.assertTrue(result["exact_score"])
+        self.assertEqual(result["points"], 10)
+
 
 class NormalizeStageKeyTest(SimpleTestCase):
     """Unit tests for normalize_stage_key pure function."""

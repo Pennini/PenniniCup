@@ -90,8 +90,24 @@ def calculate_bet_points(bet, scoring_config, pool_type=POOL_TYPE_1):
         # Tipo 1: advancing_correct by position (same direction wins, not same team)
         # Tipo 2: advancing_correct by team identity (current logic)
         if pool_type == POOL_TYPE_1:
-            actual_direction = _winner_from_score(home, away)
+            # Actual direction respects penalty outcomes via match.winner_id; fall back
+            # to the 90-min score when no winner has been recorded yet (group draws).
+            if match.winner_id and match.winner_id == match.home_team_id:
+                actual_direction = "HOME"
+            elif match.winner_id and match.winner_id == match.away_team_id:
+                actual_direction = "AWAY"
+            else:
+                actual_direction = _winner_from_score(home, away)
+
             guess_direction = _winner_from_score(guess_home, guess_away)
+            # For draw score-predictions, the positional pick lives in winner_pred:
+            # map it back to the home/away slot of the real match.
+            if guess_direction == "DRAW" and bet.winner_pred_id:
+                if bet.winner_pred_id == match.home_team_id:
+                    guess_direction = "HOME"
+                elif bet.winner_pred_id == match.away_team_id:
+                    guess_direction = "AWAY"
+
             is_advancing_correct = actual_direction == guess_direction
         else:
             is_advancing_correct = bool(match.winner_id and bet.winner_pred_id == match.winner_id)
