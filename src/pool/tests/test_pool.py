@@ -666,6 +666,12 @@ class PoolAutoBetLifecycleTest(TestCase):
         self.assertIsNone(knockout_bet.away_score_pred)
 
     def test_knockout_draw_without_winner_is_saved_inactive(self):
+        future = timezone.now() + timezone.timedelta(days=1)
+        self.group_match.match_date_utc = future
+        self.group_match.match_date_local = future
+        self.group_match.match_date_brasilia = future
+        self.group_match.save(update_fields=["match_date_utc", "match_date_local", "match_date_brasilia"])
+
         bet = PoolBet(
             participant=self.participant,
             match=self.knockout_match,

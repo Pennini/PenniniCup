@@ -1,4 +1,5 @@
 import logging
+from itertools import groupby
 from urllib.parse import urlencode
 
 from django.contrib import messages
@@ -12,7 +13,7 @@ from src.accounts.models import UserProfile
 from src.football.models import Match, Season, Team
 from src.pool.models import Pool, PoolBet, PoolParticipant
 from src.pool.services.context_builder import build_pool_participant_view_context
-from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT
+from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, POOL_TYPE_1, POOL_TYPE_2
 from src.rankings.services.leaderboard import build_pool_leaderboard
 
 from .forms import ProfilePreferencesForm
@@ -39,6 +40,42 @@ def _season_has_started(season):
     if first_match is None:
         return False
     return timezone.now() >= first_match.match_date_brasilia
+
+
+_KNOCKOUT_STAGE_LABELS = {
+    "R32": "32 Avos de Final",
+    "R16": "Oitavas de Final",
+    "QF": "Quartas de Final",
+    "SF": "Semifinal",
+    "FINAL": "Final",
+    "THIRD": "3º Lugar",
+}
+
+
+def _build_knockout_by_phase(knockout_rows, scoring_config):
+    bonus_pts_each = scoring_config.knockout_team_advancement_bonus if scoring_config else 0
+    phases = []
+    for stage_name, rows in groupby(knockout_rows, key=lambda r: r["match"].stage.name):
+        rows = list(rows)
+        predicted = [r["bet"].winner_pred for r in rows if r.get("bet") and r["bet"] and r["bet"].winner_pred]
+        real_winners = [r["match"].winner for r in rows if r["match"].winner]
+        bonus_rows = [r for r in rows if r["bet_score"] and r["bet_score"].team_advancement_bonus]
+        bonus_count = len(bonus_rows)
+        phases.append(
+            {
+                "stage_name": stage_name,
+                "stage_label": _KNOCKOUT_STAGE_LABELS.get(stage_name, stage_name),
+                "rows": rows,
+                "predicted_winners": predicted,
+                "real_winners": real_winners,
+                "bonus_count": bonus_count,
+                "bonus_total": bonus_count * bonus_pts_each,
+                "bonus_pts_each": bonus_pts_each,
+                "has_results": bool(real_winners),
+                "has_bonus": bonus_count > 0,
+            }
+        )
+    return phases
 
 
 def _build_profile_context(request, *, profile_user, is_owner):
@@ -96,9 +133,13 @@ def _build_profile_context(request, *, profile_user, is_owner):
     selected_pool = selected_participation.pool if selected_participation else None
     selected_slug = selected_pool.slug if selected_pool else ""
 
-    is_public_predictions_visible = is_owner
-    if selected_pool is not None and not is_owner:
+    is_superuser_viewer = request.user.is_superuser
+    is_public_predictions_visible = is_owner or is_superuser_viewer
+    if selected_pool is not None and not is_owner and not is_superuser_viewer:
         is_public_predictions_visible = _season_has_started(selected_pool.season)
+
+    # Non-owners (non-superuser) only see bets for matches already closed to betting.
+    show_locked_only = not is_owner and not is_superuser_viewer
 
     predictions_context = {
         "match_rows": [],
@@ -123,6 +164,21 @@ def _build_profile_context(request, *, profile_user, is_owner):
             participant=selected_participation,
             ensure_bets=False,
         )
+        if show_locked_only and selected_pool is not None:
+            now = timezone.now()
+            filtered_group = [r for r in predictions_context["group_rows"] if r["locked"]]
+            if selected_pool.pool_type == POOL_TYPE_2:
+                filtered_knockout = [
+                    r for r in predictions_context["knockout_rows"] if r["match"].match_date_brasilia <= now
+                ]
+            else:
+                filtered_knockout = [r for r in predictions_context["knockout_rows"] if r["locked"]]
+            predictions_context["group_rows"] = filtered_group
+            predictions_context["knockout_rows"] = filtered_knockout
+            predictions_context["match_rows"] = filtered_group + filtered_knockout
+
+    scoring_config = selected_pool.get_scoring_config() if selected_pool else None
+    knockout_by_phase = _build_knockout_by_phase(predictions_context.get("knockout_rows", []), scoring_config)
 
     context = {
         "profile_user": profile_user,
@@ -136,6 +192,9 @@ def _build_profile_context(request, *, profile_user, is_owner):
         "selected_participant": selected_participation,
         "active_tab": active_tab,
         "can_view_predictions": is_public_predictions_visible,
+        "show_locked_only": show_locked_only,
+        "scoring_config": scoring_config,
+        "knockout_by_phase": knockout_by_phase,
         **predictions_context,
     }
     return context, None
@@ -309,6 +368,8 @@ def rules(request):
         "scoring_config": scoring_config,
         "group_lock_at": group_lock_at,
         "knockout_lock_at": knockout_lock_at,
+        "pool_type_1": POOL_TYPE_1,
+        "pool_type_2": POOL_TYPE_2,
         "group_max_points": (scoring_config.group_exact_score if scoring_config else 0),
         "knockout_max_points": (scoring_config.knockout_exact_and_advancing if scoring_config else 0),
         "bonus_total_points": (
@@ -316,6 +377,11 @@ def rules(request):
             + scoring_config.bonus_runner_up_points
             + scoring_config.bonus_third_place_points
             + scoring_config.bonus_top_scorer_points
+            if scoring_config
+            else 0
+        ),
+        "qualifier_bonus_max": (
+            scoring_config.group_qualifier_points + scoring_config.group_qualifier_position_bonus
             if scoring_config
             else 0
         ),

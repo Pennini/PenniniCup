@@ -58,6 +58,10 @@ class Pool(models.Model):
         return self.name
 
     def get_phase_lock_time(self, phase):
+        # Tipo 1: all bets lock together with the group phase (single lock at first group match)
+        if phase == PHASE_KNOCKOUT and self.pool_type == POOL_TYPE_1:
+            return self.get_phase_lock_time(PHASE_GROUP)
+
         custom_lock = self.lock_windows.filter(phase=phase).first()
         if custom_lock:
             return custom_lock.lock_at

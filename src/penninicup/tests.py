@@ -243,8 +243,8 @@ class ProfilePageTest(TestCase):
             data={"pool": self.pool.slug},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "ficarão visíveis após o início da Copa")
-        self.assertNotContains(response, "Palpite:")
+        self.assertContains(response, "ficarão visíveis após o travamento dos palpites")
+        self.assertNotContains(response, "Meu palpite")
 
     def test_other_profile_shows_predictions_after_first_match_starts(self):
         self.match.match_date_utc = timezone.now() - timezone.timedelta(days=1)
@@ -258,7 +258,7 @@ class ProfilePageTest(TestCase):
             data={"pool": self.pool.slug},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Palpite:")
+        self.assertContains(response, "Meu palpite")
 
 
 class RequestUUIDMiddlewareTest(SimpleTestCase):
