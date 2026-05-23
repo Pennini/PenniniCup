@@ -51,10 +51,18 @@ _KNOCKOUT_STAGE_LABELS = {
     "THIRD": "3º Lugar",
 }
 
+_KNOCKOUT_STAGE_ORDER = {"R32": 0, "R16": 1, "QF": 2, "SF": 3, "FINAL": 4, "THIRD": 5}
+
+
+def _stage_sort_key(row):
+    # Unknown stages (normalize returns "") sort last; preserve match_number as tiebreaker.
+    stage_key = normalize_stage_key(row["match"].stage)
+    return (_KNOCKOUT_STAGE_ORDER.get(stage_key, 99), row["match"].match_number or 0)
+
 
 def _build_knockout_by_phase(knockout_rows, scoring_config):
     bonus_pts_each = scoring_config.knockout_team_advancement_bonus if scoring_config else 0
-    sorted_rows = sorted(knockout_rows, key=lambda r: normalize_stage_key(r["match"].stage))
+    sorted_rows = sorted(knockout_rows, key=_stage_sort_key)
     phases = []
     for stage_key, rows in groupby(sorted_rows, key=lambda r: normalize_stage_key(r["match"].stage)):
         rows = list(rows)
