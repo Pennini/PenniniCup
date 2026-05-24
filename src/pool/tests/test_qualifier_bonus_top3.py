@@ -8,6 +8,10 @@ from src.pool.models import Pool, PoolParticipant, PoolParticipantStanding
 
 User = get_user_model()
 
+# Reasonable points-per-position for a 4-team group: clearly-separated values
+# so tie-breakers don't accidentally fire in helper-driven test setups.
+_POINTS_BY_POSITION = {1: 9, 2: 6, 3: 3, 4: 1}
+
 
 class QualifierBonusBase(TestCase):
     """Builds 3 groups (A, B, C) of 4 teams + a Pool with one paid participant.
@@ -15,7 +19,7 @@ class QualifierBonusBase(TestCase):
     Helpers:
       - set_real_position(group_name, position, team_index)
       - set_proj_position(group_name, position, team_index)
-      - create_r32_match(home_group, home_index, away_group, away_index, *, fifa_id)
+      - create_r32_match(home_group, home_index, away_group, away_index, *, fifa_id, match_number)
     """
 
     def setUp(self):
@@ -71,7 +75,7 @@ class QualifierBonusBase(TestCase):
             season=self.season,
             group=self.groups[group_name],
             team=team,
-            defaults={"position": position, "points": 9 - position},
+            defaults={"position": position, "points": _POINTS_BY_POSITION[position]},
         )
 
     def set_proj_position(self, group_name, position, team_index):
@@ -80,11 +84,10 @@ class QualifierBonusBase(TestCase):
             participant=self.participant,
             group=self.groups[group_name],
             team=team,
-            defaults={"position": position, "points": 9 - position},
+            defaults={"position": position, "points": _POINTS_BY_POSITION[position]},
         )
 
-    def create_r32_match(self, home_group, home_index, away_group, away_index, *, fifa_id):
-        match_number = int(fifa_id[-2:]) if fifa_id[-2:].isdigit() else 90
+    def create_r32_match(self, home_group, home_index, away_group, away_index, *, fifa_id, match_number):
         now = timezone.now()
         return Match.objects.create(
             fifa_id=fifa_id,
