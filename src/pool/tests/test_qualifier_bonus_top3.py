@@ -5,7 +5,7 @@ from django.utils import timezone
 from src.football.models import Competition, Group, Match, Season, Stage, Standing, Team
 from src.payments.models import Payment
 from src.pool.models import Pool, PoolParticipant, PoolParticipantStanding
-from src.pool.services.ranking import _real_qualifier_position_map
+from src.pool.services.ranking import _calculate_group_qualifier_bonus, _real_qualifier_position_map
 
 User = get_user_model()
 
@@ -162,3 +162,95 @@ class RealQualifierPositionMapTest(QualifierBonusBase):
         result, r32_drawn = _real_qualifier_position_map(self.season)
         self.assertFalse(r32_drawn)
         self.assertNotIn(3, result[self.groups["A"].id])
+
+
+class CalculateGroupQualifierBonusTopThreeTest(QualifierBonusBase):
+    def _qpts(self):
+        return self.scoring_config.group_qualifier_points
+
+    def _pbonus(self):
+        return self.scoring_config.group_qualifier_position_bonus
+
+    def _set_full_group_real(self, group_name, draw_r32_for_third=True):
+        # Team {name}1 → 1st, {name}2 → 2nd, {name}3 → 3rd, {name}4 → 4th.
+        for pos in (1, 2, 3, 4):
+            self.set_real_position(group_name, pos, pos)
+        if draw_r32_for_third:
+            # Put 3rd-place team in an R32 match so r32_drawn=True and team qualifies.
+            self.create_r32_match(
+                group_name,
+                3,
+                group_name,
+                1,
+                fifa_id=f"QB-RX{group_name}",
+                match_number=200 + ord(group_name),
+            )
+
+    def test_predicted_third_finishes_third_and_advances(self):
+        self._set_full_group_real("A")
+        self.set_proj_position("A", 3, 3)
+        result = _calculate_group_qualifier_bonus(self.participant, self.scoring_config)
+        self.assertEqual(result, self._qpts() + self._pbonus())
+
+    def test_predicted_third_finishes_third_but_does_not_advance(self):
+        # Real top 4 set, but no R32 match places the 3rd team → does not qualify.
+        for pos in (1, 2, 3, 4):
+            self.set_real_position("A", pos, pos)
+        # R32 only contains 1st/2nd teams.
+        self.create_r32_match("A", 1, "A", 2, fifa_id="QB-RZ01", match_number=301)
+
+        self.set_proj_position("A", 3, 3)
+        result = _calculate_group_qualifier_bonus(self.participant, self.scoring_config)
+        self.assertEqual(result, 0)
+
+    def test_predicted_third_finishes_first(self):
+        self._set_full_group_real("A")
+        # Predict team A1 (the actual 1st) in 3rd slot.
+        self.set_proj_position("A", 3, 1)
+        result = _calculate_group_qualifier_bonus(self.participant, self.scoring_config)
+        # Qualifies (A1 is in real top 2), no position match.
+        self.assertEqual(result, self._qpts())
+
+    def test_predicted_third_finishes_fourth(self):
+        self._set_full_group_real("A")
+        self.set_proj_position("A", 3, 4)
+        result = _calculate_group_qualifier_bonus(self.participant, self.scoring_config)
+        self.assertEqual(result, 0)
+
+    def test_predicted_first_finishes_third_and_advances(self):
+        self._set_full_group_real("A")
+        # Predict team A3 (the actual 3rd) in 1st slot.
+        self.set_proj_position("A", 1, 3)
+        result = _calculate_group_qualifier_bonus(self.participant, self.scoring_config)
+        # A3 is a real qualifier → qualifier_points, no position match.
+        self.assertEqual(result, self._qpts())
+
+    def test_predicted_first_finishes_third_but_does_not_advance(self):
+        for pos in (1, 2, 3, 4):
+            self.set_real_position("A", pos, pos)
+        self.create_r32_match("A", 1, "A", 2, fifa_id="QB-RZ02", match_number=302)  # 3rd not in R32
+
+        self.set_proj_position("A", 1, 3)
+        result = _calculate_group_qualifier_bonus(self.participant, self.scoring_config)
+        self.assertEqual(result, 0)
+
+    def test_r32_not_drawn_predicted_third_is_zero(self):
+        for pos in (1, 2, 3, 4):
+            self.set_real_position("A", pos, pos)
+        # No R32 match created at all → r32_drawn=False.
+
+        self.set_proj_position("A", 3, 3)
+        result = _calculate_group_qualifier_bonus(self.participant, self.scoring_config)
+        self.assertEqual(result, 0)
+
+    def test_perfect_top_three_match(self):
+        self._set_full_group_real("A")
+        self.set_proj_position("A", 1, 1)
+        self.set_proj_position("A", 2, 2)
+        self.set_proj_position("A", 3, 3)
+        result = _calculate_group_qualifier_bonus(self.participant, self.scoring_config)
+        self.assertEqual(result, 3 * (self._qpts() + self._pbonus()))
+
+    def test_empty_standings_returns_zero(self):
+        result = _calculate_group_qualifier_bonus(self.participant, self.scoring_config)
+        self.assertEqual(result, 0)

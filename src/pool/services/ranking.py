@@ -77,33 +77,29 @@ def _real_qualifier_position_map(season):
 
 
 def _calculate_group_qualifier_bonus(participant, scoring_config):
-    """Award points for correctly predicting group-stage qualifiers (top 2 per group).
+    """Award points for correctly predicting group-stage qualifiers.
 
-    +group_qualifier_points per team that advanced correctly.
-    +group_qualifier_position_bonus additional if position (1st vs 2nd) also correct.
-    Applies to both pool types.
+    Top 2 always qualify; 3rd place qualifies only if the team is among the
+    8 best thirds (i.e. FIFA placed it in an R32 match). For each predicted
+    team that matches a real qualifier: +group_qualifier_points; +position_bonus
+    additionally if the predicted position equals the real Standings position.
     """
-    from src.football.models import Standing
-
     season = participant.pool.season
 
-    real_top2 = {}
-    for s in Standing.objects.filter(season=season, position__lte=2).values("group_id", "position", "team_id"):
-        real_top2.setdefault(s["group_id"], {})[s["position"]] = s["team_id"]
-
-    if not real_top2:
+    real_qualifiers_by_group, _ = _real_qualifier_position_map(season)
+    if not real_qualifiers_by_group:
         return 0
 
-    proj_top2 = {}
-    for s in participant.projected_standings.filter(position__lte=2).values("group_id", "position", "team_id"):
-        proj_top2.setdefault(s["group_id"], {})[s["position"]] = s["team_id"]
+    proj_positions_by_group = {}
+    for s in participant.projected_standings.filter(position__lte=3).values("group_id", "position", "team_id"):
+        proj_positions_by_group.setdefault(s["group_id"], {})[s["position"]] = s["team_id"]
 
     total = 0
-    for group_id, real_positions in real_top2.items():
-        proj_positions = proj_top2.get(group_id, {})
-        real_qualifiers = set(real_positions.values())
+    for group_id, real_positions in real_qualifiers_by_group.items():
+        proj_positions = proj_positions_by_group.get(group_id, {})
+        real_qualifier_ids = set(real_positions.values())
         for position, team_id in proj_positions.items():
-            if team_id in real_qualifiers:
+            if team_id in real_qualifier_ids:
                 total += scoring_config.group_qualifier_points
                 if real_positions.get(position) == team_id:
                     total += scoring_config.group_qualifier_position_bonus
