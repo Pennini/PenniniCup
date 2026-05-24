@@ -1,4 +1,5 @@
 import logging
+from collections import defaultdict
 from itertools import groupby
 from urllib.parse import urlencode
 
@@ -103,6 +104,96 @@ def _build_knockout_by_phase(knockout_rows, scoring_config):
     return phases
 
 
+def _build_group_audit(participant, season, scoring_config):
+    """Per-group audit of the group_qualifier_bonus the participant earned.
+
+    Returns list[{group, rows[3], group_points, has_real}] where each row is
+    {position, predicted_team, real_team, qualified, position_match, points,
+    settled, third_advanced}.
+
+    settled is False for the 3rd-place row when R32 has not yet been drawn,
+    so the template can render that row as 'pending' instead of 'wrong'.
+    """
+    from src.football.models import Group, Standing
+    from src.pool.services.ranking import _real_qualifier_position_map
+
+    if scoring_config is None or participant is None:
+        return []
+
+    real_rows = (
+        Standing.objects.filter(season=season, position__lte=3)
+        .select_related("team", "group")
+        .order_by("group__name", "position")
+    )
+    proj_rows = (
+        participant.projected_standings.filter(position__lte=3)
+        .select_related("team", "group")
+        .order_by("group__name", "position")
+    )
+
+    real_by_group = defaultdict(dict)
+    for s in real_rows:
+        real_by_group[s.group_id][s.position] = s
+
+    real_qualifier_positions, r32_drawn = _real_qualifier_position_map(season)
+    real_qualifier_ids_by_group = {gid: set(positions.values()) for gid, positions in real_qualifier_positions.items()}
+
+    proj_by_group = defaultdict(dict)
+    for p in proj_rows:
+        proj_by_group[p.group_id][p.position] = p
+
+    audit = []
+    for group in Group.objects.filter(stage__season=season).order_by("name"):
+        real_positions = real_by_group.get(group.id, {})
+        proj_positions = proj_by_group.get(group.id, {})
+        has_real = bool(real_positions)
+        real_qualifier_ids = real_qualifier_ids_by_group.get(group.id, set())
+
+        rows = []
+        group_points = 0
+        for position in (1, 2, 3):
+            proj = proj_positions.get(position)
+            real = real_positions.get(position)
+            predicted_team = proj.team if proj else None
+            real_team = real.team if real else None
+
+            settled = has_real if position <= 2 else r32_drawn
+            qualified = bool(settled and predicted_team and predicted_team.id in real_qualifier_ids)
+            position_match = bool(qualified and real_team and predicted_team.id == real_team.id)
+            third_advanced = bool(position == 3 and real_team and real_team.id in real_qualifier_ids)
+
+            points = 0
+            if qualified:
+                points = scoring_config.group_qualifier_points
+                if position_match:
+                    points += scoring_config.group_qualifier_position_bonus
+
+            group_points += points
+            rows.append(
+                {
+                    "position": position,
+                    "predicted_team": predicted_team,
+                    "real_team": real_team,
+                    "qualified": qualified,
+                    "position_match": position_match,
+                    "points": points,
+                    "settled": settled,
+                    "third_advanced": third_advanced,
+                }
+            )
+
+        audit.append(
+            {
+                "group": group,
+                "rows": rows,
+                "group_points": group_points,
+                "has_real": has_real,
+            }
+        )
+
+    return audit
+
+
 def _build_profile_context(request, *, profile_user, is_owner):
     profile_obj, _ = UserProfile.objects.get_or_create(user=profile_user)
     active_tab = (request.GET.get("tab") or "bets").strip()
@@ -204,6 +295,11 @@ def _build_profile_context(request, *, profile_user, is_owner):
 
     scoring_config = selected_pool.get_scoring_config() if selected_pool else None
     knockout_by_phase = _build_knockout_by_phase(predictions_context.get("knockout_rows", []), scoring_config)
+    group_audit = (
+        _build_group_audit(selected_participation, selected_pool.season, scoring_config)
+        if (selected_participation and selected_pool and is_public_predictions_visible)
+        else []
+    )
 
     context = {
         "profile_user": profile_user,
@@ -220,6 +316,7 @@ def _build_profile_context(request, *, profile_user, is_owner):
         "show_locked_only": show_locked_only,
         "scoring_config": scoring_config,
         "knockout_by_phase": knockout_by_phase,
+        "group_audit": group_audit,
         **predictions_context,
     }
     return context, None
