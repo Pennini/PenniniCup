@@ -62,39 +62,50 @@ ______________________________________________________________________
 
 ## 🏆 Sistema de Pontuação
 
+O sistema usa **prioridade**: o primeiro critério que bater é o que vale. Os pontos não acumulam.
+
 ### 🔹 Fase de Grupos
 
-| Situação                         | Pontos        |
-| -------------------------------- | ------------- |
-| Acertar o vencedor ou empate     | +6            |
-| Acertar o placar exato           | +4            |
-| Acertar o placar de um dos times | +2            |
-| **Total máximo por jogo**        | **10 pontos** |
+| Prioridade | Critério                                        | Pontos     |
+| ---------- | ----------------------------------------------- | ---------- |
+| 1          | Placar exato                                    | **25 pts** |
+| 2          | Acertou o vencedor **e** os gols do vencedor    | 18 pts     |
+| 3          | Acertou o vencedor **e** a diferença de gols    | 15 pts     |
+| 4          | Acertou o vencedor **e** os gols do perdedor    | 12 pts     |
+| 5          | Acertou apenas o vencedor (ou que seria empate) | 10 pts     |
+| 6          | Nenhum acerto                                   | 0 pts      |
 
 ______________________________________________________________________
 
 ### 🔹 Fase de Mata-Mata
 
-| Situação                            | Pontos        |
-| ----------------------------------- | ------------- |
-| Acertar o classificado do confronto | +8            |
-| Acertar o placar exato              | +6            |
-| Acertar o placar de um dos times    | +2            |
-| **Total máximo por jogo**           | **14 pontos** |
+| Prioridade | Critério                                          | Pontos     |
+| ---------- | ------------------------------------------------- | ---------- |
+| 1          | Placar exato **e** acertou o classificado         | **35 pts** |
+| 2          | Acertou o classificado **e** os gols do avançado  | 25 pts     |
+| 3          | Acertou o classificado **e** a diferença de gols  | 20 pts     |
+| 4          | Acertou o classificado **e** os gols do eliminado | 17 pts     |
+| 5          | Acertou apenas o classificado                     | 15 pts     |
+| 6          | Placar exato, mas classificado errado             | 10 pts     |
+| 7          | Nenhum acerto                                     | 0 pts      |
 
-📌 Em caso de pênaltis:
+📌 Notas:
 
-- O placar considerado é o do **tempo regulamentar**
+- O placar considerado é sempre o do **tempo regulamentar** (90 min)
+- O **classificado** é o time que avançou de fato (pode ter sido por pênaltis mesmo com empate no placar)
+- Se o palpite for empatado, o participante escolhe explicitamente qual time avança
 
 ## Bônus de Pontos
 
 | Situação                       | Pontos         |
 | ------------------------------ | -------------- |
-| Acertar o campeão da Copa      | +50            |
-| Acertar o vice-campeão da Copa | +30            |
-| Acertar o terceiro lugar       | +20            |
-| Acertar o artilheiro da Copa   | +50            |
-| **Total máximo de bônus**      | **150 pontos** |
+| Acertar o campeão da Copa      | +120           |
+| Acertar o vice-campeão da Copa | +60            |
+| Acertar o terceiro lugar       | +30            |
+| Acertar o artilheiro da Copa   | +100           |
+| **Total máximo de bônus**      | **310 pontos** |
+
+📌 Artilheiro: se houver empate na artilharia, qualquer palpite no grupo dos artilheiros empatados pontua.
 
 ## 🎯 Critérios de Desempate
 
@@ -103,7 +114,7 @@ Em caso de empate na pontuação total, os critérios de desempate são aplicado
 1. Acerto do campeão da Copa
 1. Maior número de acertos de placares exatos
 1. Acerto do artilheiro da Copa
-1. Maior número de acertos de vencedores/empates
+1. Maior número de acertos de classificados/vencedores
 1. Maior pontuação na fase de mata-mata
 1. Maior pontuação na fase de grupos
 1. Sorteio (se necessário)

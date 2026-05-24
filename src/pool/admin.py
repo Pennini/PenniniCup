@@ -16,9 +16,17 @@ from src.pool.models import (
 
 @admin.register(Pool)
 class PoolAdmin(admin.ModelAdmin):
-    list_display = ("name", "season", "entry_fee", "admin_fee_percentage", "requires_payment", "is_active")
+    list_display = (
+        "name",
+        "season",
+        "pool_type",
+        "entry_fee",
+        "admin_fee_percentage",
+        "requires_payment",
+        "is_active",
+    )
     search_fields = ("name", "slug")
-    list_filter = ("is_active", "requires_payment", "season")
+    list_filter = ("is_active", "requires_payment", "season", "pool_type")
 
 
 @admin.register(PoolParticipant)
@@ -31,6 +39,7 @@ class PoolParticipantAdmin(admin.ModelAdmin):
         "group_points",
         "knockout_points",
         "bonus_points",
+        "qualifier_bonus_points",
         "champion_hit",
         "top_scorer_hit",
     )
@@ -55,7 +64,15 @@ class PoolBetAdmin(admin.ModelAdmin):
 
 @admin.register(PoolBetScore)
 class PoolBetScoreAdmin(admin.ModelAdmin):
-    list_display = ("bet", "points", "exact_score", "winner_or_draw", "winner_advancing", "one_team_score")
+    list_display = (
+        "bet",
+        "points",
+        "exact_score",
+        "advancing_correct",
+        "advancing_goals_correct",
+        "diff_correct",
+        "eliminated_goals_correct",
+    )
 
 
 @admin.register(PoolLockWindow)
@@ -119,12 +136,17 @@ class PoolProjectionRecalcAdmin(admin.ModelAdmin):
 class PoolScoringConfigAdmin(admin.ModelAdmin):
     list_display = (
         "pool",
-        "group_winner_or_draw_points",
-        "group_exact_score_points",
-        "group_one_team_score_points",
-        "knockout_winner_advancing_points",
-        "knockout_exact_score_points",
-        "knockout_one_team_score_points",
+        "group_exact_score",
+        "group_winner_and_winner_goals",
+        "group_winner_and_diff",
+        "group_winner_and_loser_goals",
+        "group_winner_only",
+        "knockout_exact_and_advancing",
+        "knockout_advancing_only",
+        "knockout_exact_wrong_advancing",
+        "group_qualifier_points",
+        "group_qualifier_position_bonus",
+        "knockout_team_advancement_bonus",
     )
     search_fields = ("pool__name", "pool__slug")
 
@@ -133,3 +155,4 @@ class PoolScoringConfigAdmin(admin.ModelAdmin):
 class PoolOfficialResultAdmin(admin.ModelAdmin):
     list_display = ("pool", "champion", "runner_up", "third_place", "top_scorer", "updated_at")
     search_fields = ("pool__name", "pool__slug", "champion__name", "top_scorer__name")
+    filter_horizontal = ("top_scorers",)

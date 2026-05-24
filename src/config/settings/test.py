@@ -29,6 +29,9 @@ PASSWORD_HASHERS = [
 # Desabilitar debug durante testes
 DEBUG = False
 
+# Sinaliza que estamos em ambiente de testes (desativa checks de produção)
+RUNNING_TESTS = True
+
 # Secret key para testes
 SECRET_KEY = get_random_secret_key()
 

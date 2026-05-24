@@ -259,13 +259,21 @@
                     </h2>
                     <p class="text-xs text-neutral-400">{{ row.match.match_date_brasilia }}</p>
                 </div>
-                {% if row.locked %}
+                {% if row.bet_status == "awaiting_teams" %}
+                <span class="text-xs px-2 py-1 rounded-full border border-yellow-600 text-yellow-400">Aguardando</span>
+                {% elif row.locked %}
                 <span class="text-xs px-2 py-1 rounded-full border border-red-400 text-red-300">Fechado</span>
                 {% else %}
                 <span class="text-xs px-2 py-1 rounded-full border border-emerald-400 text-emerald-300">Aberto</span>
                 {% endif %}
             </div>
 
+            {% if row.bet_status == "awaiting_teams" %}
+            <div class="mt-4 rounded-lg border border-yellow-600/30 bg-yellow-500/5 p-4 text-center space-y-1">
+                <p class="text-sm font-medium text-yellow-300">Aguardando classificação dos times</p>
+                <p class="text-xs text-neutral-500">Os palpites abrirão quando os classificados desta fase forem definidos</p>
+            </div>
+            {% else %}
             <div class="mt-4 rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 space-y-3">
                 <div class="grid gap-3 min-[900px]:grid-cols-2">
                     <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3">
@@ -337,6 +345,7 @@
                 </div>
                 {% endif %}
             </div>
+            {% endif %}
         </article>
         {% endfor %}
         </div>
