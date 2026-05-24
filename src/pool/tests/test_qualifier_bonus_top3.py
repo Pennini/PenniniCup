@@ -5,6 +5,7 @@ from django.utils import timezone
 from src.football.models import Competition, Group, Match, Season, Stage, Standing, Team
 from src.payments.models import Payment
 from src.pool.models import Pool, PoolParticipant, PoolParticipantStanding
+from src.pool.services.ranking import _real_qualifier_position_map
 
 User = get_user_model()
 
@@ -100,3 +101,64 @@ class QualifierBonusBase(TestCase):
             home_team=self.team(home_group, home_index),
             away_team=self.team(away_group, away_index),
         )
+
+
+class RealQualifierPositionMapTest(QualifierBonusBase):
+    def test_no_standings_returns_empty_and_not_drawn(self):
+        result, r32_drawn = _real_qualifier_position_map(self.season)
+        self.assertEqual(result, {})
+        self.assertFalse(r32_drawn)
+
+    def test_top2_only_when_r32_not_drawn(self):
+        self.set_real_position("A", 1, 1)
+        self.set_real_position("A", 2, 2)
+        self.set_real_position("A", 3, 3)
+        self.set_real_position("A", 4, 4)
+
+        result, r32_drawn = _real_qualifier_position_map(self.season)
+
+        self.assertFalse(r32_drawn)
+        gid = self.groups["A"].id
+        self.assertEqual(
+            result[gid],
+            {1: self.team("A", 1).id, 2: self.team("A", 2).id},
+        )
+
+    def test_third_included_when_team_in_r32(self):
+        for group_name in ("A", "B"):
+            for pos in (1, 2, 3, 4):
+                self.set_real_position(group_name, pos, pos)
+
+        # A3 is placed in an R32 match → qualifies. B3 is not → does not.
+        self.create_r32_match("A", 1, "B", 2, fifa_id="QB-R3201", match_number=101)
+        self.create_r32_match("A", 3, "B", 1, fifa_id="QB-R3202", match_number=102)
+
+        result, r32_drawn = _real_qualifier_position_map(self.season)
+
+        self.assertTrue(r32_drawn)
+        a_id = self.groups["A"].id
+        b_id = self.groups["B"].id
+        self.assertIn(3, result[a_id])
+        self.assertEqual(result[a_id][3], self.team("A", 3).id)
+        self.assertNotIn(3, result[b_id])
+
+    def test_third_excluded_when_r32_empty_teams(self):
+        for pos in (1, 2, 3, 4):
+            self.set_real_position("A", pos, pos)
+
+        # R32 match exists but no teams assigned yet.
+        Match.objects.create(
+            fifa_id="QB-R3299",
+            season=self.season,
+            stage=self.r32_stage,
+            match_number=99,
+            match_date_utc=timezone.now(),
+            match_date_local=timezone.now(),
+            match_date_brasilia=timezone.now() + timezone.timedelta(hours=2),
+            home_team=None,
+            away_team=None,
+        )
+
+        result, r32_drawn = _real_qualifier_position_map(self.season)
+        self.assertFalse(r32_drawn)
+        self.assertNotIn(3, result[self.groups["A"].id])

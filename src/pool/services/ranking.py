@@ -44,6 +44,38 @@ def _calculate_bonus(participant, scoring_config, official_result):
     return bonus_points, champion_hit, top_scorer_hit
 
 
+def _real_qualifier_position_map(season):
+    """Return ({group_id: {position: team_id}}, r32_drawn).
+
+    Positions 1 and 2 always come from Standings. Position 3 is included only
+    when FIFA has placed the team in an R32 match (the 8 best thirds rule).
+    r32_drawn is True iff at least one R32 match has any team assigned.
+    """
+    from src.football.models import Match, Standing
+    from src.pool.services.rules import normalize_stage_key
+
+    real = {}
+    for s in Standing.objects.filter(season=season, position__lte=2).values("group_id", "position", "team_id"):
+        real.setdefault(s["group_id"], {})[s["position"]] = s["team_id"]
+
+    r32_team_ids = set()
+    for match in Match.objects.filter(season=season).select_related("stage"):
+        if normalize_stage_key(match.stage) != "R32":
+            continue
+        if match.home_team_id:
+            r32_team_ids.add(match.home_team_id)
+        if match.away_team_id:
+            r32_team_ids.add(match.away_team_id)
+
+    r32_drawn = bool(r32_team_ids)
+    if r32_drawn:
+        for s in Standing.objects.filter(season=season, position=3).values("group_id", "team_id"):
+            if s["team_id"] in r32_team_ids:
+                real.setdefault(s["group_id"], {})[3] = s["team_id"]
+
+    return real, r32_drawn
+
+
 def _calculate_group_qualifier_bonus(participant, scoring_config):
     """Award points for correctly predicting group-stage qualifiers (top 2 per group).
 
