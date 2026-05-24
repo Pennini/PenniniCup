@@ -54,20 +54,18 @@ class RulesPageTest(TestCase):
         )
 
         config_a = self.pool_a.get_scoring_config()
-        config_a.group_exact_score_points = 13
-        config_a.knockout_winner_advancing_points = 11
-        config_a.knockout_exact_score_points = 7
+        config_a.group_exact_score = 13
         config_a.save()
 
     def test_rules_page_loads_and_uses_default_pool(self):
         response = self.client.get(reverse("penninicup:rules"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Pool Regras A")
-        self.assertContains(response, "Acertar placar exato: +13")
+        self.assertContains(response, "13 pts")
 
     def test_rules_page_respects_selected_pool(self):
         config_b = self.pool_b.get_scoring_config()
-        config_b.group_exact_score_points = 21
+        config_b.group_exact_score = 21
         config_b.save()
 
         response = self.client.get(reverse("penninicup:rules"), data={"pool": self.pool_b.slug})
@@ -245,8 +243,8 @@ class ProfilePageTest(TestCase):
             data={"pool": self.pool.slug},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "ficarão visíveis após o início da Copa")
-        self.assertNotContains(response, "Palpite:")
+        self.assertContains(response, "ficarão visíveis após o travamento dos palpites")
+        self.assertNotContains(response, "Meu palpite")
 
     def test_other_profile_shows_predictions_after_first_match_starts(self):
         self.match.match_date_utc = timezone.now() - timezone.timedelta(days=1)
@@ -260,7 +258,7 @@ class ProfilePageTest(TestCase):
             data={"pool": self.pool.slug},
         )
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Palpite:")
+        self.assertContains(response, "Meu palpite")
 
 
 class RequestUUIDMiddlewareTest(SimpleTestCase):
@@ -311,3 +309,202 @@ class RequestIdFilterTest(SimpleTestCase):
             args=(),
             exc_info=None,
         )
+
+
+class BuildGroupAuditTest(TestCase):
+    """Integration test: builds a real season + participant and verifies the
+    audit structure matches the qualifier bonus formula exactly."""
+
+    def setUp(self):
+        from src.football.models import Standing
+        from src.pool.models import PoolParticipantStanding
+
+        self.user = User.objects.create_user(username="ga-user", email="ga@example.com", password="123456Aa!")
+        self.competition = Competition.objects.create(fifa_id=300, name="GA Cup")
+        self.season = Season.objects.create(
+            fifa_id=300,
+            competition=self.competition,
+            name="GA 2026",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.group_stage = Stage.objects.create(fifa_id="GA-GROUP", season=self.season, name="Group", order=1)
+        self.r32_stage = Stage.objects.create(fifa_id="GA-R32", season=self.season, name="R32", order=2)
+
+        self.group_a = Group.objects.create(stage=self.group_stage, name="A", fifa_id="GA-GA")
+        self.teams = []
+        for i in range(1, 5):
+            t = Team.objects.create(fifa_id=f"GA-A{i}", name=f"GA A{i}", name_norm=f"ga a{i}", code=f"GA{i}")
+            self.teams.append(t)
+
+        self.pool = Pool.objects.create(name="GA Pool", slug="ga-pool", season=self.season, created_by=self.user)
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+        Payment.objects.create(
+            user=self.user,
+            pool=self.pool,
+            amount=self.pool.entry_fee,
+            amount_received=self.pool.entry_fee,
+            payment_method="pix",
+            status="approved",
+        )
+
+        # Real standings A1..A4 in positions 1..4
+        for pos in (1, 2, 3, 4):
+            Standing.objects.create(
+                season=self.season,
+                group=self.group_a,
+                team=self.teams[pos - 1],
+                position=pos,
+                points=10 - pos,
+            )
+
+        # Projection: I predicted A1 in 1st, A3 in 2nd, A2 in 3rd
+        PoolParticipantStanding.objects.create(
+            participant=self.participant, group=self.group_a, team=self.teams[0], position=1
+        )
+        PoolParticipantStanding.objects.create(
+            participant=self.participant, group=self.group_a, team=self.teams[2], position=2
+        )
+        PoolParticipantStanding.objects.create(
+            participant=self.participant, group=self.group_a, team=self.teams[1], position=3
+        )
+
+    def test_audit_before_r32_draw_keeps_third_row_pending(self):
+        from src.penninicup.views import _build_group_audit
+
+        audit = _build_group_audit(self.participant, self.season, self.pool.get_scoring_config())
+
+        self.assertEqual(len(audit), 1)
+        entry = audit[0]
+        rows = entry["rows"]
+        self.assertEqual([r["position"] for r in rows], [1, 2, 3])
+
+        # Row 1: predicted A1 (real 1st) → qualified+position_match
+        self.assertTrue(rows[0]["settled"])
+        self.assertTrue(rows[0]["qualified"])
+        self.assertTrue(rows[0]["position_match"])
+
+        # Row 2: predicted A3 (real 3rd) in 2nd → before R32 draw, 3rd is not
+        # a qualifier yet, but A3 is also not in real top 2 → not qualified.
+        self.assertTrue(rows[1]["settled"])
+        self.assertFalse(rows[1]["qualified"])
+
+        # Row 3: predicted A2 (real 2nd) in 3rd → r32_drawn=False → settled=False
+        self.assertFalse(rows[2]["settled"])
+
+    def test_audit_after_r32_draw_with_advancing_third(self):
+        from src.penninicup.views import _build_group_audit
+
+        # Draw R32 placing A3 in a match → A3 becomes a real qualifier.
+        Match.objects.create(
+            fifa_id="GA-R3201",
+            season=self.season,
+            stage=self.r32_stage,
+            match_number=1,
+            match_date_utc=timezone.now(),
+            match_date_local=timezone.now(),
+            match_date_brasilia=timezone.now() + timezone.timedelta(hours=2),
+            home_team=self.teams[2],  # A3
+            away_team=self.teams[0],  # A1
+        )
+
+        audit = _build_group_audit(self.participant, self.season, self.pool.get_scoring_config())
+        entry = audit[0]
+        rows = entry["rows"]
+        scoring = self.pool.get_scoring_config()
+
+        # Row 2: predicted A3 in 2nd → A3 advanced (qualifier) but position 2 != 3
+        self.assertTrue(rows[1]["qualified"])
+        self.assertFalse(rows[1]["position_match"])
+        self.assertEqual(rows[1]["points"], scoring.group_qualifier_points)
+
+        # Row 3: predicted A2 in 3rd, real 3rd is A3 → A2 IS a real qualifier
+        # (it finished 2nd in real), so qualified=True, but position_match=False.
+        self.assertTrue(rows[2]["settled"])
+        self.assertTrue(rows[2]["qualified"])
+        self.assertFalse(rows[2]["position_match"])
+        self.assertEqual(rows[2]["points"], scoring.group_qualifier_points)
+        # third_advanced reflects the REAL team at that slot (A3), not the predicted one.
+        self.assertTrue(rows[2]["third_advanced"])
+
+        # Group points sum equals what the scoring function computes.
+        from src.pool.services.ranking import _calculate_group_qualifier_bonus
+
+        expected = _calculate_group_qualifier_bonus(self.participant, scoring)
+        self.assertEqual(entry["group_points"], expected)
+
+    def test_audit_after_r32_draw_with_unlucky_third(self):
+        from src.penninicup.views import _build_group_audit
+
+        # R32 contains A1 and A2 only → A3 is NOT a real qualifier.
+        Match.objects.create(
+            fifa_id="GA-R3202",
+            season=self.season,
+            stage=self.r32_stage,
+            match_number=2,
+            match_date_utc=timezone.now(),
+            match_date_local=timezone.now(),
+            match_date_brasilia=timezone.now() + timezone.timedelta(hours=2),
+            home_team=self.teams[0],
+            away_team=self.teams[1],
+        )
+
+        audit = _build_group_audit(self.participant, self.season, self.pool.get_scoring_config())
+        rows = audit[0]["rows"]
+
+        # Row 3: real 3rd-place team A3 did NOT advance.
+        self.assertTrue(rows[2]["settled"])
+        self.assertFalse(rows[2]["third_advanced"])
+
+
+class BuildKnockoutByPhasePredictedWinnersTest(SimpleTestCase):
+    def test_predicted_includes_advanced_and_decided_flags(self):
+        from types import SimpleNamespace
+
+        from src.penninicup.views import _build_knockout_by_phase
+
+        team_a = SimpleNamespace(id=1, name="A")
+        team_b = SimpleNamespace(id=2, name="B")
+        team_c = SimpleNamespace(id=3, name="C")
+        stage = SimpleNamespace(fifa_id="R16", name="Oitavas de Final")
+
+        match_decided = SimpleNamespace(
+            stage=stage,
+            match_number=1,
+            winner=team_a,
+        )
+        match_pending = SimpleNamespace(
+            stage=stage,
+            match_number=2,
+            winner=None,
+        )
+        bet_advanced = SimpleNamespace(winner_pred=team_a, winner_pred_id=1)
+        bet_eliminated = SimpleNamespace(winner_pred=team_c, winner_pred_id=3)
+        bet_pending = SimpleNamespace(winner_pred=team_b, winner_pred_id=2)
+
+        rows = [
+            {"match": match_decided, "bet": bet_advanced, "bet_score": None},
+            {"match": match_pending, "bet": bet_eliminated, "bet_score": None},
+            {"match": match_pending, "bet": bet_pending, "bet_score": None},
+        ]
+
+        scoring_config = SimpleNamespace(knockout_team_advancement_bonus=0)
+        phases = _build_knockout_by_phase(rows, scoring_config)
+
+        self.assertEqual(len(phases), 1)
+        predicted = phases[0]["predicted_winners"]
+        self.assertEqual(len(predicted), 3)
+        items_by_team_id = {item["team"].id: item for item in predicted}
+
+        # team_a: match decided → advanced=True, decided=True
+        self.assertTrue(items_by_team_id[1]["advanced"])
+        self.assertTrue(items_by_team_id[1]["decided"])
+
+        # team_c: match still pending → decided=False regardless of other matches in phase
+        self.assertFalse(items_by_team_id[3]["advanced"])
+        self.assertFalse(items_by_team_id[3]["decided"])
+
+        # team_b: match still pending → decided=False, advanced=False
+        self.assertFalse(items_by_team_id[2]["decided"])
+        self.assertFalse(items_by_team_id[2]["advanced"])

@@ -96,7 +96,7 @@ class RankingsOrderTest(TestCase):
             is_active=True,
             total_points=100,
             exact_score_hits=5,
-            winner_or_draw_hits=8,
+            advancing_hits=8,
             knockout_points=40,
             group_points=60,
         )
@@ -106,7 +106,7 @@ class RankingsOrderTest(TestCase):
             is_active=True,
             total_points=100,
             exact_score_hits=5,
-            winner_or_draw_hits=8,
+            advancing_hits=8,
             knockout_points=40,
             group_points=60,
         )

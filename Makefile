@@ -49,5 +49,9 @@ up-dependencies:
 	docker compose -f docker-compose.dev.yml up --force-recreate db
 
 
+.PHONY: projection-worker
+projection-worker:
+	poetry run python -m src.manage run_projection_worker
+
 .PHONY: update
 update: install migrate install-pre-commit ;

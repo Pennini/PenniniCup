@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 from django.core.cache import cache
 from django.db.models import Prefetch
+from django.utils import timezone
 
 from src.football.models import Match, Player
 from src.pool.models import PoolBet, PoolParticipant, PoolParticipantStanding, PoolParticipantThirdPlace
@@ -16,7 +17,7 @@ from src.pool.services.projection import (
     sync_persisted_third_places,
 )
 from src.pool.services.projection_queue import enqueue_projection_recalc, has_pending_projection_recalc
-from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, phase_for_match
+from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, POOL_TYPE_2, phase_for_match
 
 STAGE_R32 = "R32"
 STAGE_R16 = "R16"
@@ -65,6 +66,7 @@ def _build_winners_map(matches, bets_by_match_id):
     winners_map = {}
     for match in matches:
         bet = bets_by_match_id.get(match.id)
+        is_group = match.group_id is not None
         if bet and bet.is_active and bet.winner_pred_id:
             winners_map[match.match_number] = bet.winner_pred
             continue
@@ -75,6 +77,7 @@ def _build_winners_map(matches, bets_by_match_id):
             and bet.away_score_pred is not None
             and match.home_team_id
             and match.away_team_id
+            and is_group
         ):
             if bet.home_score_pred > bet.away_score_pred:
                 winners_map[match.match_number] = match.home_team
@@ -82,20 +85,23 @@ def _build_winners_map(matches, bets_by_match_id):
             if bet.away_score_pred > bet.home_score_pred:
                 winners_map[match.match_number] = match.away_team
                 continue
-        if match.winner_id:
+        if is_group and match.winner_id:
             winners_map[match.match_number] = match.winner
     return winners_map
 
 
 def _infer_advancing_team(match, bet, home_team, away_team):
-    if match.winner_id and match.winner:
-        return match.winner
-
     if not bet or not bet.is_active:
         return None
 
     if bet.winner_pred_id:
-        return bet.winner_pred
+        # If projected teams are unknown, trust winner_pred directly.
+        # When projected teams are known, only accept winner_pred if it matches one of them
+        # (guards against clean() auto-assigning real teams when projected ≠ real).
+        if home_team is None and away_team is None:
+            return bet.winner_pred
+        if (home_team and bet.winner_pred_id == home_team.id) or (away_team and bet.winner_pred_id == away_team.id):
+            return bet.winner_pred
 
     if home_team is None or away_team is None or bet.home_score_pred is None or bet.away_score_pred is None:
         return None
@@ -486,6 +492,43 @@ def resolve_knockout_match_teams(*, participant, matches, season, bets_by_match_
     return result
 
 
+def _compute_type2_open_map(matches):
+    """Pre-compute per-match open status for Tipo 2 knockout bets using pre-loaded data.
+
+    Avoids N DB queries by resolving W<N>/RU<N> placeholders in-memory.
+    Returns {match_id: bool} where True means bet is currently open.
+    """
+    now = timezone.now()
+    match_by_number = {m.match_number: m for m in matches}
+
+    def _feeder_r32(match):
+        stage_key = _normalize_stage_key(match.stage)
+        if stage_key in ("GROUP", ""):
+            return []
+        if stage_key == STAGE_R32:
+            return [match]
+        feeders = []
+        for placeholder in (match.home_placeholder, match.away_placeholder):
+            m = re.match(r"^(?:W|RU)(\d+)$", (placeholder or "").strip().upper())
+            if m:
+                parent = match_by_number.get(int(m.group(1)))
+                if parent:
+                    feeders.extend(_feeder_r32(parent))
+        return feeders
+
+    result = {}
+    for match in matches:
+        if phase_for_match(match) != PHASE_KNOCKOUT:
+            continue
+        feeders = _feeder_r32(match)
+        if not feeders:
+            result[match.id] = False
+            continue
+        all_teams_known = all(f.home_team_id is not None and f.away_team_id is not None for f in feeders)
+        result[match.id] = all_teams_known and match.match_date_brasilia > now
+    return result
+
+
 def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
     participant = _hydrate_participant_for_context(pool=pool, participant=participant)
 
@@ -496,7 +539,7 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
     )
 
     participant_can_bet = participant.can_bet()
-    preloaded_bets = list(participant.bets.all())
+    preloaded_bets = list(participant.bets.select_related("score").all())
 
     if ensure_bets:
         bets_by_match_id = _ensure_participant_bets(
@@ -541,17 +584,52 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
     winners_map = _build_winners_map(matches=matches, bets_by_match_id=bets_by_match_id)
     losers_map = {}
 
+    is_tipo2 = pool.pool_type == POOL_TYPE_2
+    type2_open_map = _compute_type2_open_map(matches) if is_tipo2 else {}
+
     match_rows = []
     group_rows = []
     knockout_rows = []
     for match in matches:
         phase = phase_for_match(match)
-        home_team = match.home_team
-        away_team = match.away_team
         bet = bets_by_match_id.get(match.id)
 
         if phase == PHASE_KNOCKOUT:
-            if home_team is None:
+            if is_tipo2:
+                stage_key = _normalize_stage_key(match.stage)
+                match_open = type2_open_map.get(match.id, False)
+                locked = not match_open
+                if stage_key == STAGE_R32:
+                    # R32: use real teams from group classification only.
+                    home_team = match.home_team
+                    away_team = match.away_team
+                    teams_known = match.home_team_id is not None and match.away_team_id is not None
+                    if not teams_known:
+                        bet_status = "awaiting_teams"
+                    elif locked:
+                        bet_status = "locked"
+                    else:
+                        bet_status = "open"
+                else:
+                    # R16+: resolve teams from user's R32 bet outcomes (projected).
+                    home_team = _resolve_match_team_from_placeholder(
+                        placeholder=match.home_placeholder,
+                        projected_slots=projected,
+                        assign_third_map=assign_third_map,
+                        winners_map=winners_map,
+                        losers_map=losers_map,
+                    )
+                    away_team = _resolve_match_team_from_placeholder(
+                        placeholder=match.away_placeholder,
+                        projected_slots=projected,
+                        assign_third_map=assign_third_map,
+                        winners_map=winners_map,
+                        losers_map=losers_map,
+                    )
+                    bet_status = "locked" if locked else "open"
+            else:
+                # Tipo 1: resolve from user's projected placeholder map so bet cards
+                # show the teams the user predicted, not the real match teams.
                 home_team = _resolve_match_team_from_placeholder(
                     placeholder=match.home_placeholder,
                     projected_slots=projected,
@@ -559,7 +637,6 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
                     winners_map=winners_map,
                     losers_map=losers_map,
                 )
-            if away_team is None:
                 away_team = _resolve_match_team_from_placeholder(
                     placeholder=match.away_placeholder,
                     projected_slots=projected,
@@ -567,6 +644,13 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
                     winners_map=winners_map,
                     losers_map=losers_map,
                 )
+                locked = pool.is_phase_locked(phase)
+                bet_status = "locked" if locked else "open"
+        else:
+            home_team = match.home_team
+            away_team = match.away_team
+            locked = pool.is_phase_locked(phase)
+            bet_status = "locked" if locked else "open"
 
         row = {
             "match": match,
@@ -574,7 +658,9 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
             "home_team": home_team,
             "away_team": away_team,
             "bet": bet,
-            "locked": pool.is_phase_locked(phase),
+            "bet_score": getattr(bet, "score", None) if bet else None,
+            "locked": locked,
+            "bet_status": bet_status,
         }
         match_rows.append(row)
 

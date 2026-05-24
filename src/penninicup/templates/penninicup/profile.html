@@ -57,6 +57,7 @@
             </div>
 
             <div class="grid gap-4 sm:grid-cols-2">
+                {% if is_owner_profile %}
                 <label class="space-y-2">
                     <span class="text-sm font-medium text-neutral-200">Time do coração</span>
                     <input
@@ -66,7 +67,6 @@
                         maxlength="120"
                         class="w-full rounded-lg bg-neutral-950 border border-neutral-700 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
                         placeholder="Ex.: Corinthians"
-                        {% if not is_owner_profile %}disabled{% endif %}
                     />
                     {% if profile_form.favorite_team.errors %}
                     <span class="text-xs text-red-400">{{ profile_form.favorite_team.errors.0 }}</span>
@@ -78,7 +78,6 @@
                     <select
                         name="world_cup_team"
                         class="w-full rounded-lg bg-neutral-950 border border-neutral-700 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
-                        {% if not is_owner_profile %}disabled{% endif %}
                     >
                         <option value="">Selecione um time</option>
                         {% for team in profile_form.fields.world_cup_team.queryset %}
@@ -89,6 +88,25 @@
                     <span class="text-xs text-red-400">{{ profile_form.world_cup_team.errors.0 }}</span>
                     {% endif %}
                 </label>
+                {% else %}
+                <div class="space-y-1.5">
+                    <span class="text-sm font-medium text-neutral-200">Time do coração</span>
+                    {% if profile_obj.favorite_team %}
+                    <p class="text-sm text-neutral-300">{{ profile_obj.favorite_team }}</p>
+                    {% else %}
+                    <p class="text-sm text-neutral-600 italic">Não informado</p>
+                    {% endif %}
+                </div>
+
+                <div class="space-y-1.5">
+                    <span class="text-sm font-medium text-neutral-200">Time que estou torcendo na copa{% if active_season %} ({{ active_season.year }}){% endif %}</span>
+                    {% if profile_obj.world_cup_team %}
+                    <p class="text-sm text-neutral-300">{{ profile_obj.world_cup_team.name }}</p>
+                    {% else %}
+                    <p class="text-sm text-neutral-600 italic">Não informado</p>
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
 
             {% if is_owner_profile %}
@@ -134,7 +152,11 @@
         {% if selected_pool %}
         {% if not can_view_predictions %}
         <article class="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-            Os palpites deste usuário ficarão visíveis após o início da Copa (primeiro jogo da temporada).
+            Os palpites deste usuário ficarão visíveis após o travamento dos palpites da fase de grupos.
+        </article>
+        {% elif show_locked_only %}
+        <article class="rounded-xl border border-neutral-700/60 bg-neutral-800/40 px-4 py-3 text-sm text-neutral-400">
+            Exibindo apenas palpites de jogos cujo prazo de palpite já encerrou.
         </article>
         {% endif %}
 
@@ -161,9 +183,25 @@
                 {% endif %}
             </article>
 
+            {% if group_rows %}
+            <div class="flex rounded-xl bg-neutral-950 border border-neutral-800 p-1 gap-1" id="profile-grouping-toggle">
+                <button type="button" id="profile-toggle-by-date"
+                        class="flex-1 text-center text-sm font-semibold rounded-lg py-2 transition-all duration-200 bg-neutral-800 text-orange-300 border border-orange-500/40"
+                        aria-pressed="true">Por Data</button>
+                <button type="button" id="profile-toggle-by-group"
+                        class="flex-1 text-center text-sm font-semibold rounded-lg py-2 transition-all duration-200 text-neutral-500 border border-transparent hover:text-neutral-300"
+                        aria-pressed="false">Por Grupo</button>
+            </div>
+            {% endif %}
+
+            <div id="profile-group-rows-list">
             {% for row in group_rows %}
-            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 space-y-2">
-                <p class="text-xs uppercase tracking-wide text-neutral-400">Fase de Grupos - Grupo {{ row.match.group.name|default:"-" }} - Jogo #{{ row.match.match_number }}</p>
+            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 space-y-2"
+                     data-match-item
+                     data-match-date="{{ row.match.match_date_brasilia|date:'Y-m-d' }}"
+                     data-match-date-label="{{ row.match.match_date_brasilia|date:'d/m - l' }}"
+                     data-match-group="{{ row.match.group.name|default:'' }}">
+                <p class="text-xs uppercase tracking-wide text-neutral-400">Fase de Grupos · Grupo {{ row.match.group.name|default:"-" }} · Jogo #{{ row.match.match_number }}</p>
                 <h3 class="text-base font-semibold flex flex-wrap items-center gap-2">
                     <span class="inline-flex items-center gap-2">
                         {% if row.home_team and row.home_team.flag_image_url %}
@@ -173,7 +211,7 @@
                         {% endif %}
                         <span>{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
                     </span>
-                    <span>x</span>
+                    <span class="text-neutral-500">×</span>
                     <span class="inline-flex items-center gap-2">
                         {% if row.away_team and row.away_team.flag_image_url %}
                         <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
@@ -184,42 +222,347 @@
                     </span>
                 </h3>
 
-                {% if row.bet and row.bet.is_active %}
-                <p class="text-sm text-neutral-200">Palpite: <span class="font-semibold">{{ row.bet.home_score_pred }} x {{ row.bet.away_score_pred }}</span></p>
-                {% else %}
-                <p class="text-sm text-neutral-400">Sem palpite registrado.</p>
-                {% endif %}
+                <div class="flex flex-wrap items-end gap-x-5 gap-y-2 pt-1">
+                    <div>
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Meu palpite</span>
+                        {% if row.bet and row.bet.is_active %}
+                        <span class="text-sm font-bold text-orange-300">{{ row.bet.home_score_pred }} × {{ row.bet.away_score_pred }}</span>
+                        {% else %}
+                        <span class="text-sm text-neutral-600">Sem palpite</span>
+                        {% endif %}
+                    </div>
+                    {% if row.match.home_score is not None %}
+                    <div class="hidden sm:block w-px h-7 bg-neutral-700 self-end mb-0.5"></div>
+                    <div>
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Resultado real</span>
+                        <span class="text-sm font-bold text-white">{{ row.match.home_score }} × {{ row.match.away_score }}</span>
+                    </div>
+                    {% endif %}
+                    {% if row.match.home_score is not None and row.bet and row.bet.is_active and row.bet_score %}
+                    <div class="hidden sm:block w-px h-7 bg-neutral-700 self-end mb-0.5"></div>
+                    <div>
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Pontos</span>
+                        {% if row.bet_score.points > 0 %}
+                        <span class="text-sm font-bold text-green-400">+{{ row.bet_score.points }} pts</span>
+                        {% else %}
+                        <span class="text-sm font-bold text-neutral-500">0 pts</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                </div>
             </article>
             {% empty %}
-            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 text-sm text-neutral-400">Nenhum jogo de fase de grupos encontrado para este bolão.</article>
+            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 text-sm text-neutral-400">
+                {% if show_locked_only %}Nenhum jogo da fase de grupos com prazo encerrado ainda.{% else %}Nenhum jogo de fase de grupos encontrado para este bolão.{% endif %}
+            </article>
             {% endfor %}
+            </div>
 
-            {% for row in knockout_rows %}
+            {% if group_audit %}
+            <article class="rounded-xl border border-emerald-700/30 bg-emerald-900/10 p-4 space-y-4">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <p class="text-xs uppercase tracking-wide text-emerald-400">Bônus de Classificados de Grupos</p>
+                        <p class="text-sm text-neutral-300 mt-0.5">Pontos por times acertados na classificação (1º, 2º, 3º) de cada grupo</p>
+                    </div>
+                    {% if selected_participant.qualifier_bonus_points %}
+                    <span class="text-xl font-bold text-emerald-300 shrink-0">+{{ selected_participant.qualifier_bonus_points }} pts</span>
+                    {% endif %}
+                </div>
+
+                <div class="grid gap-3 sm:grid-cols-2">
+                    {% for entry in group_audit %}
+                    <div class="rounded-lg border border-neutral-700/60 bg-neutral-900/60 p-3 space-y-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-sm font-semibold text-neutral-100">Grupo {{ entry.group.name }}</span>
+                            {% if entry.group_points %}
+                            <span class="text-xs font-semibold text-emerald-300">+{{ entry.group_points }} pts</span>
+                            {% elif entry.has_real %}
+                            <span class="text-xs text-neutral-500">0 pts</span>
+                            {% endif %}
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div class="space-y-1">
+                                <p class="text-[10px] uppercase tracking-wide text-neutral-500">Meu palpite</p>
+                                {% for row in entry.rows %}
+                                <div class="flex items-center gap-1.5 rounded border px-1.5 py-0.5
+                                    {% if not row.settled or not row.predicted_team %}border-neutral-700 bg-neutral-800/40 text-neutral-300
+                                    {% elif row.qualified %}border-green-500/30 bg-green-500/10 text-green-300
+                                    {% else %}border-red-500/30 bg-red-500/10 text-red-300{% endif %}
+                                    {% if row.position_match %}ring-1 ring-emerald-400/60{% endif %}">
+                                    <span class="text-[10px] font-bold opacity-70 shrink-0">{{ row.position }}º</span>
+                                    {% if row.predicted_team %}
+                                    {% if row.predicted_team.flag_image_url %}<span class="inline-flex h-3.5 w-3.5 overflow-hidden rounded-full ring-1 ring-neutral-700 bg-neutral-900 shrink-0"><img src="{{ row.predicted_team.flag_image_url }}" alt="" class="h-full w-full object-cover" /></span>{% endif %}
+                                    <span class="truncate">{{ row.predicted_team.name }}</span>
+                                    {% if row.points %}<span class="ml-auto text-[10px] font-semibold text-emerald-300 shrink-0">+{{ row.points }}</span>{% endif %}
+                                    {% else %}
+                                    <span class="text-neutral-600 italic">—</span>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div class="space-y-1">
+                                <p class="text-[10px] uppercase tracking-wide text-neutral-500">Real</p>
+                                {% for row in entry.rows %}
+                                <div class="flex items-center gap-1.5 rounded border border-neutral-700 bg-neutral-800/40 px-1.5 py-0.5 text-neutral-200">
+                                    <span class="text-[10px] font-bold opacity-70 shrink-0">{{ row.position }}º</span>
+                                    {% if row.real_team %}
+                                    {% if row.real_team.flag_image_url %}<span class="inline-flex h-3.5 w-3.5 overflow-hidden rounded-full ring-1 ring-neutral-700 bg-neutral-900 shrink-0"><img src="{{ row.real_team.flag_image_url }}" alt="" class="h-full w-full object-cover" /></span>{% endif %}
+                                    <span class="truncate {% if row.position == 3 and row.settled and not row.third_advanced %}line-through opacity-60{% endif %}">{{ row.real_team.name }}</span>
+                                    {% if row.position == 3 and row.settled and row.third_advanced %}<span class="ml-auto text-[9px] uppercase tracking-wide text-emerald-300 shrink-0">classif.</span>{% endif %}
+                                    {% else %}
+                                    <span class="text-neutral-600 italic">pendente</span>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </article>
+            {% endif %}
+
+            {% if knockout_by_phase %}
+            {% for phase in knockout_by_phase %}
+
+            {% for row in phase.rows %}
             <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 space-y-2">
-                <p class="text-xs uppercase tracking-wide text-neutral-400">Mata-mata - {{ row.match.stage.name|default:"-" }} - Jogo #{{ row.match.match_number }}</p>
+                <p class="text-xs uppercase tracking-wide text-neutral-400">Mata-mata · {{ phase.stage_label }} · Jogo #{{ row.match.match_number }}</p>
                 <h3 class="text-base font-semibold flex flex-wrap items-center gap-2">
-                    <span>{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
-                    <span>x</span>
-                    <span>{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
+                    <span class="inline-flex items-center gap-2">
+                        {% if row.home_team and row.home_team.flag_image_url %}
+                        <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
+                            <img src="{{ row.home_team.flag_image_url }}" alt="Bandeira {{ row.home_team.name }}" class="h-full w-full object-cover" loading="lazy" />
+                        </span>
+                        {% endif %}
+                        <span>{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
+                    </span>
+                    <span class="text-neutral-500">×</span>
+                    <span class="inline-flex items-center gap-2">
+                        {% if row.away_team and row.away_team.flag_image_url %}
+                        <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
+                            <img src="{{ row.away_team.flag_image_url }}" alt="Bandeira {{ row.away_team.name }}" class="h-full w-full object-cover" loading="lazy" />
+                        </span>
+                        {% endif %}
+                        <span>{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
+                    </span>
                 </h3>
 
-                {% if row.bet and row.bet.is_active %}
-                <p class="text-sm text-neutral-200">Palpite: <span class="font-semibold">{{ row.bet.home_score_pred }} x {{ row.bet.away_score_pred }}</span></p>
-                <p class="text-sm text-neutral-200">Classificado:
-                    {% if row.bet.winner_pred %}
-                    <span class="font-semibold">{{ row.bet.winner_pred.name }}</span>
-                    {% else %}
-                    <span class="text-neutral-400">Não definido</span>
+                <div class="flex flex-wrap items-end gap-x-5 gap-y-2 pt-1">
+                    <div>
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Meu palpite</span>
+                        {% if row.bet and row.bet.is_active %}
+                        <span class="text-sm font-bold text-orange-300">{{ row.bet.home_score_pred }} × {{ row.bet.away_score_pred }}</span>
+                        {% else %}
+                        <span class="text-sm text-neutral-600">Sem palpite</span>
+                        {% endif %}
+                    </div>
+                    {% if row.match.home_score is not None %}
+                    <div class="hidden sm:block w-px h-7 bg-neutral-700 self-end mb-0.5"></div>
+                    <div>
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Resultado real</span>
+                        <span class="text-sm font-bold text-white">{{ row.match.home_score }} × {{ row.match.away_score }}</span>
+                    </div>
                     {% endif %}
-                </p>
-                {% else %}
-                <p class="text-sm text-neutral-400">Sem palpite registrado.</p>
+                    {% if row.match.home_score is not None and row.bet and row.bet.is_active and row.bet_score %}
+                    <div class="hidden sm:block w-px h-7 bg-neutral-700 self-end mb-0.5"></div>
+                    <div>
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Pontos</span>
+                        {% if row.bet_score.points > 0 %}
+                        <span class="text-sm font-bold text-green-400">+{{ row.bet_score.points }} pts</span>
+                        {% else %}
+                        <span class="text-sm font-bold text-neutral-500">0 pts</span>
+                        {% endif %}
+                    </div>
+                    {% endif %}
+                    {% if row.match.home_score is not None and row.match.home_team %}
+                    <div class="w-full border-t border-neutral-800 pt-2 mt-1">
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Times reais do jogo</span>
+                        <span class="text-sm text-neutral-300 inline-flex flex-wrap items-center gap-1">
+                            {% if row.match.home_team.flag_image_url %}<span class="inline-flex h-4 w-4 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0"><img src="{{ row.match.home_team.flag_image_url }}" alt="" class="h-full w-full object-cover" loading="lazy" /></span>{% endif %}{{ row.match.home_team.name }}
+                            <span class="text-neutral-500">×</span>
+                            {% if row.match.away_team and row.match.away_team.flag_image_url %}<span class="inline-flex h-4 w-4 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0"><img src="{{ row.match.away_team.flag_image_url }}" alt="" class="h-full w-full object-cover" loading="lazy" /></span>{% endif %}{{ row.match.away_team.name|default:"-" }}
+                        </span>
+                    </div>
+                    {% endif %}
+                </div>
+            </article>
+            {% endfor %}
+
+            {# Phase classificados summary — shown after all matches of this phase #}
+            {% if phase.predicted_winners or phase.has_results %}
+            <article class="rounded-xl border border-sky-800/30 bg-sky-900/10 p-4 space-y-3">
+                <p class="text-xs font-semibold uppercase tracking-wide text-sky-400">Classificados — {{ phase.stage_label }}</p>
+                <div class="grid sm:grid-cols-2 gap-3">
+                    <div>
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-1.5">Palpitados</span>
+                        {% if phase.predicted_winners %}
+                        <div class="flex flex-wrap gap-2">
+                            {% for item in phase.predicted_winners %}
+                            <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs
+                                {% if not item.decided %}border-orange-500/20 bg-orange-500/5 text-orange-300
+                                {% elif item.advanced %}border-green-500/30 bg-green-500/10 text-green-300
+                                {% else %}border-red-500/30 bg-red-500/10 text-red-300{% endif %}">
+                                {% if item.team.flag_image_url %}<span class="inline-flex h-3.5 w-3.5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0"><img src="{{ item.team.flag_image_url }}" alt="" class="h-full w-full object-cover" /></span>{% endif %}
+                                {{ item.team.name }}
+                            </span>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <span class="text-xs text-neutral-600">Sem palpites</span>
+                        {% endif %}
+                    </div>
+                    <div>
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-1.5">Classificados reais</span>
+                        {% if phase.real_winners %}
+                        <div class="flex flex-wrap gap-2">
+                            {% for team in phase.real_winners %}
+                            <span class="inline-flex items-center gap-1 rounded-full border border-sky-500/20 bg-sky-500/5 px-2 py-0.5 text-xs text-sky-300">
+                                {% if team.flag_image_url %}<span class="inline-flex h-3.5 w-3.5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0"><img src="{{ team.flag_image_url }}" alt="" class="h-full w-full object-cover" /></span>{% endif %}
+                                {{ team.name }}
+                            </span>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <span class="text-xs text-neutral-600">Resultados pendentes</span>
+                        {% endif %}
+                    </div>
+                </div>
+                {% if selected_pool.pool_type == 1 and phase.bonus_count %}
+                <div class="pt-2 border-t border-sky-800/20">
+                    <span class="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-300">
+                        <i data-lucide="trending-up" class="h-3 w-3"></i>
+                        {{ phase.bonus_count }} palpite{{ phase.bonus_count|pluralize:"s" }} com bônus de avanço · +{{ phase.bonus_pts_each }} pts cada · <strong class="ml-0.5">+{{ phase.bonus_total }} pts</strong>
+                    </span>
+                </div>
                 {% endif %}
             </article>
-            {% empty %}
-            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 text-sm text-neutral-400">Nenhum jogo de mata-mata encontrado para este bolão.</article>
+            {% endif %}
+
             {% endfor %}
+            {% else %}
+            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 text-sm text-neutral-400">
+                {% if show_locked_only %}Nenhum jogo de mata-mata com prazo encerrado ainda.{% else %}Nenhum jogo de mata-mata encontrado para este bolão.{% endif %}
+            </article>
+            {% endif %}
         </div>
+
+        <script>
+        (function () {
+            var container = document.getElementById('profile-group-rows-list');
+            if (!container) return;
+
+            function clearGroupingArtifacts() {
+                container.querySelectorAll('[data-match-grid]').forEach(function (grid) {
+                    grid.querySelectorAll('[data-match-item]').forEach(function (item) {
+                        container.appendChild(item);
+                    });
+                    grid.remove();
+                });
+            }
+
+            function applyGrouping(mode) {
+                clearGroupingArtifacts();
+                var items = Array.from(container.querySelectorAll('[data-match-item]'));
+
+                if (mode === 'date') {
+                    items.sort(function (a, b) {
+                        return a.dataset.matchDate < b.dataset.matchDate ? -1 : a.dataset.matchDate > b.dataset.matchDate ? 1 : 0;
+                    });
+
+                    var grid = document.createElement('div');
+                    grid.setAttribute('data-match-grid', '');
+                    grid.className = 'flex flex-col gap-3';
+
+                    var dateMap = {};
+
+                    items.forEach(function (item) {
+                        var dateKey = item.dataset.matchDate;
+                        if (!dateMap[dateKey]) {
+                            var cont = document.createElement('div');
+                            cont.className = 'bg-neutral-900 border border-neutral-700 rounded-2xl p-4 flex flex-col gap-3';
+
+                            var headerRow = document.createElement('div');
+                            headerRow.className = 'flex items-center gap-3';
+                            headerRow.innerHTML =
+                                '<div class="w-8 h-8 rounded-full bg-neutral-700 flex items-center justify-center shrink-0">' +
+                                    '<i data-lucide="calendar" class="w-4 h-4 text-neutral-300"></i>' +
+                                '</div>' +
+                                '<span class="font-semibold text-neutral-200 capitalize">' + item.dataset.matchDateLabel + '</span>';
+                            cont.appendChild(headerRow);
+
+                            dateMap[dateKey] = cont;
+                            grid.appendChild(cont);
+                        }
+                        dateMap[dateKey].appendChild(item);
+                    });
+
+                    container.appendChild(grid);
+                    if (typeof lucide !== 'undefined') { lucide.createIcons(); }
+
+                } else {
+                    var grid = document.createElement('div');
+                    grid.setAttribute('data-match-grid', '');
+                    grid.className = 'grid grid-cols-1 sm:grid-cols-2 gap-4';
+
+                    var groupMap = {};
+
+                    items.forEach(function (item) {
+                        var groupName = item.dataset.matchGroup;
+                        if (!groupName) return;
+                        if (!groupMap[groupName]) {
+                            var cont = document.createElement('div');
+                            cont.className = 'bg-neutral-900 border border-neutral-700 rounded-2xl p-4 flex flex-col gap-3';
+
+                            var headerRow = document.createElement('div');
+                            headerRow.className = 'flex items-center gap-3';
+                            headerRow.innerHTML =
+                                '<div class="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center shrink-0">' +
+                                    '<span class="text-white font-bold text-sm">' + groupName + '</span>' +
+                                '</div>' +
+                                '<span class="font-bold text-neutral-100">Grupo ' + groupName + '</span>';
+                            cont.appendChild(headerRow);
+
+                            groupMap[groupName] = cont;
+                            grid.appendChild(cont);
+                        }
+                        groupMap[groupName].appendChild(item);
+                    });
+
+                    container.appendChild(grid);
+                }
+
+                var btnDate  = document.getElementById('profile-toggle-by-date');
+                var btnGroup = document.getElementById('profile-toggle-by-group');
+                if (btnDate && btnGroup) {
+                    var activeClass   = ['bg-neutral-800', 'text-orange-300', 'border', 'border-orange-500/40'];
+                    var inactiveClass = ['text-neutral-500', 'border', 'border-transparent', 'hover:text-neutral-300'];
+
+                    [btnDate, btnGroup].forEach(function (btn) {
+                        activeClass.forEach(function (c) { btn.classList.remove(c); });
+                        inactiveClass.forEach(function (c) { btn.classList.remove(c); });
+                    });
+
+                    var activeBtn   = mode === 'date' ? btnDate  : btnGroup;
+                    var inactiveBtn = mode === 'date' ? btnGroup : btnDate;
+                    activeClass.forEach(function (c) { activeBtn.classList.add(c); });
+                    inactiveClass.forEach(function (c) { inactiveBtn.classList.add(c); });
+
+                    btnDate.setAttribute('aria-pressed',  mode === 'date'  ? 'true' : 'false');
+                    btnGroup.setAttribute('aria-pressed', mode === 'group' ? 'true' : 'false');
+                }
+            }
+
+            var btnDate  = document.getElementById('profile-toggle-by-date');
+            var btnGroup = document.getElementById('profile-toggle-by-group');
+            if (btnDate)  btnDate.addEventListener('click',  function () { applyGrouping('date'); });
+            if (btnGroup) btnGroup.addEventListener('click', function () { applyGrouping('group'); });
+
+            applyGrouping('date');
+        })();
+        </script>
         {% endif %}
         {% endif %}
         {% endif %}
