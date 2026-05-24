@@ -309,3 +309,55 @@ class RequestIdFilterTest(SimpleTestCase):
             args=(),
             exc_info=None,
         )
+
+
+class BuildKnockoutByPhasePredictedWinnersTest(SimpleTestCase):
+    def test_predicted_includes_advanced_and_decided_flags(self):
+        from types import SimpleNamespace
+
+        from src.penninicup.views import _build_knockout_by_phase
+
+        team_a = SimpleNamespace(id=1, name="A")
+        team_b = SimpleNamespace(id=2, name="B")
+        team_c = SimpleNamespace(id=3, name="C")
+        stage = SimpleNamespace(fifa_id="R16", name="Oitavas de Final")
+
+        match_decided = SimpleNamespace(
+            stage=stage,
+            match_number=1,
+            winner=team_a,
+        )
+        match_pending = SimpleNamespace(
+            stage=stage,
+            match_number=2,
+            winner=None,
+        )
+        bet_advanced = SimpleNamespace(winner_pred=team_a, winner_pred_id=1)
+        bet_eliminated = SimpleNamespace(winner_pred=team_c, winner_pred_id=3)
+        bet_pending = SimpleNamespace(winner_pred=team_b, winner_pred_id=2)
+
+        rows = [
+            {"match": match_decided, "bet": bet_advanced, "bet_score": None},
+            {"match": match_pending, "bet": bet_eliminated, "bet_score": None},
+            {"match": match_pending, "bet": bet_pending, "bet_score": None},
+        ]
+
+        scoring_config = SimpleNamespace(knockout_team_advancement_bonus=0)
+        phases = _build_knockout_by_phase(rows, scoring_config)
+
+        self.assertEqual(len(phases), 1)
+        predicted = phases[0]["predicted_winners"]
+        self.assertEqual(len(predicted), 3)
+        items_by_team_id = {item["team"].id: item for item in predicted}
+
+        # team_a advanced
+        self.assertTrue(items_by_team_id[1]["advanced"])
+        self.assertTrue(items_by_team_id[1]["decided"])
+
+        # team_c eliminated
+        self.assertFalse(items_by_team_id[3]["advanced"])
+        self.assertTrue(items_by_team_id[3]["decided"])
+
+        # team_b: same phase has real_winners → decided=True, advanced=False
+        self.assertTrue(items_by_team_id[2]["decided"])
+        self.assertFalse(items_by_team_id[2]["advanced"])

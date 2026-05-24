@@ -72,8 +72,18 @@ def _build_knockout_by_phase(knockout_rows, scoring_config):
     phases = []
     for stage_key, rows in groupby(sorted_rows, key=lambda r: _resolve_stage_key(r["match"].stage)):
         rows = list(rows)
-        predicted = [r["bet"].winner_pred for r in rows if r.get("bet") and r["bet"] and r["bet"].winner_pred]
         real_winners = [r["match"].winner for r in rows if r["match"].winner]
+        real_winners_ids = {t.id for t in real_winners}
+        decided = bool(real_winners_ids)
+        predicted = [
+            {
+                "team": r["bet"].winner_pred,
+                "advanced": r["bet"].winner_pred_id in real_winners_ids,
+                "decided": decided,
+            }
+            for r in rows
+            if r.get("bet") and r["bet"] and r["bet"].winner_pred
+        ]
         bonus_rows = [r for r in rows if r["bet_score"] and r["bet_score"].team_advancement_bonus]
         bonus_count = len(bonus_rows)
         phases.append(
