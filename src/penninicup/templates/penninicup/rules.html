@@ -162,13 +162,13 @@
                 <i data-lucide="list-checks" class="h-4 w-4 text-emerald-400"></i>
                 <h3 class="text-base font-semibold text-neutral-100">Bônus de Classificados de Grupos</h3>
             </div>
-            <p class="text-sm text-neutral-400">Para cada time que você acertou como classificado da fase de grupos:</p>
+            <p class="text-sm text-neutral-400">Para cada time que você acertou como classificado (1º, 2º ou um dos 8 melhores 3º) da fase de grupos:</p>
             <div class="grid gap-2 sm:grid-cols-2">
                 <div class="rounded-md border border-emerald-800/40 bg-emerald-900/10 p-3 text-sm">
                     Time classificado correto: <strong class="text-emerald-300">+{{ scoring_config.group_qualifier_points }} pts</strong>
                 </div>
                 <div class="rounded-md border border-emerald-800/40 bg-emerald-900/10 p-3 text-sm">
-                    + posição exata (1º ou 2º): <strong class="text-emerald-300">+{{ scoring_config.group_qualifier_position_bonus }} pts</strong>
+                    + posição exata (1º, 2º ou 3º): <strong class="text-emerald-300">+{{ scoring_config.group_qualifier_position_bonus }} pts</strong>
                 </div>
             </div>
             <div class="rounded-lg border border-neutral-700 bg-neutral-950/80 p-3 space-y-1.5">
@@ -177,6 +177,7 @@
                 <ul class="text-xs text-neutral-300 space-y-1 ml-2">
                     <li>Se você apostou Brasil em 1º → <span class="text-emerald-300">+{{ scoring_config.group_qualifier_points }} pts</span> (passou, mas posição errada)</li>
                     <li>Se você apostou Marrocos em 1º → <span class="text-emerald-300">+{{ qualifier_bonus_max }} pts</span> (passou E posição certa)</li>
+                    <li>Se você apostou um time em 3º que ficou em 3º E foi um dos 8 melhores 3º → <span class="text-emerald-300">+{{ qualifier_bonus_max }} pts</span> (passou E posição certa)</li>
                     <li>Se você apostou um time que não passou → <span class="text-neutral-500">0 pts</span></li>
                 </ul>
             </div>
