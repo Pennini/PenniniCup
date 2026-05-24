@@ -1,4 +1,4 @@
-from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_1, phase_for_match
+from src.pool.services.rules import PHASE_GROUP, phase_for_match
 
 
 def _winner_from_score(home_score, away_score):
@@ -25,7 +25,7 @@ def _is_loser_goals_correct(actual_winner, guess_home, guess_away, home, away):
     return False
 
 
-def calculate_bet_points(bet, scoring_config, pool_type=POOL_TYPE_1):
+def calculate_bet_points(bet, scoring_config, pool_type=None):
     match = bet.match
     if (
         not bet.is_active
@@ -86,69 +86,61 @@ def calculate_bet_points(bet, scoring_config, pool_type=POOL_TYPE_1):
             "eliminated_goals_correct": is_loser_goals,
         }
 
-    else:
-        # Tipo 1: advancing_correct by position (same direction wins, not same team)
-        # Tipo 2: advancing_correct by team identity (current logic)
-        if pool_type == POOL_TYPE_1:
-            # Actual direction respects penalty outcomes via match.winner_id; fall back
-            # to the 90-min score when no winner has been recorded yet (group draws).
-            if match.winner_id and match.winner_id == match.home_team_id:
-                actual_direction = "HOME"
-            elif match.winner_id and match.winner_id == match.away_team_id:
-                actual_direction = "AWAY"
-            else:
-                actual_direction = _winner_from_score(home, away)
-
-            guess_direction = _winner_from_score(guess_home, guess_away)
-            # For draw score-predictions, the positional pick lives in winner_pred:
-            # map it back to the home/away slot of the real match.
-            if guess_direction == "DRAW" and bet.winner_pred_id:
-                if bet.winner_pred_id == match.home_team_id:
-                    guess_direction = "HOME"
-                elif bet.winner_pred_id == match.away_team_id:
-                    guess_direction = "AWAY"
-
-            is_advancing_correct = actual_direction == guess_direction
-        else:
-            is_advancing_correct = bool(match.winner_id and bet.winner_pred_id == match.winner_id)
-
-        # Goal comparisons are positional (home slot vs home slot, away slot vs away slot).
-        # Using match.winner_id to identify the "advancing side" slot works for both types:
-        # for Tipo 1 this equals the positional direction check.
-        if match.winner_id == match.home_team_id:
-            _raw_advancing_goals = guess_home == home
-            _raw_eliminated_goals = guess_away == away
-        elif match.winner_id == match.away_team_id:
-            _raw_advancing_goals = guess_away == away
-            _raw_eliminated_goals = guess_home == home
-        else:
-            _raw_advancing_goals = False
-            _raw_eliminated_goals = False
-
-        is_advancing_goals = is_advancing_correct and _raw_advancing_goals
-        is_eliminated_goals = is_advancing_correct and _raw_eliminated_goals
-        is_diff_correct = is_advancing_correct and (guess_home - guess_away) == (home - away)
-
-        if is_exact_score and is_advancing_correct:
-            points = scoring_config.knockout_exact_and_advancing
-        elif is_advancing_correct and is_advancing_goals:
-            points = scoring_config.knockout_advancing_and_winner_goals
-        elif is_advancing_correct and is_diff_correct:
-            points = scoring_config.knockout_advancing_and_diff
-        elif is_advancing_correct and is_eliminated_goals:
-            points = scoring_config.knockout_advancing_and_loser_goals
-        elif is_advancing_correct:
-            points = scoring_config.knockout_advancing_only
-        elif is_exact_score:
-            points = scoring_config.knockout_exact_wrong_advancing
-        else:
-            points = 0
-
+    # KNOCKOUT phase — positional scoring for both Tipo 1 and Tipo 2.
+    # Palpite de empate (home == away): pontos fixos somente quando o placar do tempo
+    # regulamentar tambem termina empatado (qualquer placar). Jogos decididos por
+    # penaltis ainda contam como empate no regulamentar e pagam os pontos fixos.
+    if guess_home == guess_away:
+        is_advancing_correct = bool(match.winner_id and bet.winner_pred_id == match.winner_id)
+        real_is_draw = home == away
         return {
-            "points": points,
+            "points": scoring_config.knockout_draw_prediction_points if real_is_draw else 0,
             "exact_score": is_exact_score,
             "advancing_correct": is_advancing_correct,
-            "advancing_goals_correct": is_advancing_goals,
-            "diff_correct": is_diff_correct,
-            "eliminated_goals_correct": is_eliminated_goals,
+            "advancing_goals_correct": False,
+            "diff_correct": False,
+            "eliminated_goals_correct": False,
         }
+
+    # Scoring uses the regulation-time score: a 1-1 that goes to penalties is
+    # still a DRAW for the match-winner check, even if one team advances.
+    actual_direction = _winner_from_score(home, away)
+
+    guess_direction = _winner_from_score(guess_home, guess_away)
+    is_winner_correct = actual_direction == guess_direction
+
+    if actual_direction == "HOME":
+        raw_winner_goals = guess_home == home
+        raw_loser_goals = guess_away == away
+    elif actual_direction == "AWAY":
+        raw_winner_goals = guess_away == away
+        raw_loser_goals = guess_home == home
+    else:
+        raw_winner_goals = False
+        raw_loser_goals = False
+
+    is_winner_goals = is_winner_correct and raw_winner_goals
+    is_eliminated_goals = is_winner_correct and raw_loser_goals
+    is_diff_correct = is_winner_correct and (guess_home - guess_away) == (home - away)
+
+    if is_exact_score and is_winner_correct:
+        points = scoring_config.knockout_exact_and_advancing
+    elif is_winner_correct and is_winner_goals:
+        points = scoring_config.knockout_advancing_and_winner_goals
+    elif is_winner_correct and is_diff_correct:
+        points = scoring_config.knockout_advancing_and_diff
+    elif is_winner_correct and is_eliminated_goals:
+        points = scoring_config.knockout_advancing_and_loser_goals
+    elif is_winner_correct:
+        points = scoring_config.knockout_advancing_only
+    else:
+        points = 0
+
+    return {
+        "points": points,
+        "exact_score": is_exact_score,
+        "advancing_correct": is_winner_correct,
+        "advancing_goals_correct": is_winner_goals,
+        "diff_correct": is_diff_correct,
+        "eliminated_goals_correct": is_eliminated_goals,
+    }

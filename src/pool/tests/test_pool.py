@@ -1205,6 +1205,7 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
             knockout_advancing_and_loser_goals=17,
             knockout_advancing_only=15,
             knockout_exact_wrong_advancing=10,
+            knockout_draw_prediction_points=20,
         )
         defaults.update(overrides)
         return SimpleNamespace(**defaults)
@@ -1387,69 +1388,81 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
         self.assertEqual(result["points"], 0)
         self.assertFalse(result["advancing_correct"])
 
-    def test_knockout_exact_wrong_advancing(self):
-        # Tipo 2: exact score but predicted wrong team — only possible with team-specific advancing
+    def test_knockout_non_draw_exact_score(self):
+        # Non-empate exact placar always implies winner correct in positional scoring.
+        # Tipo 1 and Tipo 2 behave identically; winner_pred is ignored.
         bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1, winner_pred_id=2)
         result = calculate_bet_points(bet, self._make_scoring_config(), pool_type=POOL_TYPE_2)
-        self.assertEqual(result["points"], 10)
-        self.assertTrue(result["exact_score"])
-        self.assertFalse(result["advancing_correct"])
-
-    def test_knockout_draw_exact_advancing_correct(self):
-        bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1, winner_pred_id=1)
-        result = calculate_bet_points(bet, self._make_scoring_config())
         self.assertEqual(result["points"], 35)
         self.assertTrue(result["exact_score"])
         self.assertTrue(result["advancing_correct"])
 
-    def test_knockout_draw_exact_advancing_wrong(self):
-        # Tipo 2: draw with exact score but predicted wrong team (via extra time)
+    def test_knockout_draw_prediction_flat_points_real_draw(self):
+        # Palpite empate (1-1) com jogo real empate decidido por penaltis:
+        # 20 pts fixos, independente de placar bater.
+        bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 20)
+        self.assertTrue(result["exact_score"])
+        self.assertTrue(result["advancing_correct"])
+
+    def test_knockout_draw_prediction_flat_points_wrong_pen_pick(self):
+        # Palpite empate (1-1), jogo real 1-1 HOME via penaltis, winner_pred = AWAY.
+        # 20 pts fixos, mas advancing_correct = False (errou o time dos penaltis).
         bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1, winner_pred_id=2)
-        result = calculate_bet_points(bet, self._make_scoring_config(), pool_type=POOL_TYPE_2)
-        self.assertEqual(result["points"], 10)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 20)
         self.assertTrue(result["exact_score"])
         self.assertFalse(result["advancing_correct"])
 
-    def test_knockout_draw_advancing_and_diff(self):
-        bet = self._make_knockout_bet(2, 2, 1, 1, winner_real_id=1, winner_pred_id=1)
+    def test_knockout_draw_prediction_real_non_draw_zero(self):
+        # Palpite empate (2-2), jogo real HOME ganha 1-0 (sem empate no regulamentar):
+        # 0 pts. Pontos fixos do palpite-empate so pagam quando o real tambem empata.
+        bet = self._make_knockout_bet(2, 2, 1, 0, winner_real_id=1, winner_pred_id=1)
         result = calculate_bet_points(bet, self._make_scoring_config())
-        self.assertEqual(result["points"], 20)
-        self.assertTrue(result["advancing_correct"])
-        self.assertTrue(result["diff_correct"])
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["exact_score"])
 
-    def test_knockout_draw_advancing_and_winner_goals_wrong(self):
-        # Tipo 2: predicted 2-1 but real is 1-1 decided by extra time; team identity match gives advancing bonus
+    def test_knockout_non_draw_bet_real_draw_pen_decided(self):
+        # Palpite 2-1 (HOME wins), jogo real 1-1 com HOME avancando por penaltis.
+        # Scoring considera o placar do tempo regulamentar: real eh empate,
+        # palpite nao-empate erra o resultado -> 0 pts.
         bet = self._make_knockout_bet(2, 1, 1, 1, winner_real_id=1, winner_pred_id=1)
-        result = calculate_bet_points(bet, self._make_scoring_config(), pool_type=POOL_TYPE_2)
-        self.assertEqual(result["points"], 17)
-        self.assertTrue(result["advancing_correct"])
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["advancing_correct"])
         self.assertFalse(result["advancing_goals_correct"])
         self.assertFalse(result["diff_correct"])
-        self.assertTrue(result["eliminated_goals_correct"])
+        self.assertFalse(result["eliminated_goals_correct"])
 
-    def test_knockout_draw_wrong_advancing(self):
+    def test_knockout_non_draw_wrong_winner_real_draw(self):
+        # Palpite 0-2 (AWAY wins por posicao), jogo real 1-1 HOME por penaltis.
+        # Vencedor posicional errado -> 0 pts.
         bet = self._make_knockout_bet(0, 2, 1, 1, winner_real_id=1, winner_pred_id=2)
         result = calculate_bet_points(bet, self._make_scoring_config())
         self.assertEqual(result["points"], 0)
         self.assertFalse(result["advancing_correct"])
 
-    def test_tipo1_penalty_decision_correct_positional_pick_scores(self):
+    def test_tipo1_penalty_decision_non_draw_pick_real_draw_zero(self):
         # Real match 1-1 in regulation, HOME advances on penalties. User predicts
-        # 2-1 (HOME wins) — positionally correct, even though score is wrong.
+        # 2-1 (HOME wins). Regulation result is a draw, so non-draw guess -> 0 pts.
+        # Team-advancement bonus (Tipo 1) is awarded separately, not here.
         bet = self._make_knockout_bet(2, 1, 1, 1, winner_real_id=1, winner_pred_id=1)
         result = calculate_bet_points(bet, self._make_scoring_config())
-        self.assertTrue(result["advancing_correct"])
-        self.assertNotEqual(result["points"], 0)
-
-    def test_tipo1_penalty_decision_draw_guess_wrong_winner_pred(self):
-        # Real match 1-1, HOME advances on penalties. User hedges with 1-1 but
-        # picks AWAY team via winner_pred — wrong positional pick, should not get
-        # the full exact_and_advancing tier.
-        bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1, winner_pred_id=2)
-        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 0)
         self.assertFalse(result["advancing_correct"])
-        self.assertTrue(result["exact_score"])
-        self.assertEqual(result["points"], 10)
+
+    def test_knockout_winner_pred_ignored_in_non_draw(self):
+        # Em palpite nao-empate, winner_pred eh irrelevante: so importa
+        # placar + posicao. Pool type tambem nao afeta.
+        bet_t1 = self._make_knockout_bet(2, 0, 2, 1, winner_real_id=1, winner_pred_id=2)
+        bet_t2 = self._make_knockout_bet(2, 0, 2, 1, winner_real_id=1, winner_pred_id=2)
+        r1 = calculate_bet_points(bet_t1, self._make_scoring_config())
+        r2 = calculate_bet_points(bet_t2, self._make_scoring_config(), pool_type=POOL_TYPE_2)
+        self.assertEqual(r1["points"], 25)
+        self.assertEqual(r2["points"], 25)
+        self.assertTrue(r1["advancing_correct"])
+        self.assertTrue(r2["advancing_correct"])
 
 
 class NormalizeStageKeyTest(SimpleTestCase):
