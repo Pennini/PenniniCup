@@ -289,9 +289,18 @@ def _build_profile_context(request, *, profile_user, is_owner):
     scoring_config = selected_pool.get_scoring_config() if selected_pool else None
     official_result = selected_pool.get_official_results() if selected_pool else None
     knockout_by_phase = _build_knockout_by_phase(predictions_context.get("knockout_rows", []), scoring_config)
+    all_group_matches_finished = (
+        selected_pool is not None
+        and not Match.objects.filter(
+            season=selected_pool.season,
+            group__isnull=False,
+            home_score__isnull=True,
+        ).exists()
+        and Match.objects.filter(season=selected_pool.season, group__isnull=False).exists()
+    )
     group_audit = (
         _build_group_audit(selected_participation, selected_pool.season, scoring_config)
-        if (selected_participation and selected_pool and is_public_predictions_visible)
+        if (selected_participation and selected_pool and is_public_predictions_visible and all_group_matches_finished)
         else []
     )
 
