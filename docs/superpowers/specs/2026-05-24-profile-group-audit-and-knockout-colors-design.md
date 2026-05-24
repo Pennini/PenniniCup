@@ -35,30 +35,71 @@ Two new structures are added to the profile context:
 - `predicted_winners` (existing field on each phase dict) becomes a list of `{team, advanced, decided}` instead of a list of `Team`. `real_winners` keeps its current shape (list of `Team`).
 - `group_audit` (new top-level key): `list[{group, rows[3], group_points, has_real}]`.
 
-## Scoring change (top 2 → top 3)
+## Scoring change (include qualifying 3rd places only)
+
+**Key constraint:** Only the 8 best 3rd-placed teams advance. A predicted 3rd-place team scores **only if** that team actually qualified to the knockout. The set of real 3rd-place qualifiers is derived from the R32 match roster (FIFA fills `home_team`/`away_team` on R32 matches once the bracket is drawn). The `AssignThird` table is the projection-side analog (used by `select_projected_best_thirds`) — not consulted for real qualifiers.
+
+### Helper — real qualifier set
+
+New helper in `src/pool/services/ranking.py` (private, near `_calculate_group_qualifier_bonus`):
+
+```python
+def _real_qualifier_position_map(season):
+    """Return ({group_id: {position: team_id}}, r32_drawn).
+
+    The map always includes positions 1 and 2 from Standings. Position 3 is
+    included for teams whose team_id appears as home_team or away_team in any
+    R32 match (the 8 best thirds that FIFA placed in the bracket). When no R32
+    match has teams assigned yet, no position-3 entries are added and
+    r32_drawn is False — callers must treat predicted 3rd-place slots as
+    "still pending" rather than "wrong".
+    """
+    from src.football.models import Match, Standing
+    from src.pool.services.rules import normalize_stage_key
+
+    real = {}
+    for s in Standing.objects.filter(season=season, position__lte=2).values("group_id", "position", "team_id"):
+        real.setdefault(s["group_id"], {})[s["position"]] = s["team_id"]
+
+    r32_team_ids = set()
+    for m in Match.objects.filter(season=season).select_related("stage"):
+        if normalize_stage_key(m.stage) != "R32":
+            continue
+        if m.home_team_id:
+            r32_team_ids.add(m.home_team_id)
+        if m.away_team_id:
+            r32_team_ids.add(m.away_team_id)
+
+    r32_drawn = bool(r32_team_ids)
+    if r32_drawn:
+        for s in Standing.objects.filter(season=season, position=3).values("group_id", "team_id"):
+            if s["team_id"] in r32_team_ids:
+                real.setdefault(s["group_id"], {})[3] = s["team_id"]
+
+    return real, r32_drawn
+```
+
+Callers unpack the tuple. `_calculate_group_qualifier_bonus` ignores `r32_drawn` because the map alone is sufficient (no map entry for a 3rd-place slot → predicted 3rd cannot match any real qualifier → 0 pts). `_build_group_audit` uses `r32_drawn` to keep 3rd-place rows in a neutral "pending" state instead of marking them wrong before the draw.
 
 ### Code change
 
 `src/pool/services/ranking.py`, `_calculate_group_qualifier_bonus`:
 
 ```python
-real_qualifiers_by_group = {}
-for s in Standing.objects.filter(season=season, position__lte=3).values("group_id", "position", "team_id"):
-    real_qualifiers_by_group.setdefault(s["group_id"], {})[s["position"]] = s["team_id"]
-
+real_qualifiers_by_group, _ = _real_qualifier_position_map(season)
 if not real_qualifiers_by_group:
     return 0
 
-proj_top3 = {}
+proj_positions_by_group = {}
 for s in participant.projected_standings.filter(position__lte=3).values("group_id", "position", "team_id"):
-    proj_top3.setdefault(s["group_id"], {})[s["position"]] = s["team_id"]
+    proj_positions_by_group.setdefault(s["group_id"], {})[s["position"]] = s["team_id"]
 
 total = 0
 for group_id, real_positions in real_qualifiers_by_group.items():
-    proj_positions = proj_top3.get(group_id, {})
-    real_qualifiers = set(real_positions.values())
+    proj_positions = proj_positions_by_group.get(group_id, {})
+    real_qualifier_ids = set(real_positions.values())
     for position, team_id in proj_positions.items():
-        if team_id in real_qualifiers:
+        if team_id in real_qualifier_ids:
             total += scoring_config.group_qualifier_points
             if real_positions.get(position) == team_id:
                 total += scoring_config.group_qualifier_position_bonus
@@ -66,15 +107,29 @@ for group_id, real_positions in real_qualifiers_by_group.items():
 return total
 ```
 
-Net diff: `position__lte=2` → `position__lte=3` in both queries; rename local `real_top2`/`proj_top2` → `real_qualifiers_by_group`/`proj_top3` for clarity. Loop body unchanged.
+Concrete scoring semantics:
+
+| Predicted slot | Real outcome of that predicted team | Points                              |
+| -------------- | ----------------------------------- | ----------------------------------- |
+| 1st            | finished 1st                        | `qualifier_points + position_bonus` |
+| 1st            | finished 2nd                        | `qualifier_points`                  |
+| 1st            | finished 3rd, advanced              | `qualifier_points`                  |
+| 1st            | finished 3rd, did not advance       | 0                                   |
+| 1st            | finished 4th                        | 0                                   |
+| 2nd            | finished 2nd                        | `qualifier_points + position_bonus` |
+| 2nd            | finished 1st or advanced as 3rd     | `qualifier_points`                  |
+| 3rd            | finished 3rd, advanced              | `qualifier_points + position_bonus` |
+| 3rd            | finished 1st or 2nd                 | `qualifier_points`                  |
+| 3rd            | finished 3rd, did not advance       | 0                                   |
+| 3rd            | finished 4th                        | 0                                   |
 
 ### Rules page update
 
 `src/penninicup/templates/penninicup/rules.html`:
 
-- Line 165: "Para cada time que você acertou como classificado da fase de grupos" → "...como classificado (1º, 2º ou 3º) da fase de grupos".
+- Line 165: "Para cada time que você acertou como classificado da fase de grupos" → "...como classificado (1º, 2º ou um dos 8 melhores 3º) da fase de grupos".
 - Line 171: "+ posição exata (1º ou 2º)" → "+ posição exata (1º, 2º ou 3º)".
-- Lines 178-179 examples: keep, but add a third example covering a 3rd-place hit.
+- Lines 178-179 examples: keep, and add a 3rd-place example noting only the 8 best 3rds count.
 
 ### Backfill
 
@@ -128,9 +183,12 @@ for r in rows:
 
 New function in `src/penninicup/views.py`, called only when `selected_pool`, `can_view_predictions`, and `selected_participant` are all truthy:
 
+**`real_team` semantics:** the audit panel still shows the actual finisher at each Standings position (1st, 2nd, 3rd) regardless of advancement, so the user sees the full real top 3 in the right column. Whether the 3rd-place team actually qualified only affects `qualified` / `points` for the predicted side. To distinguish "3rd place that advanced" visually, the row gets `third_advanced` (only meaningful for `position==3`) so the real column can show a small "classificado" badge or a strike-through for the unlucky 3rd.
+
 ```python
 def _build_group_audit(participant, season, scoring_config):
     from src.football.models import Group, Standing
+    from src.pool.services.ranking import _real_qualifier_position_map
 
     real_rows = (
         Standing.objects.filter(season=season, position__lte=3)
@@ -145,10 +203,12 @@ def _build_group_audit(participant, season, scoring_config):
     )
 
     real_by_group = defaultdict(dict)  # {group_id: {position: Standing}}
-    real_qualifiers_by_group = defaultdict(set)  # {group_id: {team_id, ...}}
     for s in real_rows:
         real_by_group[s.group_id][s.position] = s
-        real_qualifiers_by_group[s.group_id].add(s.team_id)
+
+    # Single source of truth for who actually qualified — same helper as scoring.
+    real_qualifier_positions, r32_drawn = _real_qualifier_position_map(season)
+    real_qualifier_ids_by_group = {gid: set(positions.values()) for gid, positions in real_qualifier_positions.items()}
 
     proj_by_group = defaultdict(dict)  # {group_id: {position: ProjectedStanding}}
     for p in proj_rows:
@@ -159,7 +219,7 @@ def _build_group_audit(participant, season, scoring_config):
         real_positions = real_by_group.get(group.id, {})
         proj_positions = proj_by_group.get(group.id, {})
         has_real = bool(real_positions)
-        real_qualifier_ids = real_qualifiers_by_group.get(group.id, set())
+        real_qualifier_ids = real_qualifier_ids_by_group.get(group.id, set())
 
         rows = []
         group_points = 0
@@ -169,8 +229,11 @@ def _build_group_audit(participant, season, scoring_config):
             predicted_team = proj.team if proj else None
             real_team = real.team if real else None
 
-            qualified = bool(has_real and predicted_team and predicted_team.id in real_qualifier_ids)
+            # Position 3 is "settled" only after R32 draw is published.
+            settled = has_real if position <= 2 else r32_drawn
+            qualified = bool(settled and predicted_team and predicted_team.id in real_qualifier_ids)
             position_match = bool(qualified and real_team and predicted_team.id == real_team.id)
+            third_advanced = bool(position == 3 and real_team and real_team.id in real_qualifier_ids)
 
             points = 0
             if qualified:
@@ -187,6 +250,8 @@ def _build_group_audit(participant, season, scoring_config):
                     "qualified": qualified,
                     "position_match": position_match,
                     "points": points,
+                    "settled": settled,
+                    "third_advanced": third_advanced,
                 }
             )
 
@@ -240,7 +305,7 @@ The current `qualifier_bonus_points` article (small green strip) is replaced wit
                     <p class="text-[10px] uppercase tracking-wide text-neutral-500">Meu palpite</p>
                     {% for row in entry.rows %}
                     <div class="flex items-center gap-1.5 rounded border px-1.5 py-0.5
-                        {% if not entry.has_real or not row.predicted_team %}border-neutral-700 bg-neutral-800/40 text-neutral-300
+                        {% if not row.settled or not row.predicted_team %}border-neutral-700 bg-neutral-800/40 text-neutral-300
                         {% elif row.qualified %}border-green-500/30 bg-green-500/10 text-green-300
                         {% else %}border-red-500/30 bg-red-500/10 text-red-300{% endif %}
                         {% if row.position_match %}ring-1 ring-emerald-400/60{% endif %}">
@@ -262,7 +327,8 @@ The current `qualifier_bonus_points` article (small green strip) is replaced wit
                         <span class="text-[10px] font-bold opacity-70 shrink-0">{{ row.position }}º</span>
                         {% if row.real_team %}
                         {% if row.real_team.flag_image_url %}<span class="inline-flex h-3.5 w-3.5 overflow-hidden rounded-full ring-1 ring-neutral-700 bg-neutral-900 shrink-0"><img src="{{ row.real_team.flag_image_url }}" alt="" class="h-full w-full object-cover" /></span>{% endif %}
-                        <span class="truncate">{{ row.real_team.name }}</span>
+                        <span class="truncate {% if row.position == 3 and row.settled and not row.third_advanced %}line-through opacity-60{% endif %}">{{ row.real_team.name }}</span>
+                        {% if row.position == 3 and row.settled and row.third_advanced %}<span class="ml-auto text-[9px] uppercase tracking-wide text-emerald-300 shrink-0">classif.</span>{% endif %}
                         {% else %}
                         <span class="text-neutral-600 italic">pendente</span>
                         {% endif %}
@@ -283,41 +349,54 @@ Mobile: `sm:grid-cols-2` collapses to single column; each group card still has a
 
 ## Edge cases
 
-| Case                                                            | Behavior                                                                            |
-| --------------------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| No `Standing` rows yet for a group                              | `has_real=False`, predicted shown in neutral grey, real column shows "pendente"     |
-| Participant has no `projected_standings` for group (no bet)     | `predicted_team=None`, row shows "—"                                                |
-| `selected_pool is None` or `can_view_predictions=False`         | `group_audit` not added to context                                                  |
-| Pool has no `scoring_config`                                    | `_build_group_audit` returns `[]` (skip the panel)                                  |
-| `Standing` has only 2 positions filled                          | 3rd row neutral, 1st/2nd colored as usual                                           |
-| Predicted team in 3rd slot but real top-3 contains it in 1st    | `qualified=True`, `position_match=False` → green, no ring, `+qualifier_points` only |
-| Predicted team appears multiple times in proj (data corruption) | Out of scope — relies on existing uniqueness constraint on `projected_standings`    |
+| Case                                                            | Behavior                                                                                                                                                                                       |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No `Standing` rows yet for a group                              | `has_real=False`, predicted shown in neutral grey, real column shows "pendente"                                                                                                                |
+| Participant has no `projected_standings` for group (no bet)     | `predicted_team=None`, row shows "—"                                                                                                                                                           |
+| `selected_pool is None` or `can_view_predictions=False`         | `group_audit` not added to context                                                                                                                                                             |
+| Pool has no `scoring_config`                                    | `_build_group_audit` returns `[]` (skip the panel)                                                                                                                                             |
+| `Standing` has only 2 positions filled                          | 3rd row neutral, 1st/2nd colored as usual                                                                                                                                                      |
+| Predicted team in 3rd slot but real top-3 contains it in 1st    | `qualified=True`, `position_match=False` → green, no ring, `+qualifier_points` only                                                                                                            |
+| Predicted team appears multiple times in proj (data corruption) | Out of scope — relies on existing uniqueness constraint on `projected_standings`                                                                                                               |
+| R32 not yet drawn (FIFA hasn't placed teams in R32 matches)     | `r32_drawn=False`. All 3rd-place predicted rows stay neutral grey; real-column 3rd shows team but no "classif." badge and no strike-through. Predicted 3rd never marked wrong before the draw. |
+| R32 drawn, real 3rd-place team did NOT advance                  | Real column shows team with strike-through + dim opacity. Predicted 3rd of same team → red.                                                                                                    |
+| R32 drawn, real 3rd-place team DID advance                      | Real column shows "classif." badge. Predicted 3rd matching team → green + ring (if same position).                                                                                             |
 
 ## Testing
 
 `src/pool/tests.py` (extend existing file or add `test_qualifier_bonus_top3.py` next to it):
 
+**`_real_qualifier_position_map(season)`:**
+
+1. Returns (map, True) with positions 1-3 for groups whose 3rd-place team is in an R32 match.
+1. Returns (map, True) with only positions 1-2 for groups whose 3rd-place team is NOT in any R32 match (an unlucky 3rd).
+1. Returns (map, False) with only positions 1-2 for all groups when no R32 match has any team assigned (R32 not drawn yet).
+1. Empty `Standing` → returns ({}, False).
+
 **Scoring rule (`_calculate_group_qualifier_bonus`):**
 
-1. Real qualifiers = top 3. Predicted top 3 matches exactly → `3 * (qualifier_points + position_bonus)`.
-1. Predicted 3rd-place team that finishes 3rd in real → `qualifier_points + position_bonus`.
-1. Predicted 3rd-place team that finishes 1st in real → `qualifier_points` (no position match).
-1. Predicted 3rd-place team that finishes 4th in real → `0`.
-1. Predicted 1st-place team that finishes 3rd in real → `qualifier_points` (no position match).
-1. Empty `Standing` → returns 0 (no change in behavior).
+5. Predicted 3rd-place team that finishes 3rd AND advanced → `qualifier_points + position_bonus`.
+1. Predicted 3rd-place team that finishes 3rd but did NOT advance → `0`.
+1. Predicted 3rd-place team that finishes 1st in real (always advanced) → `qualifier_points` only.
+1. Predicted 3rd-place team that finishes 4th → `0`.
+1. Predicted 1st-place team that finishes 3rd AND advanced → `qualifier_points` only.
+1. Predicted 1st-place team that finishes 3rd and did NOT advance → `0`.
+1. R32 not drawn, predicted 3rd → `0` regardless of Standing position (cannot score until draw is known).
 
 **Audit builder (`_build_group_audit`):**
-7\. Returns one entry per group ordered by name.
-8\. `group_points` for each entry equals what `_calculate_group_qualifier_bonus` would award for that group alone.
-9\. `has_real=False` when group has no `Standing` rows.
-10\. Sum of `group_points` across all audit entries equals total `qualifier_bonus_points` after `recalculate_participant_scores`. (Integration test, single participant + fixture.)
+12\. Returns one entry per group ordered by name.
+13\. `group_points` for each entry equals what `_calculate_group_qualifier_bonus` would award for that group alone (invariant).
+14\. `has_real=False` when group has no `Standing` rows.
+15\. R32 not drawn → all `rows[2].settled` (the 3rd-place row) is `False`; 3rd-place predicted never counts as wrong.
+16\. R32 drawn, unlucky 3rd team → corresponding `rows[2].third_advanced=False`, predicted matching it → `qualified=False`, `points=0`.
+17\. Sum of `group_points` across all audit entries equals total `qualifier_bonus_points` after `recalculate_participant_scores`. (Integration test, single participant + fixture.)
 
 No template snapshot tests.
 
 ## Rollout order
 
-1. Land scoring change (`ranking.py` + tests 1-6).
-1. Run backfill: `recalculate_participant_scores` over every `PoolParticipant`.
+1. Land scoring change (`ranking.py` + `_real_qualifier_position_map` + tests 1-11).
+1. Run backfill: `recalculate_participant_scores` over every `PoolParticipant`. Existing 3rd-place predictions retroactively earn points only if the team is among the 8 best thirds in the actual R32 bracket.
 1. Land view change (`predicted_winners` enrichment + `_build_group_audit`) and template change in one PR.
 1. Update `rules.html` wording in the same PR as step 3.
 
