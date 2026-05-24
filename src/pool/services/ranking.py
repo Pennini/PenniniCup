@@ -245,10 +245,57 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
     )
 
 
+def _match_winner_loser(match):
+    """Returns (winner, loser) for a completed knockout match, or (None, None)."""
+    if match.winner_id and match.home_team and match.away_team:
+        loser = match.away_team if match.winner_id == match.home_team_id else match.home_team
+        return match.winner, loser
+    if match.home_score is not None and match.away_score is not None and match.home_team and match.away_team:
+        if match.home_score > match.away_score:
+            return match.home_team, match.away_team
+        if match.away_score > match.home_score:
+            return match.away_team, match.home_team
+    return None, None
+
+
+def _sync_podium_from_matches(official_result):
+    """Auto-fill champion/runner_up/third_place from the final and 3rd-place matches."""
+    from src.football.models import Match
+
+    season = official_result.pool.season
+    update_fields = []
+
+    final = (
+        Match.objects.filter(season=season, stage__order=7).select_related("home_team", "away_team", "winner").first()
+    )
+    third_match = (
+        Match.objects.filter(season=season, stage__order=6).select_related("home_team", "away_team", "winner").first()
+    )
+
+    if final:
+        champion, runner_up = _match_winner_loser(final)
+        if champion and official_result.champion_id != champion.id:
+            official_result.champion = champion
+            update_fields.append("champion")
+        if runner_up and official_result.runner_up_id != runner_up.id:
+            official_result.runner_up = runner_up
+            update_fields.append("runner_up")
+
+    if third_match:
+        third, _ = _match_winner_loser(third_match)
+        if third and official_result.third_place_id != third.id:
+            official_result.third_place = third
+            update_fields.append("third_place")
+
+    if update_fields:
+        official_result.save(update_fields=update_fields)
+
+
 @transaction.atomic
 def recalculate_pool_scores(pool):
     scoring_config = pool.get_scoring_config()
     official_result = pool.get_official_results()
+    _sync_podium_from_matches(official_result)
     participants = PoolParticipant.objects.filter(pool=pool, is_active=True).all()
     for participant in participants:
         recalculate_participant_scores(

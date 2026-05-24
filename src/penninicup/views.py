@@ -287,6 +287,7 @@ def _build_profile_context(request, *, profile_user, is_owner):
             predictions_context["match_rows"] = filtered_group + filtered_knockout
 
     scoring_config = selected_pool.get_scoring_config() if selected_pool else None
+    official_result = selected_pool.get_official_results() if selected_pool else None
     knockout_by_phase = _build_knockout_by_phase(predictions_context.get("knockout_rows", []), scoring_config)
     group_audit = (
         _build_group_audit(selected_participation, selected_pool.season, scoring_config)
@@ -308,6 +309,7 @@ def _build_profile_context(request, *, profile_user, is_owner):
         "can_view_predictions": is_public_predictions_visible,
         "show_locked_only": show_locked_only,
         "scoring_config": scoring_config,
+        "official_result": official_result,
         "knockout_by_phase": knockout_by_phase,
         "group_audit": group_audit,
         **predictions_context,

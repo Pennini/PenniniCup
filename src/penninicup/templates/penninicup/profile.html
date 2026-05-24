@@ -177,7 +177,20 @@
                 <p class="text-xs uppercase tracking-wide text-neutral-400">Bônus da Copa</p>
                 <h3 class="text-lg font-semibold mt-1">Artilheiro escolhido</h3>
                 {% if selected_participant and selected_participant.top_scorer_pred %}
-                <p class="mt-2 text-sm text-neutral-200">{{ selected_participant.top_scorer_pred.name }} - {{ selected_participant.top_scorer_pred.team.name }}</p>
+                <p class="mt-2 text-sm text-neutral-200">{{ selected_participant.top_scorer_pred.name }} — {{ selected_participant.top_scorer_pred.team.name }}</p>
+                {% if selected_participant.top_scorer_hit %}
+                <p class="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-green-500/30 bg-green-500/10 px-2.5 py-1 text-xs font-semibold text-green-300">
+                    <i data-lucide="check-circle" class="h-3.5 w-3.5"></i>
+                    Acertou! +{{ scoring_config.bonus_top_scorer_points }} pts
+                </p>
+                {% elif official_result and official_result.top_scorer_id or official_result and official_result.top_scorers.exists %}
+                <p class="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-red-500/30 bg-red-500/10 px-2.5 py-1 text-xs font-semibold text-red-300">
+                    <i data-lucide="x-circle" class="h-3.5 w-3.5"></i>
+                    Não acertou
+                </p>
+                {% else %}
+                <p class="mt-1.5 text-xs text-neutral-500">Resultado pendente</p>
+                {% endif %}
                 {% else %}
                 <p class="mt-2 text-sm text-neutral-400">Nenhum artilheiro escolhido para este bolão.</p>
                 {% endif %}
