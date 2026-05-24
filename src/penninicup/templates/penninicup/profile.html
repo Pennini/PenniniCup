@@ -346,10 +346,13 @@
                         <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-1.5">Palpitados</span>
                         {% if phase.predicted_winners %}
                         <div class="flex flex-wrap gap-2">
-                            {% for team in phase.predicted_winners %}
-                            <span class="inline-flex items-center gap-1 rounded-full border border-orange-500/20 bg-orange-500/5 px-2 py-0.5 text-xs text-orange-300">
-                                {% if team.flag_image_url %}<span class="inline-flex h-3.5 w-3.5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0"><img src="{{ team.flag_image_url }}" alt="" class="h-full w-full object-cover" /></span>{% endif %}
-                                {{ team.name }}
+                            {% for item in phase.predicted_winners %}
+                            <span class="inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs
+                                {% if not item.decided %}border-orange-500/20 bg-orange-500/5 text-orange-300
+                                {% elif item.advanced %}border-green-500/30 bg-green-500/10 text-green-300
+                                {% else %}border-red-500/30 bg-red-500/10 text-red-300{% endif %}">
+                                {% if item.team.flag_image_url %}<span class="inline-flex h-3.5 w-3.5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0"><img src="{{ item.team.flag_image_url }}" alt="" class="h-full w-full object-cover" /></span>{% endif %}
+                                {{ item.team.name }}
                             </span>
                             {% endfor %}
                         </div>
