@@ -258,14 +258,68 @@
             {% endfor %}
             </div>
 
-            {% if selected_participant and selected_participant.qualifier_bonus_points %}
-            <article class="rounded-xl border border-emerald-700/30 bg-emerald-900/10 p-4">
+            {% if group_audit %}
+            <article class="rounded-xl border border-emerald-700/30 bg-emerald-900/10 p-4 space-y-4">
                 <div class="flex items-center justify-between gap-3">
                     <div>
                         <p class="text-xs uppercase tracking-wide text-emerald-400">Bônus de Classificados de Grupos</p>
-                        <p class="text-sm text-neutral-300 mt-0.5">Pontos por times acertados na classificação da fase de grupos</p>
+                        <p class="text-sm text-neutral-300 mt-0.5">Pontos por times acertados na classificação (1º, 2º, 3º) de cada grupo</p>
                     </div>
+                    {% if selected_participant.qualifier_bonus_points %}
                     <span class="text-xl font-bold text-emerald-300 shrink-0">+{{ selected_participant.qualifier_bonus_points }} pts</span>
+                    {% endif %}
+                </div>
+
+                <div class="grid gap-3 sm:grid-cols-2">
+                    {% for entry in group_audit %}
+                    <div class="rounded-lg border border-neutral-700/60 bg-neutral-900/60 p-3 space-y-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-sm font-semibold text-neutral-100">Grupo {{ entry.group.name }}</span>
+                            {% if entry.group_points %}
+                            <span class="text-xs font-semibold text-emerald-300">+{{ entry.group_points }} pts</span>
+                            {% elif entry.has_real %}
+                            <span class="text-xs text-neutral-500">0 pts</span>
+                            {% endif %}
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2 text-xs">
+                            <div class="space-y-1">
+                                <p class="text-[10px] uppercase tracking-wide text-neutral-500">Meu palpite</p>
+                                {% for row in entry.rows %}
+                                <div class="flex items-center gap-1.5 rounded border px-1.5 py-0.5
+                                    {% if not row.settled or not row.predicted_team %}border-neutral-700 bg-neutral-800/40 text-neutral-300
+                                    {% elif row.qualified %}border-green-500/30 bg-green-500/10 text-green-300
+                                    {% else %}border-red-500/30 bg-red-500/10 text-red-300{% endif %}
+                                    {% if row.position_match %}ring-1 ring-emerald-400/60{% endif %}">
+                                    <span class="text-[10px] font-bold opacity-70 shrink-0">{{ row.position }}º</span>
+                                    {% if row.predicted_team %}
+                                    {% if row.predicted_team.flag_image_url %}<span class="inline-flex h-3.5 w-3.5 overflow-hidden rounded-full ring-1 ring-neutral-700 bg-neutral-900 shrink-0"><img src="{{ row.predicted_team.flag_image_url }}" alt="" class="h-full w-full object-cover" /></span>{% endif %}
+                                    <span class="truncate">{{ row.predicted_team.name }}</span>
+                                    {% if row.points %}<span class="ml-auto text-[10px] font-semibold text-emerald-300 shrink-0">+{{ row.points }}</span>{% endif %}
+                                    {% else %}
+                                    <span class="text-neutral-600 italic">—</span>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div class="space-y-1">
+                                <p class="text-[10px] uppercase tracking-wide text-neutral-500">Real</p>
+                                {% for row in entry.rows %}
+                                <div class="flex items-center gap-1.5 rounded border border-neutral-700 bg-neutral-800/40 px-1.5 py-0.5 text-neutral-200">
+                                    <span class="text-[10px] font-bold opacity-70 shrink-0">{{ row.position }}º</span>
+                                    {% if row.real_team %}
+                                    {% if row.real_team.flag_image_url %}<span class="inline-flex h-3.5 w-3.5 overflow-hidden rounded-full ring-1 ring-neutral-700 bg-neutral-900 shrink-0"><img src="{{ row.real_team.flag_image_url }}" alt="" class="h-full w-full object-cover" /></span>{% endif %}
+                                    <span class="truncate {% if row.position == 3 and row.settled and not row.third_advanced %}line-through opacity-60{% endif %}">{{ row.real_team.name }}</span>
+                                    {% if row.position == 3 and row.settled and row.third_advanced %}<span class="ml-auto text-[9px] uppercase tracking-wide text-emerald-300 shrink-0">classif.</span>{% endif %}
+                                    {% else %}
+                                    <span class="text-neutral-600 italic">pendente</span>
+                                    {% endif %}
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
                 </div>
             </article>
             {% endif %}
