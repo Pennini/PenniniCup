@@ -75,12 +75,11 @@ def _build_knockout_by_phase(knockout_rows, scoring_config):
         rows = list(rows)
         real_winners = [r["match"].winner for r in rows if r["match"].winner]
         real_winners_ids = {t.id for t in real_winners}
-        decided = bool(real_winners_ids)
         predicted = [
             {
                 "team": r["bet"].winner_pred,
                 "advanced": r["bet"].winner_pred_id in real_winners_ids,
-                "decided": decided,
+                "decided": r["match"].winner is not None,
             }
             for r in rows
             if r.get("bet") and r["bet"] and r["bet"].winner_pred
@@ -280,15 +279,9 @@ def _build_profile_context(request, *, profile_user, is_owner):
             participant=selected_participation,
             ensure_bets=False,
         )
-        if show_locked_only and selected_pool is not None:
-            now = timezone.now()
+        if show_locked_only:
             filtered_group = [r for r in predictions_context["group_rows"] if r["locked"]]
-            if selected_pool.pool_type == POOL_TYPE_2:
-                filtered_knockout = [
-                    r for r in predictions_context["knockout_rows"] if r["match"].match_date_brasilia <= now
-                ]
-            else:
-                filtered_knockout = [r for r in predictions_context["knockout_rows"] if r["locked"]]
+            filtered_knockout = [r for r in predictions_context["knockout_rows"] if r["locked"]]
             predictions_context["group_rows"] = filtered_group
             predictions_context["knockout_rows"] = filtered_knockout
             predictions_context["match_rows"] = filtered_group + filtered_knockout

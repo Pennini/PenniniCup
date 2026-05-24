@@ -5,7 +5,11 @@ from django.utils import timezone
 from src.football.models import Competition, Group, Match, Season, Stage, Standing, Team
 from src.payments.models import Payment
 from src.pool.models import Pool, PoolParticipant, PoolParticipantStanding
-from src.pool.services.ranking import _calculate_group_qualifier_bonus, _real_qualifier_position_map
+from src.pool.services.ranking import (
+    _calculate_group_qualifier_bonus,
+    _real_qualifier_position_map,
+    recalculate_participant_scores,
+)
 
 User = get_user_model()
 
@@ -254,3 +258,32 @@ class CalculateGroupQualifierBonusTopThreeTest(QualifierBonusBase):
     def test_empty_standings_returns_zero(self):
         result = _calculate_group_qualifier_bonus(self.participant, self.scoring_config)
         self.assertEqual(result, 0)
+
+
+class QualifierBonusAccountingTest(QualifierBonusBase):
+    """Verify recalculate_participant_scores rolls qualifier_bonus into group_points."""
+
+    def _set_full_group_real(self, group_name):
+        for pos in (1, 2, 3, 4):
+            self.set_real_position(group_name, pos, pos)
+
+    def test_qualifier_bonus_included_in_group_points(self):
+        self._set_full_group_real("A")
+        # Predict top-2 correctly (positions 1 and 2) → 2 qualifier hits, no position bonus mismatch
+        self.set_proj_position("A", 1, 1)
+        self.set_proj_position("A", 2, 2)
+
+        recalculate_participant_scores(self.participant, scoring_config=self.scoring_config)
+
+        self.participant.refresh_from_db()
+        expected_qualifier = (
+            self.scoring_config.group_qualifier_points * 2 + self.scoring_config.group_qualifier_position_bonus * 2
+        )
+        self.assertEqual(self.participant.qualifier_bonus_points, expected_qualifier)
+        self.assertLessEqual(self.participant.qualifier_bonus_points, self.participant.group_points)
+        # group_points must include the qualifier bonus
+        self.assertGreaterEqual(self.participant.group_points, expected_qualifier)
+        self.assertEqual(
+            self.participant.total_points,
+            self.participant.group_points + self.participant.knockout_points + self.participant.bonus_points,
+        )

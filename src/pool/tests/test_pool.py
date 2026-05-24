@@ -1397,23 +1397,32 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
         self.assertTrue(result["exact_score"])
         self.assertTrue(result["advancing_correct"])
 
-    def test_knockout_draw_prediction_flat_points_real_draw(self):
-        # Palpite empate (1-1) com jogo real empate decidido por penaltis:
-        # 20 pts fixos, independente de placar bater.
+    def test_knockout_draw_exact_score_correct_advancing(self):
+        # Palpite 1-1, jogo real 1-1 com HOME avancando por penaltis, winner_pred = HOME.
+        # Placar exato + avanço correto = knockout_exact_and_advancing (35).
         bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1, winner_pred_id=1)
         result = calculate_bet_points(bet, self._make_scoring_config())
-        self.assertEqual(result["points"], 20)
+        self.assertEqual(result["points"], 35)
         self.assertTrue(result["exact_score"])
         self.assertTrue(result["advancing_correct"])
 
-    def test_knockout_draw_prediction_flat_points_wrong_pen_pick(self):
-        # Palpite empate (1-1), jogo real 1-1 HOME via penaltis, winner_pred = AWAY.
-        # 20 pts fixos, mas advancing_correct = False (errou o time dos penaltis).
+    def test_knockout_draw_exact_score_wrong_advancing(self):
+        # Palpite 1-1, jogo real 1-1 HOME via penaltis, winner_pred = AWAY.
+        # Placar exato sempre vale knockout_exact_and_advancing (35), independente dos penaltis.
         bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1, winner_pred_id=2)
         result = calculate_bet_points(bet, self._make_scoring_config())
-        self.assertEqual(result["points"], 20)
+        self.assertEqual(result["points"], 35)
         self.assertTrue(result["exact_score"])
         self.assertFalse(result["advancing_correct"])
+
+    def test_knockout_draw_non_exact_correct_advancing(self):
+        # Palpite 0-0, jogo real 1-1 com HOME avancando por penaltis, winner_pred = HOME.
+        # Acertou empate mas placar errado = knockout_draw_prediction_points (20).
+        bet = self._make_knockout_bet(0, 0, 1, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(bet, self._make_scoring_config())
+        self.assertEqual(result["points"], 20)
+        self.assertFalse(result["exact_score"])
+        self.assertTrue(result["advancing_correct"])
 
     def test_knockout_draw_prediction_real_non_draw_zero(self):
         # Palpite empate (2-2), jogo real HOME ganha 1-0 (sem empate no regulamentar):

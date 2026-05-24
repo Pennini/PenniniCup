@@ -497,14 +497,14 @@ class BuildKnockoutByPhasePredictedWinnersTest(SimpleTestCase):
         self.assertEqual(len(predicted), 3)
         items_by_team_id = {item["team"].id: item for item in predicted}
 
-        # team_a advanced
+        # team_a: match decided → advanced=True, decided=True
         self.assertTrue(items_by_team_id[1]["advanced"])
         self.assertTrue(items_by_team_id[1]["decided"])
 
-        # team_c eliminated
+        # team_c: match still pending → decided=False regardless of other matches in phase
         self.assertFalse(items_by_team_id[3]["advanced"])
-        self.assertTrue(items_by_team_id[3]["decided"])
+        self.assertFalse(items_by_team_id[3]["decided"])
 
-        # team_b: same phase has real_winners → decided=True, advanced=False
-        self.assertTrue(items_by_team_id[2]["decided"])
+        # team_b: match still pending → decided=False, advanced=False
+        self.assertFalse(items_by_team_id[2]["decided"])
         self.assertFalse(items_by_team_id[2]["advanced"])

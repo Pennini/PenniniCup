@@ -87,14 +87,21 @@ def calculate_bet_points(bet, scoring_config, pool_type=None):
         }
 
     # KNOCKOUT phase — positional scoring for both Tipo 1 and Tipo 2.
-    # Palpite de empate (home == away): pontos fixos somente quando o placar do tempo
-    # regulamentar tambem termina empatado (qualquer placar). Jogos decididos por
-    # penaltis ainda contam como empate no regulamentar e pagam os pontos fixos.
+    # Palpite de empate (home == away): requer que o tempo regulamentar tambem
+    # termine empatado. Placar exato (ex: 1-1 pred, 1-1 real) vale mais que
+    # empate generico (ex: 0-0 pred, 1-1 real). Pênaltis contam como empate no
+    # regulamentar, portanto winner_pred determina quem avançou.
     if guess_home == guess_away:
         is_advancing_correct = bool(match.winner_id and bet.winner_pred_id == match.winner_id)
         real_is_draw = home == away
+        if not real_is_draw:
+            points = 0
+        elif is_exact_score:
+            points = scoring_config.knockout_exact_and_advancing
+        else:
+            points = scoring_config.knockout_draw_prediction_points
         return {
-            "points": scoring_config.knockout_draw_prediction_points if real_is_draw else 0,
+            "points": points,
             "exact_score": is_exact_score,
             "advancing_correct": is_advancing_correct,
             "advancing_goals_correct": False,

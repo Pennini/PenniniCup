@@ -219,6 +219,7 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
     qualifier_bonus_points = _calculate_group_qualifier_bonus(participant, scoring_config)
 
     total_points += bonus_points + qualifier_bonus_points
+    group_points += qualifier_bonus_points
 
     participant.total_points = total_points
     participant.group_points = group_points
