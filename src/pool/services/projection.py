@@ -2,6 +2,7 @@ from collections import defaultdict
 from itertools import groupby
 
 from django.db import transaction
+from django.utils import timezone
 
 from src.football.models import AssignThird, Group, Match
 from src.pool.services.rules import PHASE_GROUP, phase_for_match
@@ -332,7 +333,9 @@ def sync_persisted_group_standings(participant):
 
     projected_groups = projected_group_standings(participant=participant, season=participant.pool.season)
 
+    now = timezone.now()
     rows_to_save = []
+    keep_keys = set()
     for group_data in projected_groups:
         group = group_data["group"]
         for line in group_data["standings"]:
@@ -350,12 +353,42 @@ def sync_persisted_group_standings(participant):
                     goals_against=line.goals_against,
                     goal_difference=line.goal_difference,
                     points=line.points,
+                    updated_at=now,
                 )
             )
+            keep_keys.add((group.id, line.team.id))
 
-    PoolParticipantStanding.objects.filter(participant=participant).delete()
+    # UPSERT em vez de DELETE-tudo + INSERT: o DELETE-tudo abria uma janela em
+    # que a tabela ficava vazia; dois escritores concorrentes (worker e request
+    # web) inseriam as mesmas linhas e o segundo batia em UniqueViolation.
+    # Aqui só removemos linhas de times que saíram da projeção (raro) — chaves
+    # que nenhum dos escritores insere, então não há corrida.
+    stale_ids = [
+        row.id
+        for row in PoolParticipantStanding.objects.filter(participant=participant).only("id", "group_id", "team_id")
+        if (row.group_id, row.team_id) not in keep_keys
+    ]
+    if stale_ids:
+        PoolParticipantStanding.objects.filter(id__in=stale_ids).delete()
+
     if rows_to_save:
-        PoolParticipantStanding.objects.bulk_create(rows_to_save)
+        PoolParticipantStanding.objects.bulk_create(
+            rows_to_save,
+            update_conflicts=True,
+            unique_fields=["participant", "group", "team"],
+            update_fields=[
+                "position",
+                "played",
+                "won",
+                "drawn",
+                "lost",
+                "goals_for",
+                "goals_against",
+                "goal_difference",
+                "points",
+                "updated_at",
+            ],
+        )
 
     return projected_groups
 
@@ -387,14 +420,17 @@ def sync_persisted_third_places(participant, projected_groups=None):
         projected_groups = projected_group_standings(participant=participant, season=participant.pool.season)
 
     selection = select_projected_best_thirds(projected_groups=projected_groups)
+    now = timezone.now()
     rows_to_save = []
+    keep_group_ids = set()
 
     for row in selection["ranked"]:
         line = row["line"]
+        group = row["group"]
         rows_to_save.append(
             PoolParticipantThirdPlace(
                 participant=participant,
-                group=row["group"],
+                group=group,
                 team=line.team,
                 position_global=row["position_global"],
                 points=line.points,
@@ -402,12 +438,38 @@ def sync_persisted_third_places(participant, projected_groups=None):
                 goals_for=line.goals_for,
                 score=row["score"],
                 is_qualified=row["is_qualified"],
+                updated_at=now,
             )
         )
+        keep_group_ids.add(group.id)
 
-    PoolParticipantThirdPlace.objects.filter(participant=participant).delete()
+    # Mesmo motivo do sync de standings: UPSERT por (participant, group) evita a
+    # janela de DELETE-tudo que causava UniqueViolation sob concorrência. O time
+    # do 3º lugar pode mudar para um grupo, então "team" também é atualizado.
+    stale_ids = [
+        row.id
+        for row in PoolParticipantThirdPlace.objects.filter(participant=participant).only("id", "group_id")
+        if row.group_id not in keep_group_ids
+    ]
+    if stale_ids:
+        PoolParticipantThirdPlace.objects.filter(id__in=stale_ids).delete()
+
     if rows_to_save:
-        PoolParticipantThirdPlace.objects.bulk_create(rows_to_save)
+        PoolParticipantThirdPlace.objects.bulk_create(
+            rows_to_save,
+            update_conflicts=True,
+            unique_fields=["participant", "group"],
+            update_fields=[
+                "team",
+                "position_global",
+                "points",
+                "goal_difference",
+                "goals_for",
+                "score",
+                "is_qualified",
+                "updated_at",
+            ],
+        )
 
     return selection
 
