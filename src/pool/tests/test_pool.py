@@ -12,7 +12,7 @@ from django.utils.timezone import now as tz_now
 from src.accounts.models import InviteToken
 from src.football.models import AssignThird, Competition, Group, Match, Player, Season, Stage, Team
 from src.payments.models import Payment
-from src.pool.models import Pool, PoolBet, PoolParticipant, PoolProjectionRecalc
+from src.pool.models import Pool, PoolBet, PoolParticipant, PoolParticipantStanding, PoolProjectionRecalc
 from src.pool.services.context_builder import (
     _build_projected_groups_from_rows,
     _build_third_rows_from_rows,
@@ -29,6 +29,7 @@ from src.pool.services.projection import (
     load_assign_third_map,
     projected_group_standings,
     resolve_knockout_placeholder_team,
+    sync_persisted_group_standings,
 )
 from src.pool.services.projection_queue import MAX_ATTEMPTS, process_next_projection_recalc_job
 from src.pool.services.ranking import recalculate_participant_scores
@@ -2084,3 +2085,104 @@ class ContextBuilderBetScoreRowTest(TestCase):
         row = group_rows[0]
         self.assertIn("bet_score", row)
         self.assertIsNone(row["bet_score"])
+
+
+class SyncPersistedStandingsUpsertTest(TestCase):
+    """Regression: sync_persisted_group_standings deve usar UPSERT, não DELETE+INSERT.
+
+    DELETE-tudo abria janela onde dois escritores concorrentes (worker + request web)
+    inseriam as mesmas linhas e o segundo batia em UniqueViolation. Os testes abaixo
+    fixam o comportamento correto para impedir regressão silenciosa.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="upsert_user", email="upsert@example.com", password="123456Aa!")
+        self.competition = Competition.objects.create(fifa_id=99, name="Copa Upsert")
+        self.season = Season.objects.create(
+            fifa_id=99,
+            competition=self.competition,
+            name="Temporada Upsert",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="GUPSERT", season=self.season, name="Group Stage", order=1)
+        self.group = Group.objects.create(fifa_id="G-UP", stage=self.stage, name="U")
+        now = timezone.now()
+        self.team_x = Team.objects.create(
+            fifa_id="TX", name="Team X", name_norm="team-x", code="XXX", world_ranking=1, group=self.group
+        )
+        self.team_y = Team.objects.create(
+            fifa_id="TY", name="Team Y", name_norm="team-y", code="YYY", world_ranking=2, group=self.group
+        )
+        self.match = Match.objects.create(
+            fifa_id="MUP1",
+            season=self.season,
+            stage=self.stage,
+            group=self.group,
+            match_number=1,
+            match_date_utc=now,
+            match_date_local=now,
+            match_date_brasilia=now,
+            home_team=self.team_x,
+            away_team=self.team_y,
+        )
+        self.pool = Pool.objects.create(
+            name="Pool Upsert",
+            slug="pool-upsert",
+            season=self.season,
+            created_by=self.user,
+            requires_payment=False,
+        )
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+        self.bet = PoolBet.objects.create(
+            participant=self.participant, match=self.match, home_score_pred=1, away_score_pred=0
+        )
+
+    def test_rerun_updates_rows_in_place_no_duplicate(self):
+        sync_persisted_group_standings(participant=self.participant)
+        ids_first = set(
+            PoolParticipantStanding.objects.filter(participant=self.participant).values_list("id", flat=True)
+        )
+        points_x_first = PoolParticipantStanding.objects.get(participant=self.participant, team=self.team_x).points
+        self.assertEqual(len(ids_first), 2)
+        self.assertEqual(points_x_first, 3)  # team_x ganhou 1x0
+
+        # Muda palpite: empate → team_x deve ter 1 ponto agora
+        self.bet.away_score_pred = 1
+        self.bet.save()
+
+        sync_persisted_group_standings(participant=self.participant)
+        ids_second = set(
+            PoolParticipantStanding.objects.filter(participant=self.participant).values_list("id", flat=True)
+        )
+        points_x_second = PoolParticipantStanding.objects.get(participant=self.participant, team=self.team_x).points
+
+        # Sem novas linhas criadas (IDs idênticos = UPSERT, não DELETE+INSERT)
+        self.assertEqual(ids_first, ids_second, "UPSERT deve atualizar as mesmas linhas, não criar novas")
+        # Valor realmente atualizado
+        self.assertEqual(points_x_second, 1, "Pontuação deve refletir o novo palpite após segundo sync")
+
+    def test_stale_rows_deleted_on_sync(self):
+        # Insere manualmente uma linha "fantasma" para um time que não participa de nenhuma partida.
+        # Simula dado obsoleto que deveria ser removido pelo sync.
+        team_phantom = Team.objects.create(
+            fifa_id="TPH", name="Phantom", name_norm="phantom", code="PHT", world_ranking=99, group=self.group
+        )
+        PoolParticipantStanding.objects.create(
+            participant=self.participant,
+            group=self.group,
+            team=team_phantom,
+            position=99,
+            points=0,
+        )
+        self.assertEqual(PoolParticipantStanding.objects.filter(participant=self.participant).count(), 1)
+
+        sync_persisted_group_standings(participant=self.participant)
+
+        self.assertFalse(
+            PoolParticipantStanding.objects.filter(participant=self.participant, team=team_phantom).exists(),
+            "Linha fantasma (time fora da projeção) deve ser removida no sync",
+        )
+        # Linhas reais dos times da partida devem estar presentes
+        self.assertEqual(PoolParticipantStanding.objects.filter(participant=self.participant).count(), 2)
