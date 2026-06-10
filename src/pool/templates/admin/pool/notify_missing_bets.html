@@ -1,0 +1,134 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Notificar Palpites Pendentes{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+    <a href="{% url 'admin:index' %}">Início</a> &rsaquo;
+    <a href="{% url 'admin:pool_pool_changelist' %}">Bolões</a> &rsaquo;
+    Notificar Palpites Pendentes
+</div>
+{% endblock %}
+
+{% block content %}
+<h1>Notificar Palpites Pendentes</h1>
+
+<form method="post">
+    {% csrf_token %}
+
+    <fieldset class="module aligned">
+        <h2>Filtro de Bolões (opcional)</h2>
+        <div class="form-row">
+            <div>
+                <label>Bolões ativos:</label>
+                <select name="pool_ids" multiple size="{{ active_pools|length|default:5 }}" style="min-width: 300px; min-height: 80px;">
+                    {% for pool in active_pools %}
+                        <option value="{{ pool.id }}"
+                            {% if request.POST.getlist and pool.id|stringformat:"s" in request.POST.getlist %}selected{% endif %}>
+                            {{ pool.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+                <p class="help">Deixe em branco para notificar todos os bolões ativos. Use Ctrl/Cmd+clique para selecionar mais de um.</p>
+            </div>
+        </div>
+    </fieldset>
+
+    <div class="submit-row" style="display: flex; gap: 10px;">
+        <button type="submit" name="action" value="dry_run" class="default">
+            🔍 Dry Run (visualizar sem enviar)
+        </button>
+        <button type="submit" name="action" value="send"
+            onclick="return confirm('Confirma o envio de e-mails para todos os participantes com palpites pendentes?')"
+            style="background: #c0392b; border-color: #a93226; padding: 10px 15px; color: white; cursor: pointer; border-radius: 4px; font-size: 13px;">
+            📨 Enviar E-mails
+        </button>
+    </div>
+</form>
+
+{% if dry_run_results is not None %}
+    <h2 style="margin-top: 30px;">Resultado do Dry Run</h2>
+
+    {% if dry_run_results %}
+        <p><strong>{{ dry_run_results|length }} participante(s)</strong> seriam notificados:</p>
+
+        <table id="result_list" style="width: 100%;">
+            <thead>
+                <tr>
+                    <th scope="col">Usuário</th>
+                    <th scope="col">E-mail</th>
+                    <th scope="col">Bolões / Fase</th>
+                    <th scope="col" style="text-align: right;">Total pendentes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for entry in dry_run_results %}
+                    <tr>
+                        <td><strong>{{ entry.username }}</strong></td>
+                        <td>{{ entry.email }}</td>
+                        <td>
+                            <ul style="margin: 0; padding-left: 16px;">
+                                {% for pool_name, count, deadline, phase_label in entry.pools %}
+                                    <li>
+                                        {{ pool_name }}
+                                        {% if phase_label %}<em>({{ phase_label }})</em>{% endif %}
+                                        — {{ count }} jogo{{ count|pluralize }}
+                                        {% if deadline %}
+                                            <small style="color: #888;">prazo: {{ deadline|date:"d/m H:i" }}</small>
+                                        {% endif %}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        </td>
+                        <td style="text-align: right;"><strong>{{ entry.total }}</strong></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="help" style="color: green;">✅ Nenhum participante com palpites pendentes no momento.</p>
+    {% endif %}
+{% endif %}
+
+{% if diagnostics %}
+    <h2 style="margin-top: 30px;">Diagnóstico por Bolão</h2>
+    <table id="diagnostics_list" style="width: 100%;">
+        <thead>
+            <tr>
+                <th>Bolão</th>
+                <th>Tipo</th>
+                <th>Fase ativa</th>
+                <th>Travamento Grupos</th>
+                <th>Travamento Mata-mata</th>
+                <th>Jogos agendados</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for d in diagnostics %}
+                <tr style="{% if d.skipped %}background: #fff3f3;{% endif %}">
+                    <td><strong>{{ d.name }}</strong></td>
+                    <td>Tipo {{ d.pool_type }}</td>
+                    <td>
+                        {% if d.skipped %}
+                            <span style="color: #c0392b;">{{ d.active_phase }}</span>
+                        {% else %}
+                            <span style="color: #27ae60;">{{ d.active_phase }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ d.lock_group|date:"d/m/Y H:i"|default:"não configurado" }}</td>
+                    <td>{{ d.lock_ko|date:"d/m/Y H:i"|default:"não configurado" }}</td>
+                    <td>{{ d.scheduled_matches }}</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <p style="font-size: 12px; color: #888;">Linhas em vermelho = bolão ignorado (fase travada ou sem jogos agendados).</p>
+{% endif %}
+
+{% if send_output %}
+    <h2 style="margin-top: 30px;">Resultado do Envio</h2>
+    <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; border-left: 4px solid #417690;">{{ send_output }}</pre>
+{% endif %}
+
+{% endblock %}
