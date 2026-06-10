@@ -2,6 +2,7 @@ import logging
 import time
 
 from django.core.management.base import BaseCommand
+from django.db import close_old_connections
 
 from src.pool.services.projection_queue import process_next_projection_recalc_job
 
@@ -24,6 +25,7 @@ class Command(BaseCommand):
         self.stdout.write("Worker de projeção iniciado.")
 
         while True:
+            close_old_connections()
             try:
                 job = process_next_projection_recalc_job()
                 if job is None:
@@ -32,4 +34,5 @@ class Command(BaseCommand):
                     logger.info("Job processado: participant=%s status=%s", job.participant_id, job.status)
             except Exception:
                 logger.exception("Erro inesperado no worker de projeção")
+                close_old_connections()
                 time.sleep(sleep_seconds)
