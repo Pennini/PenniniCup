@@ -103,7 +103,7 @@ class Command(BaseCommand):
         )
         parser.add_argument(
             "--site-url",
-            default=getattr(settings, "SITE_URL", "https://penninicup.com.br"),
+            default=getattr(settings, "SITE_URL", "https://penninicup.com"),
             help="URL base do site para o botao do e-mail",
         )
 
