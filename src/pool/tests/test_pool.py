@@ -874,6 +874,35 @@ class ProjectionQueueRetryLimitTest(TestCase):
         self.assertEqual(job.status, PoolProjectionRecalc.STATUS_PENDING)
         self.assertEqual(job.last_error, "boom")
 
+    def test_concurrent_requeue_does_not_consume_attempt(self):
+        """Re-enqueue concorrente (CAS miss) devolve a tentativa; não marca FAILED."""
+        job = PoolProjectionRecalc.objects.create(
+            participant=self.participant,
+            status=PoolProjectionRecalc.STATUS_PENDING,
+            attempts=0,
+        )
+
+        def fake_sync(participant):
+            # Simula render de página concorrente re-enfileirando o job enquanto
+            # o cálculo corre: volta o status para PENDING, derrubando o CAS final.
+            PoolProjectionRecalc.objects.filter(id=job.id).update(
+                status=PoolProjectionRecalc.STATUS_PENDING,
+            )
+            return {}
+
+        with (
+            patch(
+                "src.pool.services.projection_queue.sync_persisted_group_standings",
+                side_effect=fake_sync,
+            ),
+            patch("src.pool.services.projection_queue.sync_persisted_third_places"),
+        ):
+            process_next_projection_recalc_job()
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, PoolProjectionRecalc.STATUS_PENDING)
+        self.assertEqual(job.attempts, 0, "tentativa não deveria ser consumida em re-enqueue concorrente")
+
     def test_pending_job_above_limit_is_marked_failed_and_skipped(self):
         job = PoolProjectionRecalc.objects.create(
             participant=self.participant,

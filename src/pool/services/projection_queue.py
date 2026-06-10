@@ -1,6 +1,7 @@
 import logging
 
 from django.db import transaction
+from django.db.models import F
 from django.db.utils import NotSupportedError
 from django.utils import timezone
 
@@ -179,8 +180,17 @@ def process_next_projection_recalc_job():
             )
 
         if not updated:
-            logger.info(
-                "Job re-enfileirado durante processamento, status PENDING preservado: participant_id=%s",
+            # Re-enqueue concorrente (ex.: render de página) venceu o CAS e voltou o
+            # status para PENDING enquanto o cálculo corria. Isso NÃO é falha: o cálculo
+            # foi concluído. Devolvemos a tentativa consumida ao reivindicar o job para
+            # que edições/loads frequentes não esgotem MAX_ATTEMPTS e marquem FAILED.
+            PoolProjectionRecalc.objects.filter(
+                id=job.id,
+                status=PoolProjectionRecalc.STATUS_PENDING,
+                attempts__gt=0,
+            ).update(attempts=F("attempts") - 1)
+            logger.warning(
+                "Job re-enfileirado durante processamento, tentativa devolvida: participant_id=%s",
                 participant.id,
             )
 
