@@ -1,8 +1,8 @@
 from io import StringIO
 
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.core.management import call_command
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.urls import path
 
 from src.football.models import Match
@@ -203,6 +203,13 @@ class PoolParticipantThirdPlaceAdmin(admin.ModelAdmin):
     search_fields = ("participant__user__username", "team__name", "group__name")
 
 
+def _requeue_failed_jobs(queryset):
+    return queryset.filter(status=PoolProjectionRecalc.STATUS_FAILED).update(
+        status=PoolProjectionRecalc.STATUS_PENDING,
+        attempts=0,
+    )
+
+
 @admin.register(PoolProjectionRecalc)
 class PoolProjectionRecalcAdmin(admin.ModelAdmin):
     list_display = (
@@ -215,6 +222,29 @@ class PoolProjectionRecalcAdmin(admin.ModelAdmin):
     )
     list_filter = ("status", "participant__pool")
     search_fields = ("participant__user__username", "participant__pool__name")
+    change_list_template = "admin/pool/poolprojectionrecalc/change_list.html"
+    actions = ["action_requeue_failed"]
+
+    @admin.action(description="Reprocessar jobs FAILED selecionados")
+    def action_requeue_failed(self, request, queryset):
+        count = _requeue_failed_jobs(queryset)
+        self.message_user(request, f"{count} job(s) recolocado(s) na fila.", messages.SUCCESS)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path(
+                "requeue-all-failed/",
+                self.admin_site.admin_view(self.requeue_all_failed_view),
+                name="pool_poolprojectionrecalc_requeue_all_failed",
+            ),
+        ]
+        return custom + urls
+
+    def requeue_all_failed_view(self, request):
+        count = _requeue_failed_jobs(PoolProjectionRecalc.objects.all())
+        self.message_user(request, f"{count} job(s) FAILED recolocado(s) na fila.", messages.SUCCESS)
+        return redirect("..")
 
 
 @admin.register(PoolScoringConfig)
