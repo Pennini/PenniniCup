@@ -47,10 +47,26 @@
 
             <a
                 href="{% url 'pool:list' %}"
-                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm {% if current_view == 'pool:list' or current_view == 'pool:detail' %}bg-orange-500/15 text-orange-200 border border-orange-500/30{% else %}text-neutral-300 border border-transparent hover:border-neutral-700 hover:bg-neutral-900{% endif %}"
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm {% if current_view == 'pool:list' %}bg-orange-500/15 text-orange-200 border border-orange-500/30{% else %}text-neutral-300 border border-transparent hover:border-neutral-700 hover:bg-neutral-900{% endif %}"
             >
                 <i data-lucide="trophy" class="w-4 h-4"></i>
                 <span>Bolões</span>
+            </a>
+
+            <a
+                href="{% url 'pool:bets-tab' %}"
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm {% if current_view == 'pool:bets-tab' or current_view == 'pool:detail' %}bg-orange-500/15 text-orange-200 border border-orange-500/30{% else %}text-neutral-300 border border-transparent hover:border-neutral-700 hover:bg-neutral-900{% endif %}"
+            >
+                <i data-lucide="pencil" class="w-4 h-4"></i>
+                <span>Palpites</span>
+            </a>
+
+            <a
+                href="{% url 'pool:ranking-tab' %}"
+                class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm {% if current_view == 'pool:ranking-tab' or current_view == 'pool:ranking' or current_view == 'rankings:pool-dashboard' %}bg-orange-500/15 text-orange-200 border border-orange-500/30{% else %}text-neutral-300 border border-transparent hover:border-neutral-700 hover:bg-neutral-900{% endif %}"
+            >
+                <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+                <span>Ranking</span>
             </a>
 
             <a
