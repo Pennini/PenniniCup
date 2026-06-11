@@ -53,6 +53,9 @@ class RulesPageTest(TestCase):
             requires_payment=False,
         )
 
+        PoolParticipant.objects.create(pool=self.pool_a, user=self.owner, is_active=True)
+        PoolParticipant.objects.create(pool=self.pool_b, user=self.owner, is_active=True)
+
         config_a = self.pool_a.get_scoring_config()
         config_a.group_exact_score = 13
         config_a.save()
@@ -94,13 +97,13 @@ class RulesPageTest(TestCase):
         self.assertContains(response, "R$ 30,00")
         self.assertContains(response, "R$ 15,00")
 
-    @patch("src.penninicup.views.Pool.refresh_prize_distribution")
+    @patch("src.pool.models.Pool.refresh_prize_distribution")
     def test_rules_get_recalculates_prize_distribution(self, refresh_mock):
         response = self.client.get(reverse("penninicup:rules"), data={"pool": self.pool_a.slug})
         self.assertEqual(response.status_code, 200)
         refresh_mock.assert_called_once_with(save=True)
 
-    @patch("src.penninicup.views.Pool.refresh_prize_distribution")
+    @patch("src.pool.models.Pool.refresh_prize_distribution")
     def test_rules_post_recalculates_prize_distribution(self, refresh_mock):
         response = self.client.post(reverse("penninicup:rules"), data={"pool": self.pool_a.slug})
         self.assertEqual(response.status_code, 302)
