@@ -5,7 +5,6 @@ from types import SimpleNamespace
 
 from django.core.cache import cache
 from django.db.models import Prefetch
-from django.utils import timezone
 
 from src.football.models import Match, Player
 from src.pool.models import PoolBet, PoolParticipant, PoolParticipantStanding, PoolParticipantThirdPlace
@@ -492,43 +491,6 @@ def resolve_knockout_match_teams(*, participant, matches, season, bets_by_match_
     return result
 
 
-def _compute_type2_open_map(matches):
-    """Pre-compute per-match open status for Tipo 2 knockout bets using pre-loaded data.
-
-    Avoids N DB queries by resolving W<N>/RU<N> placeholders in-memory.
-    Returns {match_id: bool} where True means bet is currently open.
-    """
-    now = timezone.now()
-    match_by_number = {m.match_number: m for m in matches}
-
-    def _feeder_r32(match):
-        stage_key = _normalize_stage_key(match.stage)
-        if stage_key in ("GROUP", ""):
-            return []
-        if stage_key == STAGE_R32:
-            return [match]
-        feeders = []
-        for placeholder in (match.home_placeholder, match.away_placeholder):
-            m = re.match(r"^(?:W|RU)(\d+)$", (placeholder or "").strip().upper())
-            if m:
-                parent = match_by_number.get(int(m.group(1)))
-                if parent:
-                    feeders.extend(_feeder_r32(parent))
-        return feeders
-
-    result = {}
-    for match in matches:
-        if phase_for_match(match) != PHASE_KNOCKOUT:
-            continue
-        feeders = _feeder_r32(match)
-        if not feeders:
-            result[match.id] = False
-            continue
-        all_teams_known = all(f.home_team_id is not None and f.away_team_id is not None for f in feeders)
-        result[match.id] = all_teams_known and match.match_date_brasilia > now
-    return result
-
-
 def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
     participant = _hydrate_participant_for_context(pool=pool, participant=participant)
 
@@ -585,7 +547,11 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
     losers_map = {}
 
     is_tipo2 = pool.pool_type == POOL_TYPE_2
-    type2_open_map = _compute_type2_open_map(matches) if is_tipo2 else {}
+    # Tipo 2: trava global única no kickoff do 1º jogo de mata-mata (R32). Antes
+    # disso, cada jogo abre de forma progressiva quando seus 2 times existem
+    # (R32 = times reais da fase de grupos; R16+ = times projetados pelos palpites
+    # do usuário nos feeders). Não há deadline por jogo.
+    knockout_globally_locked = is_tipo2 and pool.is_phase_locked(PHASE_KNOCKOUT)
 
     match_rows = []
     group_rows = []
@@ -597,21 +563,12 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
         if phase == PHASE_KNOCKOUT:
             if is_tipo2:
                 stage_key = _normalize_stage_key(match.stage)
-                match_open = type2_open_map.get(match.id, False)
-                locked = not match_open
                 if stage_key == STAGE_R32:
-                    # R32: use real teams from group classification only.
+                    # R32: times reais da classificação da fase de grupos.
                     home_team = match.home_team
                     away_team = match.away_team
-                    teams_known = match.home_team_id is not None and match.away_team_id is not None
-                    if not teams_known:
-                        bet_status = "awaiting_teams"
-                    elif locked:
-                        bet_status = "locked"
-                    else:
-                        bet_status = "open"
                 else:
-                    # R16+: resolve teams from user's R32 bet outcomes (projected).
+                    # R16+: times projetados pelos palpites do usuário nos feeders.
                     home_team = _resolve_match_team_from_placeholder(
                         placeholder=match.home_placeholder,
                         projected_slots=projected,
@@ -626,7 +583,15 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
                         winners_map=winners_map,
                         losers_map=losers_map,
                     )
-                    bet_status = "locked" if locked else "open"
+                # Jogo abre quando os 2 times existem e antes da trava global.
+                teams_known = home_team is not None and away_team is not None
+                locked = not (teams_known and not knockout_globally_locked)
+                if not teams_known:
+                    bet_status = "awaiting_teams"
+                elif knockout_globally_locked:
+                    bet_status = "locked"
+                else:
+                    bet_status = "open"
             else:
                 # Tipo 1: resolve from user's projected placeholder map so bet cards
                 # show the teams the user predicted, not the real match teams.

@@ -21,6 +21,7 @@ from src.pool.services.context_builder import (
     _infer_losing_team,
     _make_pairs,
     _projection_is_stale_from_prefetched,
+    build_pool_participant_view_context,
 )
 from src.pool.services.context_builder import (
     _normalize_stage_key as _cb_normalize_stage_key,
@@ -846,6 +847,22 @@ class ProjectionQueueRetryLimitTest(TestCase):
         )
         pool = Pool.objects.create(name="Pool Queue", slug="pool-queue", season=season, created_by=self.owner)
         self.participant = PoolParticipant.objects.create(pool=pool, user=self.user, is_active=True)
+
+    def test_enqueue_revives_failed_job_and_resets_attempts(self):
+        """Nova edição do usuário deve rearmar job FAILED@max e zerar tentativas."""
+        job = PoolProjectionRecalc.objects.create(
+            participant=self.participant,
+            status=PoolProjectionRecalc.STATUS_FAILED,
+            attempts=MAX_ATTEMPTS,
+            last_error="boom",
+        )
+
+        enqueue_projection_recalc(self.participant)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, PoolProjectionRecalc.STATUS_PENDING)
+        self.assertEqual(job.attempts, 0)
+        self.assertEqual(job.last_error, "")
 
     @patch("src.pool.services.projection_queue.sync_persisted_group_standings", side_effect=RuntimeError("boom"))
     def test_job_becomes_failed_when_reaching_max_attempts(self, _sync_mock):
@@ -2386,6 +2403,7 @@ class BetSaveAjaxFlowTest(TestCase):
         self.assertTrue(data["ok"])
         self.assertGreaterEqual(data["saved_count"], 1)
         self.assertEqual(data["saved_group_count"], 0)
+        self.assertGreaterEqual(data["saved_knockout_count"], 1)
         self.assertFalse(data["knockout_review"])
         self.assertFalse(data["projection_pending"])
         self.assertFalse(PoolProjectionRecalc.objects.filter(participant=self.participant).exists())
@@ -2561,3 +2579,123 @@ class BetSaveAjaxFlowTest(TestCase):
         )
         response = self.client.get(reverse("pool:knockout-cards", kwargs={"slug": self.pool.slug}))
         self.assertContains(response, 'value="4"')
+
+
+class Tipo2KnockoutOpenTestCase(TestCase):
+    """Tipo 2: R32 abre por times reais; R16+ abre por projeção dos palpites; trava global no 1o jogo de mata-mata."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="t2user", password="x")
+        self.competition = Competition.objects.create(fifa_id=9001, name="Copa T2")
+        self.season = Season.objects.create(
+            fifa_id=9002,
+            competition=self.competition,
+            name="Temp T2",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage_r32 = Stage.objects.create(fifa_id="R32-T2", season=self.season, name="R32", order=50)
+        self.stage_r16 = Stage.objects.create(fifa_id="R16-T2", season=self.season, name="Round of 16", order=51)
+
+        def mk_team(code):
+            return Team.objects.create(fifa_id=f"T2{code}", name=f"Team {code}", name_norm=f"team{code}", code=code)
+
+        self.a, self.b, self.c, self.d = mk_team("A"), mk_team("B"), mk_team("C"), mk_team("D")
+
+        self.future = timezone.now() + timezone.timedelta(days=2)
+        self.r32_1 = self._mk_match("R32-1", self.stage_r32, 80, self.future, home=self.a, away=self.b)
+        self.r32_2 = self._mk_match("R32-2", self.stage_r32, 82, self.future, home=self.c, away=self.d)
+        self.r16 = self._mk_match(
+            "R16-1",
+            self.stage_r16,
+            90,
+            self.future + timezone.timedelta(hours=3),
+            home_ph="W80",
+            away_ph="W82",
+        )
+
+        self.pool = Pool.objects.create(
+            name="Pool T2",
+            slug="pool-t2",
+            season=self.season,
+            created_by=self.user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+
+    def _mk_match(self, fid, stage, number, date, home=None, away=None, home_ph="", away_ph=""):
+        return Match.objects.create(
+            fifa_id=fid,
+            season=self.season,
+            stage=stage,
+            match_number=number,
+            match_date_utc=date,
+            match_date_local=date,
+            match_date_brasilia=date,
+            home_team=home,
+            away_team=away,
+            home_placeholder=home_ph,
+            away_placeholder=away_ph,
+        )
+
+    def _rows(self):
+        ctx = build_pool_participant_view_context(pool=self.pool, participant=self.participant, ensure_bets=False)
+        return {r["match"].id: r for r in ctx["knockout_rows"]}
+
+    def test_r32_open_with_real_teams_before_global_lock(self):
+        rows = self._rows()
+        self.assertEqual(rows[self.r32_1.id]["bet_status"], "open")
+        self.assertFalse(rows[self.r32_1.id]["locked"])
+
+    def test_r16_awaiting_until_user_bets_feeders(self):
+        rows = self._rows()
+        self.assertEqual(rows[self.r16.id]["bet_status"], "awaiting_teams")
+        self.assertTrue(rows[self.r16.id]["locked"])
+
+    def _bet_r32_feeders(self):
+        PoolBet.objects.create(
+            participant=self.participant,
+            match=self.r32_1,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=self.a,
+        )
+        PoolBet.objects.create(
+            participant=self.participant,
+            match=self.r32_2,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=self.c,
+        )
+
+    def test_r16_opens_after_user_bets_both_feeders(self):
+        self._bet_r32_feeders()
+        rows = self._rows()
+        row = rows[self.r16.id]
+        self.assertEqual(row["home_team"].id, self.a.id)
+        self.assertEqual(row["away_team"].id, self.c.id)
+        self.assertEqual(row["bet_status"], "open")
+        self.assertFalse(row["locked"])
+
+    def test_global_lock_at_first_knockout_kickoff(self):
+        past = timezone.now() - timezone.timedelta(hours=1)
+        Match.objects.filter(id=self.r32_1.id).update(match_date_brasilia=past)
+        self._bet_r32_feeders()
+        rows = self._rows()
+        self.assertEqual(rows[self.r32_2.id]["bet_status"], "locked")
+        self.assertTrue(rows[self.r32_2.id]["locked"])
+        self.assertEqual(rows[self.r16.id]["bet_status"], "locked")
+
+    def test_save_r16_rejected_until_feeders_bet(self):
+        bet = PoolBet(participant=self.participant, match=self.r16, home_score_pred=1, away_score_pred=0)
+        with self.assertRaises(ValidationError):
+            bet.full_clean()
+
+    def test_save_r16_allowed_after_feeders_bet(self):
+        self._bet_r32_feeders()
+        bet = PoolBet(participant=self.participant, match=self.r16, home_score_pred=1, away_score_pred=0)
+        bet.full_clean()  # não deve levantar
+        bet.save()
+        self.assertTrue(PoolBet.objects.get(participant=self.participant, match=self.r16).is_active)

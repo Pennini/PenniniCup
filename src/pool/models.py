@@ -311,7 +311,7 @@ class PoolBet(models.Model):
         phase = phase_for_match(self.match)
 
         if phase == PHASE_KNOCKOUT and pool.pool_type == POOL_TYPE_2:
-            if not is_type2_bet_open(self.match, pool.season):
+            if not is_type2_bet_open(self.match, pool.season, participant=self.participant):
                 raise ValidationError("Partida ainda aguardando classificacao ou encerrada.")
         elif pool.is_phase_locked(phase):
             raise ValidationError("Janela de palpites desta fase esta fechada.")

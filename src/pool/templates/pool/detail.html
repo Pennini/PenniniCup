@@ -654,12 +654,19 @@
                         (data.validation_errors || []).forEach(function (msg) { showToast(msg, 'error'); });
 
                         if (data.saved_group_count > 0) {
+                            // Mudança de grupo: recálculo assíncrono dos classificados (worker).
                             showToast('Palpites salvos. Atualizando classificados do mata-mata…', 'success');
                             if (data.knockout_review) {
                                 showToast('Revise os jogos de mata-mata: os classificados podem ter mudado.', 'warning');
                             }
                             lockKnockout(true);
                             pollProjection(0);
+                        } else if (data.saved_knockout_count > 0) {
+                            // Palpite de mata-mata (vencedor): a chave avança de forma síncrona,
+                            // basta recarregar o fragmento — sem poll/worker.
+                            showToast('Palpites salvos. Atualizando o chaveamento…', 'success');
+                            lockKnockout(true);
+                            refreshKnockoutCards().then(function () { lockKnockout(false); });
                         } else if (data.saved_count > 0 || data.top_scorer_changed) {
                             showToast('Palpites salvos com sucesso.', 'success');
                         } else if (!(data.validation_errors || []).length) {

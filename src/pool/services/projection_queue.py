@@ -71,11 +71,16 @@ def enqueue_projection_recalc(participant):
         },
     )
 
-    # Não rearma jobs que já excederam o limite de tentativas.
-    if not created and not (job.status == PoolProjectionRecalc.STATUS_FAILED and job.attempts >= MAX_ATTEMPTS):
+    # Pedido individual = nova ação do usuário com dados novos: sempre rearma e
+    # zera as tentativas, inclusive jobs FAILED que estouraram o limite. O teto de
+    # MAX_ATTEMPTS protege contra loops do worker dentro de um mesmo pedido, não
+    # deve deixar o usuário preso a uma projeção velha após uma nova edição.
+    if not created:
         job.status = PoolProjectionRecalc.STATUS_PENDING
         job.requested_at = now
-        job.save(update_fields=["status", "requested_at"])
+        job.attempts = 0
+        job.last_error = ""
+        job.save(update_fields=["status", "requested_at", "attempts", "last_error"])
 
     return job
 

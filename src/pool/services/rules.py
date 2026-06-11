@@ -46,43 +46,60 @@ def _get_parent_match_number(placeholder):
     return int(m.group(1)) if m else None
 
 
-def get_feeder_r32_matches(match, season):
-    """Return all R32-level matches that feed into the given knockout match.
-
-    For R32, returns [match]. For deeper rounds, recursively follows W<N>/RU<N>
-    placeholders until R32 is reached. Used for Tipo 2 progressive unlock logic.
-    """
+def get_knockout_global_lock_time(season):
+    """Tipo 2: deadline único de todo o mata-mata = kickoff do 1o jogo de mata-mata (R32)."""
     from src.football.models import Match as FootballMatch
 
-    stage_key = normalize_stage_key(match.stage)
+    dates = [
+        m.match_date_brasilia
+        for m in FootballMatch.objects.filter(season=season).select_related("stage")
+        if normalize_stage_key(m.stage) not in ("GROUP", "")
+    ]
+    return min(dates) if dates else None
 
+
+def _bet_has_winner(bet):
+    """Palpite define um classificado? (winner_pred explícito ou placar decisivo)."""
+    if bet.winner_pred_id is not None:
+        return True
+    if bet.home_score_pred is None or bet.away_score_pred is None:
+        return False
+    return bet.home_score_pred != bet.away_score_pred
+
+
+def is_type2_bet_open(match, season, participant=None):
+    """Tipo 2: abertura progressiva por jogo, com trava global no 1o jogo de mata-mata.
+
+    - Trava global: nada de mata-mata abre a partir do kickoff do 1o jogo de R32.
+    - R32: abre quando os 2 times reais da fase de grupos estão definidos.
+    - R16+: abre quando o participante já palpitou os 2 feeders imediatos (a projeção
+      produz os 2 times do jogo). Sem participant não há projeção, logo fechado.
+    """
+    from django.utils import timezone
+
+    stage_key = normalize_stage_key(match.stage)
     if stage_key in ("GROUP", ""):
-        return []
+        return False
+
+    lock_time = get_knockout_global_lock_time(season)
+    if lock_time is not None and timezone.now() >= lock_time:
+        return False
 
     if stage_key == "R32":
-        return [match]
+        return match.home_team_id is not None and match.away_team_id is not None
 
-    feeder = []
+    if participant is None:
+        return False
+
     for placeholder in (match.home_placeholder, match.away_placeholder):
         parent_num = _get_parent_match_number(placeholder)
         if parent_num is None:
-            continue
-        try:
-            parent = FootballMatch.objects.select_related("stage").get(season=season, match_number=parent_num)
-            feeder.extend(get_feeder_r32_matches(parent, season))
-        except FootballMatch.DoesNotExist:
-            pass
-
-    return feeder
-
-
-def is_type2_bet_open(match, season):
-    """Tipo 2: knockout bet is open when all upstream R32 teams are known and match hasn't started."""
-    from django.utils import timezone
-
-    feeder_matches = get_feeder_r32_matches(match, season)
-    if not feeder_matches:
-        return False
-
-    all_teams_known = all(m.home_team_id is not None and m.away_team_id is not None for m in feeder_matches)
-    return all_teams_known and match.match_date_brasilia > timezone.now()
+            return False
+        parent_bet = (
+            participant.bets.filter(match__season=season, match__match_number=parent_num, is_active=True)
+            .only("home_score_pred", "away_score_pred", "winner_pred")
+            .first()
+        )
+        if parent_bet is None or not _bet_has_winner(parent_bet):
+            return False
+    return True
