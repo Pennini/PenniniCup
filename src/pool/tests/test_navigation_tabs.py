@@ -58,6 +58,14 @@ class NavigationTabsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["selected_pool"].slug, "zebra")
 
+    def test_bets_tab_skips_inactive_pool_for_default(self):
+        # Zebra was joined first but is now inactive -> default should skip to Alpha.
+        self.pool_zebra.is_active = False
+        self.pool_zebra.save(update_fields=["is_active"])
+        response = self.client.get(reverse("pool:bets-tab"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["selected_pool"].slug, "alpha")
+
     def test_navbar_has_palpites_and_ranking_links(self):
         response = self.client.get(reverse("pool:bets-tab"))
         self.assertContains(response, reverse("pool:bets-tab"))
