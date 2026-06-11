@@ -43,43 +43,25 @@
                     <i data-lucide="trophy" class="h-4 w-4"></i>
                 </span>
                 <div>
-                    <h2 class="text-lg sm:text-xl font-semibold">Abrir bolão</h2>
-                    <p class="text-sm text-neutral-400 mt-1">Escolha o bolão e abra direto em Palpites ou Ranking.</p>
+                    <h2 class="text-lg sm:text-xl font-semibold">Meus bolões</h2>
+                    <p class="text-sm text-neutral-400 mt-1">Use as abas Palpites e Ranking para abrir cada bolão.</p>
                 </div>
             </div>
 
-            <form method="post" action="{% url 'pool:open' %}" class="mt-4 space-y-3">
-                {% csrf_token %}
-                <select name="pool_slug" class="w-full px-3.5 py-2.5 rounded-lg bg-neutral-950 border border-neutral-700 focus:outline-none focus:ring-2 focus:ring-orange-500/40" required>
-                    <option value="">Escolha um bolão</option>
-                    {% for row in rows %}
-                    <option value="{{ row.pool.slug }}">
-                        {{ row.pool.name }} - {% if row.can_bet %}Apto{% else %}Pendente pagamento{% endif %}
-                    </option>
-                    {% endfor %}
-                </select>
-
-                <div class="grid gap-2 sm:grid-cols-2">
-                    <button
-                        type="submit"
-                        name="open_target"
-                        value="bets"
-                        class="px-4 py-2.5 rounded-lg bg-orange-500 text-black font-semibold hover:bg-orange-400 transition-colors"
-                    >
-                        Abrir palpites
-                    </button>
-                    <button
-                        type="submit"
-                        name="open_target"
-                        value="ranking"
-                        class="px-4 py-2.5 rounded-lg border border-orange-500/50 text-orange-300 font-semibold hover:bg-orange-500/10 transition-colors"
-                    >
-                        Abrir ranking
-                    </button>
-                </div>
-            </form>
-
-            {% if not rows %}
+            {% if rows %}
+            <ul class="mt-4 space-y-2">
+                {% for row in rows %}
+                <li class="flex items-center justify-between rounded-lg border border-neutral-700 bg-neutral-950/70 px-4 py-3">
+                    <span class="font-medium">{{ row.pool.name }}</span>
+                    {% if row.can_bet %}
+                    <span class="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-xs font-semibold text-emerald-200">Apto</span>
+                    {% else %}
+                    <span class="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-200">Pendente pagamento</span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+            {% else %}
             <p class="mt-4 rounded-lg border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-sm text-blue-300">Você ainda não está inscrito em nenhum bolão.</p>
             {% endif %}
         </article>
