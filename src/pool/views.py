@@ -198,6 +198,7 @@ def bets_tab(request):
     context = _build_bets_context(request, pool, selected, active_tab)
     context["participations"] = participations
     context["selected_pool"] = pool
+    context["toggle_query_prefix"] = f"pool={pool.slug}&"
     return render(request, "pool/detail.html", context)
 
 
@@ -395,6 +396,7 @@ def save_bets_bulk(request, slug):
 
     saved_count = 0
     saved_group_count = 0
+    saved_knockout_count = 0
     validation_errors = []
 
     top_scorer_changed = False
@@ -495,6 +497,8 @@ def save_bets_bulk(request, slug):
                     saved_count += 1
                     if phase == PHASE_GROUP:
                         saved_group_count += 1
+                    else:
+                        saved_knockout_count += 1
 
             if bets_to_bulk_update:
                 PoolBet.objects.bulk_update(
@@ -524,6 +528,7 @@ def save_bets_bulk(request, slug):
                 "ok": True,
                 "saved_count": saved_count,
                 "saved_group_count": saved_group_count,
+                "saved_knockout_count": saved_knockout_count,
                 "top_scorer_changed": top_scorer_changed,
                 "validation_errors": validation_errors,
                 "knockout_review": bool(saved_group_count),
