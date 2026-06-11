@@ -15,6 +15,10 @@
         </div>
     </header>
 
+    {% if participations %}
+    {% include "pool/partials/pool_selector.html" %}
+    {% endif %}
+
     <div class="grid gap-6 lg:grid-cols-3">
         <aside class="space-y-6 lg:col-span-1">
             <section class="grid grid-cols-1 gap-3 sm:grid-cols-2">
