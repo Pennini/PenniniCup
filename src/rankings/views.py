@@ -6,21 +6,16 @@ from src.pool.models import Pool, PoolParticipant
 from src.rankings.services.leaderboard import build_pool_leaderboard
 
 
-@login_required
-def pool_ranking_dashboard(request, slug):
-    pool = get_object_or_404(Pool.objects.select_related("season"), slug=slug, is_active=True)
-    pool.refresh_prize_distribution()
-    current_participant = get_object_or_404(PoolParticipant, pool=pool, user=request.user, is_active=True)
-
+def build_ranking_dashboard_context(*, pool, participant):
     leaderboard_rows = build_pool_leaderboard(pool=pool)
     total_participants = len(leaderboard_rows)
 
     current_row = next(
-        (row for row in leaderboard_rows if row.participant.id == current_participant.id),
+        (row for row in leaderboard_rows if row.participant.id == participant.id),
         None,
     )
     leader_points = leaderboard_rows[0].participant.total_points if leaderboard_rows else 0
-    points_gap = max(leader_points - current_participant.total_points, 0)
+    points_gap = max(leader_points - participant.total_points, 0)
 
     podium_rows = leaderboard_rows[:3]
     podium_prizes = [
@@ -49,11 +44,11 @@ def pool_ranking_dashboard(request, slug):
             }
         )
 
-    context = {
+    return {
         "pool": pool,
         "leaderboard_rows": leaderboard_rows,
         "podium_cards": podium_cards,
-        "current_participant": current_participant,
+        "current_participant": participant,
         "current_position": current_row.position if current_row else None,
         "total_participants": total_participants,
         "leader_points": leader_points,
@@ -63,6 +58,14 @@ def pool_ranking_dashboard(request, slug):
         "second_place_amount": pool.second_place_amount,
         "third_place_amount": pool.third_place_amount,
     }
+
+
+@login_required
+def pool_ranking_dashboard(request, slug):
+    pool = get_object_or_404(Pool.objects.select_related("season"), slug=slug, is_active=True)
+    pool.refresh_prize_distribution()
+    current_participant = get_object_or_404(PoolParticipant, pool=pool, user=request.user, is_active=True)
+    context = build_ranking_dashboard_context(pool=pool, participant=current_participant)
     return render(request, "rankings/pool_dashboard.html", context)
 
 
