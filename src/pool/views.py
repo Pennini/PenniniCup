@@ -19,6 +19,7 @@ from src.pool.services.context_builder import resolve_knockout_match_teams
 from src.pool.services.projection_queue import (
     enqueue_projection_recalc,
     has_pending_projection_recalc,
+    projection_is_stale,
 )
 from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, phase_for_match
 
@@ -300,13 +301,20 @@ def save_bet(request, slug, match_id):
 def save_bets_bulk(request, slug):
     pool = get_object_or_404(Pool, slug=slug, is_active=True)
     participant = get_object_or_404(PoolParticipant, pool=pool, user=request.user, is_active=True)
+    is_ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"
 
     if getattr(request, "limited", False):
-        messages.error(request, "Muitas tentativas de salvar palpites. Aguarde e tente novamente.")
+        msg = "Muitas tentativas de salvar palpites. Aguarde e tente novamente."
+        if is_ajax:
+            return JsonResponse({"ok": False, "error": msg}, status=429)
+        messages.error(request, msg)
         return redirect("pool:detail", slug=pool.slug)
 
     if not participant.can_bet():
-        messages.error(request, "Participante sem permissão para palpitar.")
+        msg = "Participante sem permissão para palpitar."
+        if is_ajax:
+            return JsonResponse({"ok": False, "error": msg}, status=403)
+        messages.error(request, msg)
         return redirect("pool:detail", slug=pool.slug)
 
     matches = list(
@@ -454,16 +462,32 @@ def save_bets_bulk(request, slug):
             participant.id,
             str(exc),
         )
-        messages.error(request, "Não foi possível salvar os palpites. Tente novamente.")
+        msg = "Não foi possível salvar os palpites. Tente novamente."
+        if is_ajax:
+            return JsonResponse({"ok": False, "error": msg}, status=400)
+        messages.error(request, msg)
         return redirect("pool:detail", slug=pool.slug)
-
-    for error in validation_errors:
-        messages.error(request, error)
 
     if saved_group_count:
         enqueue_projection_recalc(participant)
 
     total_changes = saved_count + (1 if top_scorer_changed else 0)
+
+    if is_ajax:
+        return JsonResponse(
+            {
+                "ok": True,
+                "saved_count": saved_count,
+                "saved_group_count": saved_group_count,
+                "top_scorer_changed": top_scorer_changed,
+                "validation_errors": validation_errors,
+                "knockout_review": bool(saved_group_count),
+                "projection_pending": has_pending_projection_recalc(participant),
+            }
+        )
+
+    for error in validation_errors:
+        messages.error(request, error)
 
     if not total_changes and not validation_errors:
         messages.info(request, "Nenhuma alteração para salvar.")
@@ -476,3 +500,32 @@ def save_bets_bulk(request, slug):
         messages.success(request, f"{total_changes} alteração(ões) salva(s) com sucesso.")
 
     return redirect("pool:detail", slug=pool.slug)
+
+
+@login_required
+def projection_status(request, slug):
+    pool = get_object_or_404(Pool, slug=slug, is_active=True)
+    participant = get_object_or_404(PoolParticipant, pool=pool, user=request.user, is_active=True)
+
+    pending = has_pending_projection_recalc(participant)
+    stale = projection_is_stale(participant)
+    return JsonResponse(
+        {
+            "pending": pending,
+            "stale": stale,
+            "ready": (not pending) and (not stale),
+        }
+    )
+
+
+@login_required
+def knockout_cards_partial(request, slug):
+    pool = get_object_or_404(Pool.objects.select_related("season"), slug=slug, is_active=True)
+    participant = get_object_or_404(PoolParticipant, pool=pool, user=request.user, is_active=True)
+
+    pool_context = build_pool_participant_view_context(pool=pool, participant=participant, ensure_bets=False)
+    return render(
+        request,
+        "pool/partials/knockout_cards.html",
+        {"pool": pool, **pool_context},
+    )

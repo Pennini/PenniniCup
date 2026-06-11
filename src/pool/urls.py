@@ -15,4 +15,6 @@ urlpatterns = [
     path("<slug:slug>/join/", views.join_pool, name="join"),
     path("<slug:slug>/bet/<int:match_id>/", views.save_bet, name="save-bet"),
     path("<slug:slug>/bets/save/", views.save_bets_bulk, name="save-bets-bulk"),
+    path("<slug:slug>/projection-status/", views.projection_status, name="projection-status"),
+    path("<slug:slug>/knockout-cards/", views.knockout_cards_partial, name="knockout-cards"),
 ]

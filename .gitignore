@@ -227,3 +227,6 @@ __marimo__/
 .planning/
 docs/
 CLAUDE.md
+
+# Claude Code memory (local only, not versioned)
+memory/
