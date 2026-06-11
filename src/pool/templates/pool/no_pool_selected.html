@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}{% if page_kind == "ranking" %}Ranking{% else %}Palpites{% endif %}{% endblock %}
+
+{% block content %}
+<section class="mx-auto w-full max-w-2xl py-10">
+    <article class="rounded-2xl border border-blue-500/20 bg-blue-500/10 p-6 text-center shadow-lg shadow-black/15">
+        <h1 class="text-xl font-semibold text-blue-100">Você ainda não participa de nenhum bolão</h1>
+        <p class="mt-2 text-sm text-blue-100/85">
+            Entre em um bolão com seu token de convite para ver
+            {% if page_kind == "ranking" %}o ranking{% else %}seus palpites{% endif %}.
+        </p>
+        <a href="{% url 'pool:list' %}" class="mt-4 inline-flex rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-black hover:bg-orange-400 transition-colors">
+            Ir para Bolões
+        </a>
+    </article>
+</section>
+{% endblock %}
