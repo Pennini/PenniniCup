@@ -178,7 +178,7 @@ def pool_detail(request, slug):
 
 def _active_participations(user):
     return list(
-        PoolParticipant.objects.filter(user=user, is_active=True)
+        PoolParticipant.objects.filter(user=user, is_active=True, pool__is_active=True)
         .select_related("pool", "pool__season")
         .order_by("joined_at")
     )
