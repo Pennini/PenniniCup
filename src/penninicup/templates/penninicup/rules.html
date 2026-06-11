@@ -39,10 +39,10 @@
                 class="w-full rounded-xl bg-neutral-950 border border-neutral-700 px-3.5 py-2.5 focus:outline-none focus:ring-2 focus:ring-orange-500/40"
                 onchange="this.form.submit()"
             >
-                {% for pool in pools %}
-                <option value="{{ pool.slug }}" {% if selected_pool and selected_pool.id == pool.id %}selected{% endif %}>{{ pool.name }}</option>
+                {% for participation in participations %}
+                <option value="{{ participation.pool.slug }}" {% if selected_pool and selected_pool.id == participation.pool.id %}selected{% endif %}>{{ participation.pool.name }}</option>
                 {% empty %}
-                <option value="">Sem bolão ativo</option>
+                <option value="">Sem bolão</option>
                 {% endfor %}
             </select>
             <noscript>
