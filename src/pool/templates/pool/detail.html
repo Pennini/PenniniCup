@@ -12,6 +12,10 @@
         <a href="{% url 'pool:list' %}" class="px-3 py-2 rounded-md border border-neutral-600 text-sm">Voltar</a>
     </header>
 
+    {% if participations %}
+    {% include "pool/partials/pool_selector.html" with active_tab=active_tab %}
+    {% endif %}
+
     {% if not can_bet %}
     <div class="rounded-md border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-amber-200 text-sm">
         Seu usuário participa do bolão, mas ainda não está apto para palpitar. Confirme o pagamento da inscrição.

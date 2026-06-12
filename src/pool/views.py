@@ -16,6 +16,7 @@ from src.pool.forms import PoolBetForm
 from src.pool.models import Pool, PoolBet, PoolParticipant
 from src.pool.services.context_builder import build_pool_participant_view_context as build_pool_context_service
 from src.pool.services.context_builder import resolve_knockout_match_teams
+from src.pool.services.participants import resolve_selected_participation
 from src.pool.services.projection_queue import (
     enqueue_projection_recalc,
     has_pending_projection_recalc,
@@ -151,6 +152,18 @@ def open_pool(request):
     return redirect("pool:detail", slug=pool_slug)
 
 
+def _build_bets_context(request, pool, participant, active_tab):
+    pool_context = build_pool_participant_view_context(pool=pool, participant=participant, ensure_bets=True)
+    show_reprocess_notice = (request.GET.get("reprocess") or "").strip() == "1"
+    return {
+        "pool": pool,
+        "participant": participant,
+        "active_tab": active_tab,
+        "show_reprocess_notice": show_reprocess_notice,
+        **pool_context,
+    }
+
+
 @login_required
 def pool_detail(request, slug):
     pool = get_object_or_404(Pool.objects.select_related("season"), slug=slug, is_active=True)
@@ -158,18 +171,50 @@ def pool_detail(request, slug):
     active_tab = (request.GET.get("tab") or "bets").strip()
     if active_tab not in ("bets", "classification", "knockout"):
         return redirect(f"{request.path}?tab=bets")
-    pool_context = build_pool_participant_view_context(pool=pool, participant=participant, ensure_bets=True)
-
-    show_reprocess_notice = (request.GET.get("reprocess") or "").strip() == "1"
-
-    context = {
-        "pool": pool,
-        "participant": participant,
-        "active_tab": active_tab,
-        "show_reprocess_notice": show_reprocess_notice,
-        **pool_context,
-    }
+    context = _build_bets_context(request, pool, participant, active_tab)
     return render(request, "pool/detail.html", context)
+
+
+def _active_participations(user):
+    return list(
+        PoolParticipant.objects.filter(user=user, is_active=True, pool__is_active=True)
+        .select_related("pool", "pool__season")
+        .order_by("joined_at")
+    )
+
+
+@login_required
+def bets_tab(request):
+    participations = _active_participations(request.user)
+    selected, _ = resolve_selected_participation(request, participations)
+    if selected is None:
+        return render(request, "pool/no_pool_selected.html", {"page_kind": "bets"})
+
+    pool = selected.pool
+    active_tab = (request.GET.get("tab") or "bets").strip()
+    if active_tab not in ("bets", "classification", "knockout"):
+        active_tab = "bets"
+    context = _build_bets_context(request, pool, selected, active_tab)
+    context["participations"] = participations
+    context["selected_pool"] = pool
+    return render(request, "pool/detail.html", context)
+
+
+@login_required
+def ranking_tab(request):
+    from src.rankings.views import build_ranking_dashboard_context
+
+    participations = _active_participations(request.user)
+    selected, _ = resolve_selected_participation(request, participations)
+    if selected is None:
+        return render(request, "pool/no_pool_selected.html", {"page_kind": "ranking"})
+
+    pool = selected.pool
+    pool.refresh_prize_distribution()
+    context = build_ranking_dashboard_context(pool=pool, participant=selected)
+    context["participations"] = participations
+    context["selected_pool"] = pool
+    return render(request, "rankings/pool_dashboard.html", context)
 
 
 @login_required

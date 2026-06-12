@@ -12,8 +12,9 @@ from django.utils import timezone
 
 from src.accounts.models import UserProfile
 from src.football.models import Match, Season, Team
-from src.pool.models import Pool, PoolBet, PoolParticipant
+from src.pool.models import PoolBet, PoolParticipant
 from src.pool.services.context_builder import build_pool_participant_view_context
+from src.pool.services.participants import resolve_selected_participation
 from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, POOL_TYPE_1, POOL_TYPE_2, normalize_stage_key
 from src.rankings.services.leaderboard import build_pool_leaderboard
 
@@ -326,21 +327,6 @@ def _build_profile_context(request, *, profile_user, is_owner):
     return context, None
 
 
-def _resolve_selected_participation(request, participations):
-    selected_slug = (request.GET.get("pool") or "").strip()
-    selected_participation = None
-
-    if selected_slug:
-        selected_participation = next((item for item in participations if item.pool.slug == selected_slug), None)
-        if selected_participation is None:
-            messages.warning(request, "Bolão selecionado não encontrado entre suas participações ativas.")
-
-    if selected_participation is None and participations:
-        selected_participation = participations[0]
-
-    return selected_participation, selected_slug
-
-
 def _build_home_next_matches_context(*, participant, pool, limit=3):
     upcoming_matches = list(
         Match.objects.filter(
@@ -418,12 +404,12 @@ def index(request):
         return render(request, "penninicup/index.html", context)
 
     participations = list(
-        PoolParticipant.objects.filter(user=request.user, is_active=True)
+        PoolParticipant.objects.filter(user=request.user, is_active=True, pool__is_active=True)
         .select_related("pool", "pool__season")
-        .order_by("pool__name")
+        .order_by("joined_at")
     )
 
-    selected_participation, selected_slug = _resolve_selected_participation(request, participations)
+    selected_participation, selected_slug = resolve_selected_participation(request, participations)
 
     if selected_participation is None:
         context.update(
@@ -459,15 +445,20 @@ def index(request):
 
 @login_required
 def rules(request):
-    pools = list(Pool.objects.filter(is_active=True).select_related("season").order_by("name"))
+    participations = list(
+        PoolParticipant.objects.filter(user=request.user, is_active=True, pool__is_active=True)
+        .select_related("pool", "pool__season")
+        .order_by("joined_at")
+    )
     source = request.POST if request.method == "POST" else request.GET
     selected_slug = (source.get("pool") or "").strip()
 
     selected_pool = None
     if selected_slug:
-        selected_pool = next((pool for pool in pools if pool.slug == selected_slug), None)
-    if selected_pool is None and pools:
-        selected_pool = pools[0]
+        match = next((p for p in participations if p.pool.slug == selected_slug), None)
+        selected_pool = match.pool if match else None
+    if selected_pool is None and participations:
+        selected_pool = participations[0].pool
 
     if request.method == "POST":
         params = {}
@@ -489,7 +480,7 @@ def rules(request):
     knockout_lock_at = selected_pool.get_phase_lock_time(PHASE_KNOCKOUT) if selected_pool else None
 
     context = {
-        "pools": pools,
+        "participations": participations,
         "selected_pool": selected_pool,
         "scoring_config": scoring_config,
         "group_lock_at": group_lock_at,
