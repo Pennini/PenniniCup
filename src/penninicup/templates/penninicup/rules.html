@@ -99,11 +99,11 @@
                     <p class="text-[11px] uppercase tracking-[0.14em] text-sky-300">Fase 2</p>
                     <h3 class="mt-1 font-semibold">Mata-Mata</h3>
                     {% if selected_pool.pool_type == pool_type_2 %}
-                    <p class="mt-1 text-sm text-neutral-300">Os jogos do mata-mata vão abrindo aos poucos. Cada confronto libera para palpite assim que os dois times dele já são conhecidos, e fecha sozinho na hora em que o jogo começa.</p>
-                    <p class="mt-2 text-xs text-neutral-400">Os 32 avos abrem quando a fase de grupos termina. As oitavas abrem quando os quatro times daquele pedaço da chave já são conhecidos, e assim por diante até a final.</p>
+                    <p class="mt-1 text-sm text-neutral-300">Os jogos vão sendo liberados aos poucos: os 32 avos abrem quando a fase de grupos termina, e cada rodada seguinte abre depois que você palpita os dois jogos que levam até aquele confronto.</p>
+                    <p class="mt-2 text-xs text-neutral-400">Mas todos fecham juntos quando o primeiro jogo do mata-mata começa. Depois disso você não muda mais nada, nem das fases seguintes, então adiante seus palpites antes.</p>
                     <p class="mt-3 inline-flex items-center gap-2 rounded-full border border-sky-700/40 bg-sky-500/10 px-2.5 py-1 text-xs text-sky-300">
-                        <i data-lucide="zap" class="h-3.5 w-3.5"></i>
-                        Prazos individuais por jogo
+                        <i data-lucide="lock" class="h-3.5 w-3.5"></i>
+                        {% if knockout_lock_at %}Fecha em {{ knockout_lock_at|date:"d/m/Y H:i" }} (Brasília){% else %}fechamento não definido{% endif %}
                     </p>
                     {% else %}
                     <p class="mt-1 text-sm text-neutral-300">Você palpita todos os jogos do mata-mata junto com a fase de grupos. Quando a fase de grupos fecha, o time que você marcou como classificado fica travado, mas você ainda pode ajustar o placar até o prazo abaixo.</p>
