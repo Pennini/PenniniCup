@@ -547,11 +547,15 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
     losers_map = {}
 
     is_tipo2 = pool.pool_type == POOL_TYPE_2
+    # Lock por fase não muda por jogo: computa uma vez aqui e reusa no loop e no
+    # contexto final. Evita N+1 (is_phase_locked faz 2 queries por chamada).
+    group_locked = pool.is_phase_locked(PHASE_GROUP)
+    knockout_locked = pool.is_phase_locked(PHASE_KNOCKOUT)
     # Tipo 2: trava global única no kickoff do 1º jogo de mata-mata (R32). Antes
     # disso, cada jogo abre de forma progressiva quando seus 2 times existem
     # (R32 = times reais da fase de grupos; R16+ = times projetados pelos palpites
     # do usuário nos feeders). Não há deadline por jogo.
-    knockout_globally_locked = is_tipo2 and pool.is_phase_locked(PHASE_KNOCKOUT)
+    knockout_globally_locked = is_tipo2 and knockout_locked
 
     match_rows = []
     group_rows = []
@@ -609,12 +613,12 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
                     winners_map=winners_map,
                     losers_map=losers_map,
                 )
-                locked = pool.is_phase_locked(phase)
+                locked = group_locked if phase == PHASE_GROUP else knockout_locked
                 bet_status = "locked" if locked else "open"
         else:
             home_team = match.home_team
             away_team = match.away_team
-            locked = pool.is_phase_locked(phase)
+            locked = group_locked if phase == PHASE_GROUP else knockout_locked
             bet_status = "locked" if locked else "open"
 
         row = {
@@ -667,8 +671,8 @@ def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
         "knockout_rows": knockout_rows,
         "projected_groups": projected_groups,
         "can_bet": participant_can_bet,
-        "group_locked": pool.is_phase_locked(PHASE_GROUP),
-        "knockout_locked": pool.is_phase_locked(PHASE_KNOCKOUT),
+        "group_locked": group_locked,
+        "knockout_locked": knockout_locked,
         "projection_pending": has_pending_projection_recalc(participant),
         "top_scorer_options": _top_scorer_options_payload_for_pool(pool),
         "page_mode": "result",

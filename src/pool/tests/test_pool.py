@@ -82,6 +82,59 @@ class PoolBetRulesTest(TestCase):
         with self.assertRaises(ValidationError):
             bet.full_clean()
 
+    def test_admin_skip_lock_allows_bet_without_payment(self):
+        bet = PoolBet(participant=self.participant, match=self.match, home_score_pred=1, away_score_pred=0)
+        bet._admin_skip_lock = True
+        bet.full_clean()  # admin bypassa pagamento/janela
+        bet.save()
+        self.assertTrue(PoolBet.objects.get(participant=self.participant, match=self.match).is_active)
+
+    def test_admin_form_bypasses_lock_when_allowed(self):
+        from src.pool.admin import PoolBetAdminForm
+
+        data = {
+            "participant": self.participant.id,
+            "match": self.match.id,
+            "home_score_pred": 1,
+            "away_score_pred": 0,
+        }
+        form = PoolBetAdminForm(data=data, allow_skip_lock=True)
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_admin_form_enforces_rules_when_not_allowed(self):
+        from src.pool.admin import PoolBetAdminForm
+
+        data = {
+            "participant": self.participant.id,
+            "match": self.match.id,
+            "home_score_pred": 1,
+            "away_score_pred": 0,
+        }
+        # Sem allow_skip_lock (ex.: usuário não-superuser) as regras valem:
+        # participante sem pagamento não pode palpitar.
+        form = PoolBetAdminForm(data=data)
+        self.assertFalse(form.is_valid())
+
+
+class PoolBetAdminPermissionTest(TestCase):
+    def _req(self, user):
+        return type("Req", (), {"user": user})()
+
+    def test_only_superuser_can_add_change_delete(self):
+        from django.contrib.admin.sites import site
+
+        from src.pool.admin import PoolBetAdmin
+
+        admin_obj = PoolBetAdmin(PoolBet, site)
+        staff = User.objects.create_user(
+            username="staff", email="staff@example.com", password="123456Aa!", is_staff=True
+        )
+        superuser = User.objects.create_superuser(username="root", email="root@example.com", password="123456Aa!")
+
+        for perm in ("has_add_permission", "has_change_permission", "has_delete_permission"):
+            self.assertFalse(getattr(admin_obj, perm)(self._req(staff)), perm)
+            self.assertTrue(getattr(admin_obj, perm)(self._req(superuser)), perm)
+
 
 class PoolJoinTokenTest(TestCase):
     def setUp(self):
