@@ -226,132 +226,7 @@
         {% endif %}
 
         <div id="knockout-list">
-        {% for row in knockout_rows %}
-        <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900"
-                 data-match-card
-                 data-phase="{{ row.phase }}"
-                 data-save-url="{% url 'pool:save-bet' pool.slug row.match.id %}"
-                 data-match-date="{{ row.match.match_date_brasilia|date:'Y-m-d' }}"
-                 data-match-date-label="{{ row.match.match_date_brasilia|date:'d/m - l' }}"
-                 data-stage="{{ row.match.stage.name|default:'' }}">
-            <div class="flex flex-wrap gap-3 items-center justify-between">
-                <div>
-                    <p class="text-xs uppercase tracking-wide text-neutral-400">
-                        Mata-mata - {{ row.match.stage.name|default:"-" }}
-                    </p>
-                    <p class="text-xs text-neutral-500">Jogo #{{ row.match.match_number }}</p>
-                    <h2 class="text-lg font-semibold flex flex-wrap items-center gap-2">
-                        <span class="inline-flex items-center gap-2">
-                            {% if row.home_team and row.home_team.flag_image_url %}
-                            <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
-                                <img src="{{ row.home_team.flag_image_url }}" alt="Bandeira {{ row.home_team.name }}"
-                                     class="h-full w-full object-cover" loading="lazy" />
-                            </span>
-                            {% endif %}
-                            <span>{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
-                        </span>
-                        <span>x</span>
-                        <span class="inline-flex items-center gap-2">
-                            {% if row.away_team and row.away_team.flag_image_url %}
-                            <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800">
-                                <img src="{{ row.away_team.flag_image_url }}" alt="Bandeira {{ row.away_team.name }}"
-                                     class="h-full w-full object-cover" loading="lazy" />
-                            </span>
-                            {% endif %}
-                            <span>{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
-                        </span>
-                    </h2>
-                    <p class="text-xs text-neutral-400">{{ row.match.match_date_brasilia }}</p>
-                </div>
-                {% if row.bet_status == "awaiting_teams" %}
-                <span class="text-xs px-2 py-1 rounded-full border border-yellow-600 text-yellow-400">Aguardando</span>
-                {% elif row.locked %}
-                <span class="text-xs px-2 py-1 rounded-full border border-red-400 text-red-300">Fechado</span>
-                {% else %}
-                <span class="text-xs px-2 py-1 rounded-full border border-emerald-400 text-emerald-300">Aberto</span>
-                {% endif %}
-            </div>
-
-            {% if row.bet_status == "awaiting_teams" %}
-            <div class="mt-4 rounded-lg border border-yellow-600/30 bg-yellow-500/5 p-4 text-center space-y-1">
-                <p class="text-sm font-medium text-yellow-300">Aguardando classificação dos times</p>
-                <p class="text-xs text-neutral-500">Os palpites abrirão quando os classificados desta fase forem definidos</p>
-            </div>
-            {% else %}
-            <div class="mt-4 rounded-lg border border-neutral-800 bg-neutral-950/40 p-3 space-y-3">
-                <div class="grid gap-3 min-[900px]:grid-cols-2">
-                    <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3">
-                        <div class="flex items-center justify-between gap-2">
-                            <div class="flex items-center gap-2 min-w-0">
-                                {% if row.home_team and row.home_team.flag_image_url %}
-                                <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
-                                    <img src="{{ row.home_team.flag_image_url }}" alt="Bandeira {{ row.home_team.name }}"
-                                         class="h-full w-full object-cover" loading="lazy" />
-                                </span>
-                                {% endif %}
-                                <span class="truncate text-sm font-medium text-neutral-100">{{ row.home_team.name|default:row.match.home_placeholder|default:"A definir" }}</span>
-                            </div>
-                            <span class="text-[11px] uppercase tracking-wide text-neutral-500">Casa</span>
-                        </div>
-                        <label class="mt-2 mb-1 block text-xs text-neutral-400">Gols de {{ row.home_team.name|default:row.match.home_placeholder|default:"Casa" }}</label>
-                        <input type="number" min="0"
-                               name="match_{{ row.match.id }}_home_score_pred"
-                               value="{% if row.bet %}{{ row.bet.home_score_pred|default_if_none:'' }}{% endif %}"
-                               data-score-home
-                               class="w-full rounded-md bg-black border border-neutral-700 px-3 py-2.5 text-center text-lg"
-                               placeholder="0"
-                               aria-label="Palpite de gols do time da casa"
-                               {% if row.locked or not can_bet %}disabled{% endif %} />
-                    </div>
-
-                    <div class="rounded-md border border-neutral-800 bg-neutral-950 p-3">
-                        <div class="flex items-center justify-between gap-2">
-                            <div class="flex items-center gap-2 min-w-0">
-                                {% if row.away_team and row.away_team.flag_image_url %}
-                                <span class="inline-flex h-5 w-5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0">
-                                    <img src="{{ row.away_team.flag_image_url }}" alt="Bandeira {{ row.away_team.name }}"
-                                         class="h-full w-full object-cover" loading="lazy" />
-                                </span>
-                                {% endif %}
-                                <span class="truncate text-sm font-medium text-neutral-100">{{ row.away_team.name|default:row.match.away_placeholder|default:"A definir" }}</span>
-                            </div>
-                            <span class="text-[11px] uppercase tracking-wide text-neutral-500">Visitante</span>
-                        </div>
-                        <label class="mt-2 mb-1 block text-xs text-neutral-400">Gols de {{ row.away_team.name|default:row.match.away_placeholder|default:"Visitante" }}</label>
-                        <input type="number" min="0"
-                               name="match_{{ row.match.id }}_away_score_pred"
-                               value="{% if row.bet %}{{ row.bet.away_score_pred|default_if_none:'' }}{% endif %}"
-                               data-score-away
-                               class="w-full rounded-md bg-black border border-neutral-700 px-3 py-2.5 text-center text-lg"
-                               placeholder="0"
-                               aria-label="Palpite de gols do time visitante"
-                               {% if row.locked or not can_bet %}disabled{% endif %} />
-                    </div>
-                </div>
-
-                {% if row.phase == "KNOCKOUT" %}
-                <div data-winner-wrapper class="min-[900px]:max-w-sm min-[900px]:ml-auto">
-                    <select
-                        name="match_{{ row.match.id }}_winner_pred"
-                        data-winner-select
-                        data-base-disabled="{% if row.locked or not can_bet %}1{% else %}0{% endif %}"
-                        class="w-full rounded-md bg-black border border-neutral-700 px-3 py-2.5"
-                        {% if row.locked or not can_bet %}disabled{% endif %}
-                    >
-                        <option value="">Classificado</option>
-                        {% if row.home_team %}
-                        <option value="{{ row.home_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.home_team.id %}selected{% endif %}>{{ row.home_team.name }}</option>
-                        {% endif %}
-                        {% if row.away_team %}
-                        <option value="{{ row.away_team.id }}" {% if row.bet and row.bet.winner_pred_id == row.away_team.id %}selected{% endif %}>{{ row.away_team.name }}</option>
-                        {% endif %}
-                    </select>
-                </div>
-                {% endif %}
-            </div>
-            {% endif %}
-        </article>
-        {% endfor %}
+        {% include "pool/partials/knockout_cards.html" %}
         </div>
 
     </form>
@@ -361,11 +236,11 @@
             if (!form) return;
 
             const groupList = document.getElementById('group-list');
-            const cards = document.querySelectorAll('[data-match-card]');
+            const knockoutList = document.getElementById('knockout-list');
             const dirtyCards = new Set();
             const initialPayloadByCard = new Map();
             const topScorerSelect = document.getElementById('top-scorer-pred');
-            const initialTopScorerValue = topScorerSelect ? topScorerSelect.value : '';
+            let initialTopScorerValue = topScorerSelect ? topScorerSelect.value : '';
             let isSubmitting = false;
 
             const mobileTopBarBtn = document.querySelector('[data-topbar-save-btn]');
@@ -591,33 +466,40 @@
                 select.disabled = baseDisabled;
             }
 
-            cards.forEach(function (card) {
-                var homeInput = card.querySelector('[data-score-home]');
-                var awayInput = card.querySelector('[data-score-away]');
-                var winnerSelect = card.querySelector('[data-winner-select]');
-                if (!homeInput || !awayInput) return;
+            function initCards(scope) {
+                scope.querySelectorAll('[data-match-card]').forEach(function (card) {
+                    if (card.dataset.cardInit === '1') return;
+                    card.dataset.cardInit = '1';
 
-                applyWinnerVisibility(card);
-                initialPayloadByCard.set(card, currentPayloadKey(card));
+                    var homeInput = card.querySelector('[data-score-home]');
+                    var awayInput = card.querySelector('[data-score-away]');
+                    var winnerSelect = card.querySelector('[data-winner-select]');
+                    if (!homeInput || !awayInput) return;
 
-                [homeInput, awayInput].forEach(function (input) {
-                    if (input.disabled) return;
-                    input.addEventListener('input', function () {
-                        applyWinnerVisibility(card);
-                        refreshDirtyState(card);
+                    applyWinnerVisibility(card);
+                    initialPayloadByCard.set(card, currentPayloadKey(card));
+
+                    [homeInput, awayInput].forEach(function (input) {
+                        if (input.disabled) return;
+                        input.addEventListener('input', function () {
+                            applyWinnerVisibility(card);
+                            refreshDirtyState(card);
+                        });
+                        input.addEventListener('change', function () {
+                            applyWinnerVisibility(card);
+                            refreshDirtyState(card);
+                        });
                     });
-                    input.addEventListener('change', function () {
-                        applyWinnerVisibility(card);
-                        refreshDirtyState(card);
-                    });
+
+                    if (winnerSelect) {
+                        winnerSelect.addEventListener('change', function () {
+                            refreshDirtyState(card);
+                        });
+                    }
                 });
+            }
 
-                if (winnerSelect) {
-                    winnerSelect.addEventListener('change', function () {
-                        refreshDirtyState(card);
-                    });
-                }
-            });
+            initCards(document);
 
             if (topScorerSelect && !topScorerSelect.disabled) {
                 topScorerSelect.addEventListener('change', function () {
@@ -625,9 +507,177 @@
                 });
             }
 
-            form.addEventListener('submit', function () {
-                isSubmitting = true;
+            const statusUrl = "{% url 'pool:projection-status' pool.slug %}";
+            const knockoutUrl = "{% url 'pool:knockout-cards' pool.slug %}";
+            const saveButtons = document.querySelectorAll('button[form="pool-bets-form"][type="submit"]');
+
+            function showToast(text, kind) {
+                var main = document.querySelector('main');
+                if (!main) return;
+                var cls = 'border-blue-500/30 bg-blue-500/10 text-blue-300';
+                if (kind === 'success') cls = 'border-green-500/30 bg-green-500/10 text-green-300';
+                else if (kind === 'warning') cls = 'border-amber-500/30 bg-amber-500/10 text-amber-300';
+                else if (kind === 'error') cls = 'border-red-500/30 bg-red-500/10 text-red-300';
+
+                var el = document.createElement('div');
+                el.className = 'mb-2 rounded-md border px-4 py-3 text-sm ' + cls;
+                el.setAttribute('role', 'alert');
+                el.textContent = text;
+
+                var box = document.createElement('div');
+                box.className = 'mb-4';
+                box.appendChild(el);
+                main.insertBefore(box, main.firstChild);
+
+                setTimeout(function () {
+                    el.style.transition = 'opacity 0.5s ease';
+                    el.style.opacity = '0';
+                    setTimeout(function () { box.remove(); }, 500);
+                }, 4500);
+            }
+
+            function setSaving(saving) {
+                saveButtons.forEach(function (btn) { btn.disabled = saving; });
+            }
+
+            function lockKnockout(lock) {
+                if (!knockoutList) return;
+                knockoutList.querySelectorAll('input, select').forEach(function (el) {
+                    if (lock) {
+                        if (!el.disabled) { el.dataset.lockReenable = '1'; el.disabled = true; }
+                    } else if (el.dataset.lockReenable === '1') {
+                        el.disabled = false;
+                        delete el.dataset.lockReenable;
+                    }
+                });
+
+                var overlay = document.getElementById('knockout-updating');
+                if (lock && !overlay) {
+                    overlay = document.createElement('div');
+                    overlay.id = 'knockout-updating';
+                    overlay.className = 'mb-3 rounded-md border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-300';
+                    overlay.textContent = 'Atualizando classificados do mata-mata…';
+                    knockoutList.parentNode.insertBefore(overlay, knockoutList);
+                } else if (!lock && overlay) {
+                    overlay.remove();
+                }
+            }
+
+            function markSaved() {
                 dirtyCards.clear();
+                initialPayloadByCard.forEach(function (_value, card) {
+                    if (document.body.contains(card)) {
+                        initialPayloadByCard.set(card, currentPayloadKey(card));
+                    }
+                });
+                if (topScorerSelect) { initialTopScorerValue = topScorerSelect.value; }
+                syncTopBarButton();
+            }
+
+            function rebindKnockout() {
+                if (!knockoutList) return;
+                initialPayloadByCard.forEach(function (_value, card) {
+                    if (!document.body.contains(card)) {
+                        initialPayloadByCard.delete(card);
+                        dirtyCards.delete(card);
+                    }
+                });
+                initCards(knockoutList);
+                applyKnockoutStageGrouping();
+            }
+
+            function refreshKnockoutCards() {
+                return fetch(knockoutUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function (r) { return r.text(); })
+                    .then(function (html) {
+                        if (knockoutList) {
+                            knockoutList.innerHTML = html;
+                            rebindKnockout();
+                        }
+                    });
+            }
+
+            function pollProjection(attempt) {
+                var MAX = 8;
+                fetch(statusUrl, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+                    .then(function (r) { return r.json(); })
+                    .then(function (data) {
+                        if (data && data.ready) {
+                            refreshKnockoutCards().then(function () { lockKnockout(false); });
+                            return;
+                        }
+                        if (attempt >= MAX) {
+                            lockKnockout(false);
+                            showToast('A projeção está demorando. Recarregue a página para ver os classificados atualizados.', 'warning');
+                            return;
+                        }
+                        setTimeout(function () { pollProjection(attempt + 1); }, 1500);
+                    })
+                    .catch(function () {
+                        if (attempt >= MAX) {
+                            lockKnockout(false);
+                            showToast('Não foi possível atualizar a projeção. Recarregue a página.', 'warning');
+                            return;
+                        }
+                        setTimeout(function () { pollProjection(attempt + 1); }, 1500);
+                    });
+            }
+
+            form.addEventListener('submit', function (event) {
+                event.preventDefault();
+                if (isSubmitting) return;
+                isSubmitting = true;
+                setSaving(true);
+
+                var tokenInput = form.querySelector('[name=csrfmiddlewaretoken]');
+                fetch(form.action, {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRFToken': tokenInput ? tokenInput.value : ''
+                    },
+                    body: new FormData(form)
+                })
+                    .then(function (r) {
+                        return r.json().then(function (d) { return { status: r.status, data: d }; });
+                    })
+                    .then(function (res) {
+                        isSubmitting = false;
+                        setSaving(false);
+                        var data = res.data || {};
+                        if (res.status !== 200 || !data.ok) {
+                            showToast((data && data.error) || 'Não foi possível salvar os palpites. Tente novamente.', 'error');
+                            return;
+                        }
+
+                        markSaved();
+                        (data.validation_errors || []).forEach(function (msg) { showToast(msg, 'error'); });
+
+                        if (data.saved_group_count > 0) {
+                            // Mudança de grupo: recálculo assíncrono dos classificados (worker).
+                            showToast('Palpites salvos. Atualizando classificados do mata-mata…', 'success');
+                            if (data.knockout_review) {
+                                showToast('Revise os jogos de mata-mata: os classificados podem ter mudado.', 'warning');
+                            }
+                            lockKnockout(true);
+                            pollProjection(0);
+                        } else if (data.saved_knockout_count > 0) {
+                            // Palpite de mata-mata (vencedor): a chave avança de forma síncrona,
+                            // basta recarregar o fragmento — sem poll/worker.
+                            showToast('Palpites salvos. Atualizando o chaveamento…', 'success');
+                            lockKnockout(true);
+                            refreshKnockoutCards().then(function () { lockKnockout(false); });
+                        } else if (data.saved_count > 0 || data.top_scorer_changed) {
+                            showToast('Palpites salvos com sucesso.', 'success');
+                        } else if (!(data.validation_errors || []).length) {
+                            showToast('Nenhuma alteração para salvar.', 'info');
+                        }
+                    })
+                    .catch(function () {
+                        isSubmitting = false;
+                        setSaving(false);
+                        showToast('Erro de conexão ao salvar. Tente novamente.', 'error');
+                    });
             });
 
             window.addEventListener('beforeunload', function (event) {

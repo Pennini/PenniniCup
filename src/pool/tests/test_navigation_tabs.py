@@ -41,6 +41,12 @@ class NavigationTabsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["selected_pool"].slug, "alpha")
 
+    def test_bets_tab_toggle_prefix_carries_selected_pool(self):
+        # Links das abas internas devem carregar ?pool=<slug> para nao resetar ao default.
+        response = self.client.get(reverse("pool:bets-tab"), data={"pool": "alpha"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["toggle_query_prefix"], "pool=alpha&")
+
     def test_bets_tab_invalid_pool_falls_back_to_default(self):
         response = self.client.get(reverse("pool:bets-tab"), data={"pool": "naoexiste"})
         self.assertEqual(response.status_code, 200)

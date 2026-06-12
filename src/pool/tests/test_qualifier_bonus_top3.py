@@ -67,8 +67,29 @@ class QualifierBonusBase(TestCase):
             status="approved",
             payment_method="pix",
         )
+        # By default the group stage is over (its last match day already
+        # passed), so the qualifier bonus is eligible. Use set_group_stage_*()
+        # to flip this per test.
+        self.group_match = Match.objects.create(
+            fifa_id="QB-GROUPM",
+            season=self.season,
+            stage=self.group_stage,
+            match_number=1,
+            match_date_utc=timezone.now() - timezone.timedelta(days=2),
+            match_date_local=timezone.now() - timezone.timedelta(days=2),
+            match_date_brasilia=timezone.now() - timezone.timedelta(days=2),
+        )
+
         self.scoring_config = self.pool.get_scoring_config()
         assert self.scoring_config is not None
+
+    def set_group_stage_finished(self):
+        self.group_match.match_date_brasilia = timezone.now() - timezone.timedelta(days=2)
+        self.group_match.save(update_fields=["match_date_brasilia"])
+
+    def set_group_stage_ongoing(self):
+        self.group_match.match_date_brasilia = timezone.now() + timezone.timedelta(days=2)
+        self.group_match.save(update_fields=["match_date_brasilia"])
 
     def team(self, group_name, index):
         """Index is 1-based: team('A', 1) -> 'Team A1'."""
@@ -258,6 +279,34 @@ class CalculateGroupQualifierBonusTopThreeTest(QualifierBonusBase):
     def test_empty_standings_returns_zero(self):
         result = _calculate_group_qualifier_bonus(self.participant, self.scoring_config)
         self.assertEqual(result, 0)
+
+
+class GroupStageGateTest(QualifierBonusBase):
+    """Qualifier bonus is only awarded once the group stage is over."""
+
+    def _set_full_group_real(self, group_name):
+        for pos in (1, 2, 3, 4):
+            self.set_real_position(group_name, pos, pos)
+
+    def test_no_bonus_while_group_stage_ongoing(self):
+        self.set_group_stage_ongoing()
+        self._set_full_group_real("A")
+        self.set_proj_position("A", 1, 1)
+        self.set_proj_position("A", 2, 2)
+
+        result = _calculate_group_qualifier_bonus(self.participant, self.scoring_config)
+        self.assertEqual(result, 0)
+
+    def test_bonus_awarded_once_group_stage_finished(self):
+        self.set_group_stage_finished()
+        self._set_full_group_real("A")
+        self.set_proj_position("A", 1, 1)
+        self.set_proj_position("A", 2, 2)
+
+        result = _calculate_group_qualifier_bonus(self.participant, self.scoring_config)
+        cfg = self.scoring_config
+        expected = 2 * (cfg.group_qualifier_points + cfg.group_qualifier_position_bonus)
+        self.assertEqual(result, expected)
 
 
 class QualifierBonusAccountingTest(QualifierBonusBase):

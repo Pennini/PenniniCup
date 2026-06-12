@@ -310,14 +310,20 @@ class PoolBet(models.Model):
         pool = self.participant.pool
         phase = phase_for_match(self.match)
 
-        if phase == PHASE_KNOCKOUT and pool.pool_type == POOL_TYPE_2:
-            if not is_type2_bet_open(self.match, pool.season):
-                raise ValidationError("Partida ainda aguardando classificacao ou encerrada.")
-        elif pool.is_phase_locked(phase):
-            raise ValidationError("Janela de palpites desta fase esta fechada.")
+        # Admin override: deixa o staff editar palpites de qualquer participante
+        # mesmo com a janela fechada ou sem pagamento. As validacoes de sanidade
+        # (placar completo, time valido) continuam valendo.
+        skip_lock = getattr(self, "_admin_skip_lock", False)
 
-        if not self.participant.can_bet():
-            raise ValidationError("Participante sem permissao para palpitar.")
+        if not skip_lock:
+            if phase == PHASE_KNOCKOUT and pool.pool_type == POOL_TYPE_2:
+                if not is_type2_bet_open(self.match, pool, participant=self.participant):
+                    raise ValidationError("Partida ainda aguardando classificacao ou encerrada.")
+            elif pool.is_phase_locked(phase):
+                raise ValidationError("Janela de palpites desta fase esta fechada.")
+
+            if not self.participant.can_bet():
+                raise ValidationError("Participante sem permissao para palpitar.")
 
         if self.home_score_pred is None or self.away_score_pred is None:
             raise ValidationError("Informe o placar completo da partida.")

@@ -341,6 +341,22 @@ class BuildGroupAuditTest(TestCase):
             t = Team.objects.create(fifa_id=f"GA-A{i}", name=f"GA A{i}", name_norm=f"ga a{i}", code=f"GA{i}")
             self.teams.append(t)
 
+        # Group stage already over: a finished group match dated in the past.
+        # The qualifier bonus is only awarded after the group stage ends, so the
+        # R32-draw scenarios below require the group phase to be finished.
+        past = timezone.now() - timezone.timedelta(days=2)
+        Match.objects.create(
+            fifa_id="GA-GROUP01",
+            season=self.season,
+            stage=self.group_stage,
+            match_number=100,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=self.teams[0],
+            away_team=self.teams[1],
+        )
+
         self.pool = Pool.objects.create(name="GA Pool", slug="ga-pool", season=self.season, created_by=self.user)
         self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
         Payment.objects.create(

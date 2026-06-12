@@ -1,3 +1,4 @@
+import contextlib
 import re
 
 PHASE_GROUP = "GROUP"
@@ -46,43 +47,129 @@ def _get_parent_match_number(placeholder):
     return int(m.group(1)) if m else None
 
 
-def get_feeder_r32_matches(match, season):
-    """Return all R32-level matches that feed into the given knockout match.
+_UNSET = object()
 
-    For R32, returns [match]. For deeper rounds, recursively follows W<N>/RU<N>
-    placeholders until R32 is reached. Used for Tipo 2 progressive unlock logic.
+
+def get_knockout_global_lock_time(pool):
+    """Tipo 2: deadline único de todo o mata-mata.
+
+    Fonte única com o display: delega a `pool.get_phase_lock_time(PHASE_KNOCKOUT)`,
+    que honra uma lock_window customizada e, na ausência dela, usa o kickoff do 1o
+    jogo de mata-mata (R32). Antes esta função fazia seu próprio scan e ignorava a
+    janela customizada, abrindo divergência entre o que o card mostra e o que o
+    save aceita.
+
+    Memoiza no objeto `pool` para não repetir o scan full-season a cada bet num
+    bulk save (clean() chama por palpite). Cache vive enquanto a instância de pool
+    existir, ou seja, é request-scoped.
     """
+    cached = getattr(pool, "_knockout_global_lock_time", _UNSET)
+    if cached is not _UNSET:
+        return cached
+
+    result = pool.get_phase_lock_time(PHASE_KNOCKOUT)
+    with contextlib.suppress(AttributeError, TypeError):
+        pool._knockout_global_lock_time = result
+    return result
+
+
+def is_group_stage_finished(season):
+    """True once the group stage is over: the calendar day (Brasília) of the
+    last group-stage match has fully passed.
+
+    The group-qualifier (classificados) bonus must only be awarded after the
+    group stage ends — never while Standings are still provisional mid-stage.
+    """
+    from django.utils import timezone
+
     from src.football.models import Match as FootballMatch
 
-    stage_key = normalize_stage_key(match.stage)
+    group_dates = [
+        m.match_date_brasilia
+        for m in FootballMatch.objects.filter(season=season).select_related("stage")
+        if normalize_stage_key(m.stage) == "GROUP"
+    ]
+    if not group_dates:
+        return False
+    last_day = timezone.localtime(max(group_dates)).date()
+    return timezone.localtime(timezone.now()).date() > last_day
 
+
+def _bet_row_has_winner(winner_pred_id, home_score_pred, away_score_pred):
+    """Versão de `_bet_has_winner` para linhas .values() (sem instância de modelo)."""
+    if winner_pred_id is not None:
+        return True
+    if home_score_pred is None or away_score_pred is None:
+        return False
+    return home_score_pred != away_score_pred
+
+
+def _participant_feeder_winner_map(participant, season):
+    """Mapa match_number -> bool (palpite ativo define classificado?), memoizado na instância.
+
+    Evita 2 queries por jogo R16+ no clean() (lookup de feeder bet). Usa .values() para
+    não materializar PoolBet com campos deferidos (evita reloads de participant_id).
+    Snapshot do estado já persistido — coerente com a validação atual, que lê o banco e
+    roda antes do bulk_update salvar os palpites em voo. Request-scoped (vive com `participant`).
+    """
+    cached = getattr(participant, "_feeder_winner_map", None)
+    if cached is not None and cached[0] == season.id:
+        return cached[1]
+
+    by_number = {
+        row["match__match_number"]: _bet_row_has_winner(
+            row["winner_pred_id"], row["home_score_pred"], row["away_score_pred"]
+        )
+        for row in participant.bets.filter(match__season=season, is_active=True).values(
+            "match__match_number", "winner_pred_id", "home_score_pred", "away_score_pred"
+        )
+    }
+    with contextlib.suppress(AttributeError, TypeError):
+        participant._feeder_winner_map = (season.id, by_number)
+    return by_number
+
+
+def _bet_has_winner(bet):
+    """Palpite define um classificado? (winner_pred explícito ou placar decisivo)."""
+    if bet.winner_pred_id is not None:
+        return True
+    if bet.home_score_pred is None or bet.away_score_pred is None:
+        return False
+    return bet.home_score_pred != bet.away_score_pred
+
+
+def is_type2_bet_open(match, pool, participant=None):
+    """Tipo 2: abertura progressiva por jogo, com trava global no 1o jogo de mata-mata.
+
+    - Trava global: nada de mata-mata abre a partir do kickoff do 1o jogo de R32
+      (ou da lock_window customizada do bolão, via get_knockout_global_lock_time).
+    - R32: abre quando os 2 times reais da fase de grupos estão definidos.
+    - R16+: abre quando o participante já palpitou os 2 feeders imediatos (a projeção
+      produz os 2 times do jogo). Sem participant não há projeção, logo fechado.
+    """
+    from django.utils import timezone
+
+    season = pool.season
+
+    stage_key = normalize_stage_key(match.stage)
     if stage_key in ("GROUP", ""):
-        return []
+        return False
+
+    lock_time = get_knockout_global_lock_time(pool)
+    if lock_time is not None and timezone.now() >= lock_time:
+        return False
 
     if stage_key == "R32":
-        return [match]
+        return match.home_team_id is not None and match.away_team_id is not None
 
-    feeder = []
+    if participant is None:
+        return False
+
+    feeder_winner = _participant_feeder_winner_map(participant, season)
     for placeholder in (match.home_placeholder, match.away_placeholder):
         parent_num = _get_parent_match_number(placeholder)
         if parent_num is None:
-            continue
-        try:
-            parent = FootballMatch.objects.select_related("stage").get(season=season, match_number=parent_num)
-            feeder.extend(get_feeder_r32_matches(parent, season))
-        except FootballMatch.DoesNotExist:
-            pass
-
-    return feeder
-
-
-def is_type2_bet_open(match, season):
-    """Tipo 2: knockout bet is open when all upstream R32 teams are known and match hasn't started."""
-    from django.utils import timezone
-
-    feeder_matches = get_feeder_r32_matches(match, season)
-    if not feeder_matches:
-        return False
-
-    all_teams_known = all(m.home_team_id is not None and m.away_team_id is not None for m in feeder_matches)
-    return all_teams_known and match.match_date_brasilia > timezone.now()
+            return False
+        if not feeder_winner.get(parent_num, False):
+            return False
+    return True

@@ -1,5 +1,6 @@
 from io import StringIO
 
+from django import forms
 from django.contrib import admin, messages
 from django.core.management import call_command
 from django.shortcuts import redirect, render
@@ -126,14 +127,31 @@ class PoolParticipantAdmin(admin.ModelAdmin):
         "bonus_points",
         "qualifier_bonus_points",
         "champion_hit",
+        "top_scorer_pred",
         "top_scorer_hit",
     )
     list_filter = ("pool", "is_active")
-    search_fields = ("user__username", "user__email", "pool__name")
+    search_fields = ("user__username", "user__email", "pool__name", "top_scorer_pred__name")
+    list_select_related = ("pool", "user", "top_scorer_pred")
+
+
+class PoolBetAdminForm(forms.ModelForm):
+    class Meta:
+        model = PoolBet
+        fields = "__all__"
+
+    def __init__(self, *args, allow_skip_lock=False, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Bypassa a trava de janela/pagamento apenas quando o admin (superuser)
+        # editou o palpite. Acesso ao form já é restrito a superuser (ver
+        # has_*_permission), o flag é uma segunda barreira.
+        if allow_skip_lock:
+            self.instance._admin_skip_lock = True
 
 
 @admin.register(PoolBet)
 class PoolBetAdmin(admin.ModelAdmin):
+    form = PoolBetAdminForm
     list_display = (
         "participant",
         "match",
@@ -145,6 +163,39 @@ class PoolBetAdmin(admin.ModelAdmin):
     )
     list_filter = ("participant__pool",)
     search_fields = ("participant__user__username",)
+    autocomplete_fields = ("participant", "match", "winner_pred")
+    list_select_related = ("participant", "participant__user", "match", "winner_pred")
+
+    # Alterar palpites de usuários é sensível: restrito a superuser ("o admin").
+    def has_add_permission(self, request):
+        return request.user.is_superuser
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def has_delete_permission(self, request, obj=None):
+        return request.user.is_superuser
+
+    def get_form(self, request, obj=None, **kwargs):
+        form_class = super().get_form(request, obj, **kwargs)
+        allow_skip_lock = request.user.is_superuser
+
+        class _PoolBetAdminForm(form_class):
+            def __init__(self, *args, **inner):
+                inner.setdefault("allow_skip_lock", allow_skip_lock)
+                super().__init__(*args, **inner)
+
+        return _PoolBetAdminForm
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        # Atualiza projeção (standings/classificados) e recalcula a pontuação do
+        # participante para refletir o palpite editado imediatamente.
+        from src.pool.services.projection_queue import enqueue_projection_recalc
+        from src.pool.services.ranking import recalculate_participant_scores
+
+        enqueue_projection_recalc(obj.participant)
+        recalculate_participant_scores(obj.participant)
 
 
 @admin.register(PoolBetScore)

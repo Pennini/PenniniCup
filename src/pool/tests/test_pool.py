@@ -21,6 +21,7 @@ from src.pool.services.context_builder import (
     _infer_losing_team,
     _make_pairs,
     _projection_is_stale_from_prefetched,
+    build_pool_participant_view_context,
 )
 from src.pool.services.context_builder import (
     _normalize_stage_key as _cb_normalize_stage_key,
@@ -31,7 +32,12 @@ from src.pool.services.projection import (
     resolve_knockout_placeholder_team,
     sync_persisted_group_standings,
 )
-from src.pool.services.projection_queue import MAX_ATTEMPTS, process_next_projection_recalc_job
+from src.pool.services.projection_queue import (
+    MAX_ATTEMPTS,
+    enqueue_projection_recalc,
+    has_pending_projection_recalc,
+    process_next_projection_recalc_job,
+)
 from src.pool.services.ranking import recalculate_participant_scores
 from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, POOL_TYPE_2, normalize_stage_key, phase_for_match
 from src.pool.services.scoring import _winner_from_score, calculate_bet_points
@@ -75,6 +81,59 @@ class PoolBetRulesTest(TestCase):
         bet = PoolBet(participant=self.participant, match=self.match, home_score_pred=1, away_score_pred=0)
         with self.assertRaises(ValidationError):
             bet.full_clean()
+
+    def test_admin_skip_lock_allows_bet_without_payment(self):
+        bet = PoolBet(participant=self.participant, match=self.match, home_score_pred=1, away_score_pred=0)
+        bet._admin_skip_lock = True
+        bet.full_clean()  # admin bypassa pagamento/janela
+        bet.save()
+        self.assertTrue(PoolBet.objects.get(participant=self.participant, match=self.match).is_active)
+
+    def test_admin_form_bypasses_lock_when_allowed(self):
+        from src.pool.admin import PoolBetAdminForm
+
+        data = {
+            "participant": self.participant.id,
+            "match": self.match.id,
+            "home_score_pred": 1,
+            "away_score_pred": 0,
+        }
+        form = PoolBetAdminForm(data=data, allow_skip_lock=True)
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_admin_form_enforces_rules_when_not_allowed(self):
+        from src.pool.admin import PoolBetAdminForm
+
+        data = {
+            "participant": self.participant.id,
+            "match": self.match.id,
+            "home_score_pred": 1,
+            "away_score_pred": 0,
+        }
+        # Sem allow_skip_lock (ex.: usuário não-superuser) as regras valem:
+        # participante sem pagamento não pode palpitar.
+        form = PoolBetAdminForm(data=data)
+        self.assertFalse(form.is_valid())
+
+
+class PoolBetAdminPermissionTest(TestCase):
+    def _req(self, user):
+        return type("Req", (), {"user": user})()
+
+    def test_only_superuser_can_add_change_delete(self):
+        from django.contrib.admin.sites import site
+
+        from src.pool.admin import PoolBetAdmin
+
+        admin_obj = PoolBetAdmin(PoolBet, site)
+        staff = User.objects.create_user(
+            username="staff", email="staff@example.com", password="123456Aa!", is_staff=True
+        )
+        superuser = User.objects.create_superuser(username="root", email="root@example.com", password="123456Aa!")
+
+        for perm in ("has_add_permission", "has_change_permission", "has_delete_permission"):
+            self.assertFalse(getattr(admin_obj, perm)(self._req(staff)), perm)
+            self.assertTrue(getattr(admin_obj, perm)(self._req(superuser)), perm)
 
 
 class PoolJoinTokenTest(TestCase):
@@ -841,6 +900,22 @@ class ProjectionQueueRetryLimitTest(TestCase):
         )
         pool = Pool.objects.create(name="Pool Queue", slug="pool-queue", season=season, created_by=self.owner)
         self.participant = PoolParticipant.objects.create(pool=pool, user=self.user, is_active=True)
+
+    def test_enqueue_revives_failed_job_and_resets_attempts(self):
+        """Nova edição do usuário deve rearmar job FAILED@max e zerar tentativas."""
+        job = PoolProjectionRecalc.objects.create(
+            participant=self.participant,
+            status=PoolProjectionRecalc.STATUS_FAILED,
+            attempts=MAX_ATTEMPTS,
+            last_error="boom",
+        )
+
+        enqueue_projection_recalc(self.participant)
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, PoolProjectionRecalc.STATUS_PENDING)
+        self.assertEqual(job.attempts, 0)
+        self.assertEqual(job.last_error, "")
 
     @patch("src.pool.services.projection_queue.sync_persisted_group_standings", side_effect=RuntimeError("boom"))
     def test_job_becomes_failed_when_reaching_max_attempts(self, _sync_mock):
@@ -2215,3 +2290,465 @@ class SyncPersistedStandingsUpsertTest(TestCase):
         )
         # Linhas reais dos times da partida devem estar presentes
         self.assertEqual(PoolParticipantStanding.objects.filter(participant=self.participant).count(), 2)
+
+
+class BetSaveAjaxFlowTest(TestCase):
+    """Save bulk via AJAX + endpoints de status/partial do mata-mata."""
+
+    ajax_headers = {"HTTP_X_REQUESTED_WITH": "XMLHttpRequest"}
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="ajaxsave", email="ajaxsave@example.com", password="123456Aa!")
+        self.competition = Competition.objects.create(fifa_id=9, name="Copa 9")
+        self.season = Season.objects.create(
+            fifa_id=9,
+            competition=self.competition,
+            name="Temporada 9",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage_group = Stage.objects.create(fifa_id="GROUP9", season=self.season, name="Group Stage", order=90)
+        self.stage_r16 = Stage.objects.create(fifa_id="R16-9", season=self.season, name="Round of 16", order=91)
+        self.group_a = Group.objects.create(fifa_id="GA9", stage=self.stage_group, name="A")
+
+        self.team_a = Team.objects.create(
+            fifa_id="A9", name="Alpha 9", name_norm="alpha9", code="A9", group=self.group_a
+        )
+        self.team_b = Team.objects.create(
+            fifa_id="B9", name="Beta 9", name_norm="beta9", code="B9", group=self.group_a
+        )
+
+        group_date = timezone.now() + timezone.timedelta(days=2)
+        knockout_date = timezone.now() + timezone.timedelta(days=3)
+        self.group_match = Match.objects.create(
+            fifa_id="GM9",
+            season=self.season,
+            stage=self.stage_group,
+            group=self.group_a,
+            match_number=90,
+            match_date_utc=group_date,
+            match_date_local=group_date,
+            match_date_brasilia=group_date,
+            home_team=self.team_a,
+            away_team=self.team_b,
+        )
+        self.knockout_match = Match.objects.create(
+            fifa_id="KM9",
+            season=self.season,
+            stage=self.stage_r16,
+            match_number=91,
+            match_date_utc=knockout_date,
+            match_date_local=knockout_date,
+            match_date_brasilia=knockout_date,
+            home_placeholder="W90",
+            away_placeholder="W90",
+            home_team=self.team_a,
+            away_team=self.team_b,
+        )
+
+        self.pool = Pool.objects.create(
+            name="Pool Ajax Save",
+            slug="pool-ajax-save",
+            season=self.season,
+            created_by=self.user,
+            requires_payment=False,
+        )
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+        self.client.force_login(self.user)
+
+    def _group_payload(self, home=2, away=1):
+        return {
+            f"match_{self.group_match.id}_home_score_pred": str(home),
+            f"match_{self.group_match.id}_away_score_pred": str(away),
+            f"match_{self.group_match.id}_winner_pred": "",
+        }
+
+    def test_bulk_save_ajax_returns_json(self):
+        response = self.client.post(
+            reverse("pool:save-bets-bulk", kwargs={"slug": self.pool.slug}),
+            data=self._group_payload(),
+            **self.ajax_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/json")
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertGreaterEqual(data["saved_group_count"], 1)
+        self.assertTrue(data["knockout_review"])
+        self.assertTrue(data["projection_pending"])
+
+    def test_bulk_save_non_ajax_still_redirects(self):
+        response = self.client.post(
+            reverse("pool:save-bets-bulk", kwargs={"slug": self.pool.slug}),
+            data=self._group_payload(),
+        )
+        self.assertRedirects(response, reverse("pool:detail", kwargs={"slug": self.pool.slug}))
+
+    def test_projection_status_ready_when_no_pending_job(self):
+        response = self.client.get(reverse("pool:projection-status", kwargs={"slug": self.pool.slug}))
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertFalse(data["pending"])
+        self.assertTrue(data["ready"])
+
+    def test_projection_status_pending_after_enqueue(self):
+        PoolBet.objects.create(
+            participant=self.participant,
+            match=self.group_match,
+            home_score_pred=2,
+            away_score_pred=1,
+        )
+        enqueue_projection_recalc(self.participant)
+
+        response = self.client.get(reverse("pool:projection-status", kwargs={"slug": self.pool.slug}))
+        data = response.json()
+        self.assertTrue(data["pending"])
+        self.assertTrue(has_pending_projection_recalc(self.participant))
+        self.assertFalse(data["ready"])
+
+    def test_projection_status_not_pending_after_worker_processes(self):
+        PoolBet.objects.create(
+            participant=self.participant,
+            match=self.group_match,
+            home_score_pred=2,
+            away_score_pred=1,
+            winner_pred=self.team_a,
+        )
+        enqueue_projection_recalc(self.participant)
+        process_next_projection_recalc_job()
+
+        # Re-fetch para descartar o cache da relation OneToOne (status agora IDLE no banco).
+        fresh = PoolParticipant.objects.get(pk=self.participant.pk)
+        self.assertFalse(has_pending_projection_recalc(fresh))
+
+        response = self.client.get(reverse("pool:projection-status", kwargs={"slug": self.pool.slug}))
+        self.assertFalse(response.json()["pending"])
+
+    def test_knockout_cards_partial_renders_projected_team(self):
+        PoolBet.objects.create(
+            participant=self.participant,
+            match=self.group_match,
+            home_score_pred=2,
+            away_score_pred=1,
+            winner_pred=self.team_a,
+        )
+
+        response = self.client.get(reverse("pool:knockout-cards", kwargs={"slug": self.pool.slug}))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, self.team_a.name)
+        self.assertContains(response, f"match_{self.knockout_match.id}_home_score_pred")
+
+    # --- save_bets_bulk AJAX: ramos adicionais -------------------------------
+
+    def test_bulk_save_ajax_knockout_only_no_projection(self):
+        response = self.client.post(
+            reverse("pool:save-bets-bulk", kwargs={"slug": self.pool.slug}),
+            data={
+                f"match_{self.knockout_match.id}_home_score_pred": "2",
+                f"match_{self.knockout_match.id}_away_score_pred": "0",
+                f"match_{self.knockout_match.id}_winner_pred": "",
+            },
+            **self.ajax_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertGreaterEqual(data["saved_count"], 1)
+        self.assertEqual(data["saved_group_count"], 0)
+        self.assertGreaterEqual(data["saved_knockout_count"], 1)
+        self.assertFalse(data["knockout_review"])
+        self.assertFalse(data["projection_pending"])
+        self.assertFalse(PoolProjectionRecalc.objects.filter(participant=self.participant).exists())
+
+    def test_bulk_save_ajax_no_changes_reports_zero(self):
+        payload = self._group_payload()
+        self.client.post(
+            reverse("pool:save-bets-bulk", kwargs={"slug": self.pool.slug}),
+            data=payload,
+            **self.ajax_headers,
+        )
+        # Reenvia valores idênticos -> nada muda.
+        response = self.client.post(
+            reverse("pool:save-bets-bulk", kwargs={"slug": self.pool.slug}),
+            data=payload,
+            **self.ajax_headers,
+        )
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["saved_count"], 0)
+        self.assertEqual(data["saved_group_count"], 0)
+        self.assertEqual(data["validation_errors"], [])
+
+    def test_bulk_save_ajax_validation_error_listed(self):
+        response = self.client.post(
+            reverse("pool:save-bets-bulk", kwargs={"slug": self.pool.slug}),
+            data={
+                f"match_{self.group_match.id}_home_score_pred": "2",
+                f"match_{self.group_match.id}_away_score_pred": "",
+                f"match_{self.group_match.id}_winner_pred": "",
+            },
+            **self.ajax_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["saved_count"], 0)
+        self.assertTrue(data["validation_errors"])
+
+    def test_bulk_save_ajax_enqueues_job_on_group_change(self):
+        self.client.post(
+            reverse("pool:save-bets-bulk", kwargs={"slug": self.pool.slug}),
+            data=self._group_payload(),
+            **self.ajax_headers,
+        )
+        job = PoolProjectionRecalc.objects.get(participant=self.participant)
+        self.assertEqual(job.status, PoolProjectionRecalc.STATUS_PENDING)
+
+    def test_bulk_save_ajax_top_scorer_change(self):
+        player = Player.objects.create(
+            fifa_id="P9A",
+            team=self.team_a,
+            name="Artilheiro 9",
+            short_name="A9",
+            position="Forward",
+        )
+        response = self.client.post(
+            reverse("pool:save-bets-bulk", kwargs={"slug": self.pool.slug}),
+            data={"top_scorer_pred": str(player.id)},
+            **self.ajax_headers,
+        )
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["top_scorer_changed"])
+        self.participant.refresh_from_db()
+        self.assertEqual(self.participant.top_scorer_pred_id, player.id)
+
+    def test_bulk_save_ajax_forbidden_when_cannot_bet(self):
+        self.pool.requires_payment = True
+        self.pool.save(update_fields=["requires_payment"])
+
+        response = self.client.post(
+            reverse("pool:save-bets-bulk", kwargs={"slug": self.pool.slug}),
+            data=self._group_payload(),
+            **self.ajax_headers,
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(response.json()["ok"])
+
+    def test_bulk_save_ajax_skips_locked_group_match(self):
+        past = timezone.now() - timezone.timedelta(days=1)
+        locked_match = Match.objects.create(
+            fifa_id="GM9-LOCK",
+            season=self.season,
+            stage=self.stage_group,
+            group=self.group_a,
+            match_number=89,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=self.team_a,
+            away_team=self.team_b,
+        )
+        # Com um jogo de grupo no passado, a fase de grupos fica travada (lock = 1º jogo).
+        response = self.client.post(
+            reverse("pool:save-bets-bulk", kwargs={"slug": self.pool.slug}),
+            data={
+                f"match_{locked_match.id}_home_score_pred": "1",
+                f"match_{locked_match.id}_away_score_pred": "0",
+                f"match_{locked_match.id}_winner_pred": "",
+            },
+            **self.ajax_headers,
+        )
+        data = response.json()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["saved_group_count"], 0)
+        self.assertFalse(
+            PoolBet.objects.filter(participant=self.participant, match=locked_match, is_active=True).exists()
+        )
+
+    # --- auth / escopo dos novos endpoints -----------------------------------
+
+    def test_projection_status_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse("pool:projection-status", kwargs={"slug": self.pool.slug}))
+        self.assertEqual(response.status_code, 302)
+
+    def test_knockout_cards_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse("pool:knockout-cards", kwargs={"slug": self.pool.slug}))
+        self.assertEqual(response.status_code, 302)
+
+    def test_projection_status_404_for_non_participant(self):
+        other = User.objects.create_user(username="outsider9", email="out9@example.com", password="123456Aa!")
+        self.client.force_login(other)
+        response = self.client.get(reverse("pool:projection-status", kwargs={"slug": self.pool.slug}))
+        self.assertEqual(response.status_code, 404)
+
+    def test_knockout_cards_404_for_non_participant(self):
+        other = User.objects.create_user(username="outsider9b", email="out9b@example.com", password="123456Aa!")
+        self.client.force_login(other)
+        response = self.client.get(reverse("pool:knockout-cards", kwargs={"slug": self.pool.slug}))
+        self.assertEqual(response.status_code, 404)
+
+    # --- knockout_cards_partial: comportamento -------------------------------
+
+    def test_knockout_cards_partial_does_not_create_bets(self):
+        self.assertEqual(PoolBet.objects.filter(participant=self.participant).count(), 0)
+        self.client.get(reverse("pool:knockout-cards", kwargs={"slug": self.pool.slug}))
+        # ensure_bets=False -> não materializa palpites.
+        self.assertEqual(PoolBet.objects.filter(participant=self.participant).count(), 0)
+
+    def test_knockout_cards_partial_reflects_projection_change(self):
+        bet = PoolBet.objects.create(
+            participant=self.participant,
+            match=self.group_match,
+            home_score_pred=2,
+            away_score_pred=1,
+            winner_pred=self.team_a,
+        )
+        response = self.client.get(reverse("pool:knockout-cards", kwargs={"slug": self.pool.slug}))
+        rows = response.context["knockout_rows"]
+        self.assertEqual(rows[0]["home_team"].id, self.team_a.id)
+
+        # Inverte o vencedor projetado.
+        bet.home_score_pred = 0
+        bet.away_score_pred = 3
+        bet.winner_pred = self.team_b
+        bet.save()
+
+        response = self.client.get(reverse("pool:knockout-cards", kwargs={"slug": self.pool.slug}))
+        rows = response.context["knockout_rows"]
+        self.assertEqual(rows[0]["home_team"].id, self.team_b.id)
+
+    def test_knockout_cards_partial_shows_saved_bet_value(self):
+        PoolBet.objects.create(
+            participant=self.participant,
+            match=self.knockout_match,
+            home_score_pred=4,
+            away_score_pred=2,
+            winner_pred=self.team_a,
+            is_active=True,
+        )
+        response = self.client.get(reverse("pool:knockout-cards", kwargs={"slug": self.pool.slug}))
+        self.assertContains(response, 'value="4"')
+
+
+class Tipo2KnockoutOpenTestCase(TestCase):
+    """Tipo 2: R32 abre por times reais; R16+ abre por projeção dos palpites; trava global no 1o jogo de mata-mata."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="t2user", password="x")
+        self.competition = Competition.objects.create(fifa_id=9001, name="Copa T2")
+        self.season = Season.objects.create(
+            fifa_id=9002,
+            competition=self.competition,
+            name="Temp T2",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage_r32 = Stage.objects.create(fifa_id="R32-T2", season=self.season, name="R32", order=50)
+        self.stage_r16 = Stage.objects.create(fifa_id="R16-T2", season=self.season, name="Round of 16", order=51)
+
+        def mk_team(code):
+            return Team.objects.create(fifa_id=f"T2{code}", name=f"Team {code}", name_norm=f"team{code}", code=code)
+
+        self.a, self.b, self.c, self.d = mk_team("A"), mk_team("B"), mk_team("C"), mk_team("D")
+
+        self.future = timezone.now() + timezone.timedelta(days=2)
+        self.r32_1 = self._mk_match("R32-1", self.stage_r32, 80, self.future, home=self.a, away=self.b)
+        self.r32_2 = self._mk_match("R32-2", self.stage_r32, 82, self.future, home=self.c, away=self.d)
+        self.r16 = self._mk_match(
+            "R16-1",
+            self.stage_r16,
+            90,
+            self.future + timezone.timedelta(hours=3),
+            home_ph="W80",
+            away_ph="W82",
+        )
+
+        self.pool = Pool.objects.create(
+            name="Pool T2",
+            slug="pool-t2",
+            season=self.season,
+            created_by=self.user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+
+    def _mk_match(self, fid, stage, number, date, home=None, away=None, home_ph="", away_ph=""):
+        return Match.objects.create(
+            fifa_id=fid,
+            season=self.season,
+            stage=stage,
+            match_number=number,
+            match_date_utc=date,
+            match_date_local=date,
+            match_date_brasilia=date,
+            home_team=home,
+            away_team=away,
+            home_placeholder=home_ph,
+            away_placeholder=away_ph,
+        )
+
+    def _rows(self):
+        ctx = build_pool_participant_view_context(pool=self.pool, participant=self.participant, ensure_bets=False)
+        return {r["match"].id: r for r in ctx["knockout_rows"]}
+
+    def test_r32_open_with_real_teams_before_global_lock(self):
+        rows = self._rows()
+        self.assertEqual(rows[self.r32_1.id]["bet_status"], "open")
+        self.assertFalse(rows[self.r32_1.id]["locked"])
+
+    def test_r16_awaiting_until_user_bets_feeders(self):
+        rows = self._rows()
+        self.assertEqual(rows[self.r16.id]["bet_status"], "awaiting_teams")
+        self.assertTrue(rows[self.r16.id]["locked"])
+
+    def _bet_r32_feeders(self):
+        PoolBet.objects.create(
+            participant=self.participant,
+            match=self.r32_1,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=self.a,
+        )
+        PoolBet.objects.create(
+            participant=self.participant,
+            match=self.r32_2,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=self.c,
+        )
+
+    def test_r16_opens_after_user_bets_both_feeders(self):
+        self._bet_r32_feeders()
+        rows = self._rows()
+        row = rows[self.r16.id]
+        self.assertEqual(row["home_team"].id, self.a.id)
+        self.assertEqual(row["away_team"].id, self.c.id)
+        self.assertEqual(row["bet_status"], "open")
+        self.assertFalse(row["locked"])
+
+    def test_global_lock_at_first_knockout_kickoff(self):
+        past = timezone.now() - timezone.timedelta(hours=1)
+        Match.objects.filter(id=self.r32_1.id).update(match_date_brasilia=past)
+        self._bet_r32_feeders()
+        rows = self._rows()
+        self.assertEqual(rows[self.r32_2.id]["bet_status"], "locked")
+        self.assertTrue(rows[self.r32_2.id]["locked"])
+        self.assertEqual(rows[self.r16.id]["bet_status"], "locked")
+
+    def test_save_r16_rejected_until_feeders_bet(self):
+        bet = PoolBet(participant=self.participant, match=self.r16, home_score_pred=1, away_score_pred=0)
+        with self.assertRaises(ValidationError):
+            bet.full_clean()
+
+    def test_save_r16_allowed_after_feeders_bet(self):
+        self._bet_r32_feeders()
+        bet = PoolBet(participant=self.participant, match=self.r16, home_score_pred=1, away_score_pred=0)
+        bet.full_clean()  # não deve levantar
+        bet.save()
+        self.assertTrue(PoolBet.objects.get(participant=self.participant, match=self.r16).is_active)

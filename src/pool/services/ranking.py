@@ -1,7 +1,7 @@
 from django.db import transaction
 
 from src.pool.models import Pool, PoolBetScore, PoolParticipant
-from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_1, phase_for_match
+from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_1, is_group_stage_finished, phase_for_match
 from src.pool.services.scoring import calculate_bet_points
 
 
@@ -85,6 +85,11 @@ def _calculate_group_qualifier_bonus(participant, scoring_config):
     additionally if the predicted position equals the real Standings position.
     """
     season = participant.pool.season
+
+    # Award qualifier bonus only after the group stage is over. Mid-stage the
+    # Standings positions are still provisional, so points must not be granted.
+    if not is_group_stage_finished(season):
+        return 0
 
     real_qualifiers_by_group, _ = _real_qualifier_position_map(season)
     if not real_qualifiers_by_group:
