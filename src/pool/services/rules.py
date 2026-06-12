@@ -50,27 +50,26 @@ def _get_parent_match_number(placeholder):
 _UNSET = object()
 
 
-def get_knockout_global_lock_time(season):
-    """Tipo 2: deadline único de todo o mata-mata = kickoff do 1o jogo de mata-mata (R32).
+def get_knockout_global_lock_time(pool):
+    """Tipo 2: deadline único de todo o mata-mata.
 
-    O calendário é dado estático; memoiza no objeto `season` para não repetir o scan
-    full-season a cada bet num bulk save (clean() chama por palpite). O cache vive
-    apenas enquanto a instância de season existir, ou seja, é request-scoped.
+    Fonte única com o display: delega a `pool.get_phase_lock_time(PHASE_KNOCKOUT)`,
+    que honra uma lock_window customizada e, na ausência dela, usa o kickoff do 1o
+    jogo de mata-mata (R32). Antes esta função fazia seu próprio scan e ignorava a
+    janela customizada, abrindo divergência entre o que o card mostra e o que o
+    save aceita.
+
+    Memoiza no objeto `pool` para não repetir o scan full-season a cada bet num
+    bulk save (clean() chama por palpite). Cache vive enquanto a instância de pool
+    existir, ou seja, é request-scoped.
     """
-    cached = getattr(season, "_knockout_global_lock_time", _UNSET)
+    cached = getattr(pool, "_knockout_global_lock_time", _UNSET)
     if cached is not _UNSET:
         return cached
 
-    from src.football.models import Match as FootballMatch
-
-    dates = [
-        m.match_date_brasilia
-        for m in FootballMatch.objects.filter(season=season).select_related("stage")
-        if normalize_stage_key(m.stage) not in ("GROUP", "")
-    ]
-    result = min(dates) if dates else None
+    result = pool.get_phase_lock_time(PHASE_KNOCKOUT)
     with contextlib.suppress(AttributeError, TypeError):
-        season._knockout_global_lock_time = result
+        pool._knockout_global_lock_time = result
     return result
 
 
@@ -139,21 +138,24 @@ def _bet_has_winner(bet):
     return bet.home_score_pred != bet.away_score_pred
 
 
-def is_type2_bet_open(match, season, participant=None):
+def is_type2_bet_open(match, pool, participant=None):
     """Tipo 2: abertura progressiva por jogo, com trava global no 1o jogo de mata-mata.
 
-    - Trava global: nada de mata-mata abre a partir do kickoff do 1o jogo de R32.
+    - Trava global: nada de mata-mata abre a partir do kickoff do 1o jogo de R32
+      (ou da lock_window customizada do bolão, via get_knockout_global_lock_time).
     - R32: abre quando os 2 times reais da fase de grupos estão definidos.
     - R16+: abre quando o participante já palpitou os 2 feeders imediatos (a projeção
       produz os 2 times do jogo). Sem participant não há projeção, logo fechado.
     """
     from django.utils import timezone
 
+    season = pool.season
+
     stage_key = normalize_stage_key(match.stage)
     if stage_key in ("GROUP", ""):
         return False
 
-    lock_time = get_knockout_global_lock_time(season)
+    lock_time = get_knockout_global_lock_time(pool)
     if lock_time is not None and timezone.now() >= lock_time:
         return False
 
