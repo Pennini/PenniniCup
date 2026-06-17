@@ -11,6 +11,9 @@ if IN_DOCKER or os.path.isfile("/.dockerenv"):  # type: ignore # noqa: F821
     STORAGES = {
         "default": {
             "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",
+            # file_overwrite=True (padrão) faz uploads com mesmo nome sobrescreverem
+            # o mesmo objeto S3 — foto de um usuário acabava aparecendo para outro.
+            "OPTIONS": {"file_overwrite": False},
         },
         "staticfiles": {
             "BACKEND": "storages.backends.s3boto3.S3Boto3Storage",

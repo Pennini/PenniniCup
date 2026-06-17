@@ -1,3 +1,4 @@
+import os
 import uuid
 import warnings
 
@@ -6,12 +7,25 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction
 from django.utils import timezone
 
-_MAX_PROFILE_IMAGE_MB = 2
+# Foto original (antes do resize/compressão feito no upload). Generoso o
+# suficiente para fotos de celular (HEIC/JPEG costumam ter 3-8MB).
+_MAX_PROFILE_IMAGE_MB = 15
 
 
 def _validate_profile_image(image):
     if image.size > _MAX_PROFILE_IMAGE_MB * 1024 * 1024:
         raise ValidationError(f"A imagem não pode ser maior que {_MAX_PROFILE_IMAGE_MB}MB.")
+
+
+def profile_image_upload_to(instance, filename):
+    """Gera nome único por upload.
+
+    Evita colisão de nomes entre usuários (ex.: "image.jpg", "IMG_0001.JPG").
+    Com S3 (file_overwrite=True por padrão) nomes iguais sobrescrevem o mesmo
+    objeto, fazendo a foto de um usuário aparecer para outro.
+    """
+    ext = os.path.splitext(filename)[1].lower() or ".jpg"
+    return f"profiles/{uuid.uuid4().hex}{ext}"
 
 
 class CustomUser(AbstractUser):
@@ -44,7 +58,7 @@ class UserProfile(models.Model):
     verification_token = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
     token_created_at = models.DateTimeField(auto_now_add=True)
     profile_image = models.ImageField(
-        upload_to="profiles/", blank=True, null=True, validators=[_validate_profile_image]
+        upload_to=profile_image_upload_to, blank=True, null=True, validators=[_validate_profile_image]
     )
     favorite_team = models.CharField(max_length=120, blank=True)
     world_cup_team = models.ForeignKey(

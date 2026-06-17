@@ -224,6 +224,71 @@ class ProfilePageTest(TestCase):
         profile = UserProfile.objects.get(user=self.user)
         self.assertTrue(profile.profile_image.name.startswith("profiles/"))
 
+    def _upload_image_as(self, username, *, filename="image.png", size=(10, 10)):
+        self.client.login(username=username, password="123456Aa!")
+        buf = BytesIO()
+        Image.new("RGB", size, color="red").save(buf, format="PNG")
+        buf.seek(0)
+        uploaded = SimpleUploadedFile(filename, buf.read(), content_type="image/png")
+        response = self.client.post(
+            reverse("penninicup:profile"),
+            data={
+                "favorite_team": "",
+                "world_cup_team": "",
+                "selected_pool": self.pool.slug,
+                "active_tab": "bets",
+                "profile_image": uploaded,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+    def test_profile_image_uses_unique_filename_per_upload(self):
+        # Bug: nomes iguais no S3 (file_overwrite) sobrescreviam, vazando foto entre usuários.
+        self._upload_image_as("profile-user", filename="image.png")
+        self._upload_image_as("other-user", filename="image.png")
+
+        mine = UserProfile.objects.get(user=self.user).profile_image.name
+        theirs = UserProfile.objects.get(user=self.other_user).profile_image.name
+
+        self.assertNotEqual(mine, theirs)
+        self.assertNotIn("image.png", mine)
+        self.assertNotIn("image.png", theirs)
+
+    def test_profile_image_resized_and_converted_to_jpeg(self):
+        # Fotos de celular são grandes; redimensiona e converte para JPEG no upload.
+        self._upload_image_as("profile-user", filename="foto.png", size=(2000, 1500))
+
+        profile = UserProfile.objects.get(user=self.user)
+        self.assertTrue(profile.profile_image.name.endswith(".jpg"))
+        with Image.open(profile.profile_image) as stored:
+            self.assertLessEqual(max(stored.size), 1024)
+            self.assertEqual(stored.format, "JPEG")
+
+    def test_profile_image_accepts_heic_and_stores_jpeg(self):
+        # Foto do iPhone (HEIC) deve ser aceita e convertida para JPEG.
+        self.client.login(username="profile-user", password="123456Aa!")
+        buf = BytesIO()
+        Image.new("RGB", (60, 60), color="blue").save(buf, format="HEIF")
+        buf.seek(0)
+        uploaded = SimpleUploadedFile("foto.heic", buf.read(), content_type="image/heic")
+
+        response = self.client.post(
+            reverse("penninicup:profile"),
+            data={
+                "favorite_team": "",
+                "world_cup_team": "",
+                "selected_pool": self.pool.slug,
+                "active_tab": "bets",
+                "profile_image": uploaded,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        profile = UserProfile.objects.get(user=self.user)
+        self.assertTrue(profile.profile_image.name.endswith(".jpg"))
+        with Image.open(profile.profile_image) as stored:
+            self.assertEqual(stored.format, "JPEG")
+
     def test_profile_invalid_pool_query_ignores_selection(self):
         self.client.login(username="profile-user", password="123456Aa!")
         response = self.client.get(reverse("penninicup:profile"), data={"pool": "nao-existe"})
