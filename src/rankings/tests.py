@@ -574,6 +574,60 @@ class MatchGuessesViewTest(TestCase):
         self.assertEqual(response.status_code, 404)
 
 
+class RankingTabPoolSelectorTest(TestCase):
+    """The slugless ranking-tab is the navbar/homepage entry. The pool selector
+    must render on BOTH the ranking and palpites tabs, positioned above the
+    ranking/palpites toggle.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="rt-user", email="rt@example.com", password="123456Aa!")
+        competition = Competition.objects.create(fifa_id=930, name="Copa Selector")
+        self.season = Season.objects.create(
+            fifa_id=930,
+            competition=competition,
+            name="Temporada Selector",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.pool_a = Pool.objects.create(
+            name="Bolão A", slug="bolao-a", season=self.season, created_by=self.user, requires_payment=False
+        )
+        self.pool_b = Pool.objects.create(
+            name="Bolão B", slug="bolao-b", season=self.season, created_by=self.user, requires_payment=False
+        )
+        PoolParticipant.objects.create(pool=self.pool_a, user=self.user, is_active=True)
+        PoolParticipant.objects.create(pool=self.pool_b, user=self.user, is_active=True)
+
+    def _url(self):
+        return reverse("pool:ranking-tab")
+
+    def test_pool_selector_renders_on_ranking_tab(self):
+        self.client.force_login(self.user)
+        response = self.client.get(self._url())
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="pool-selector"')
+        self.assertContains(response, "Bolão A")
+        self.assertContains(response, "Bolão B")
+
+    def test_pool_selector_renders_on_palpites_tab(self):
+        self.client.force_login(self.user)
+        response = self.client.get(self._url(), {"tab": "palpites"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["active_tab"], "palpites")
+        self.assertContains(response, 'id="pool-selector"')
+
+    def test_pool_selector_is_above_toggle(self):
+        self.client.force_login(self.user)
+        for tab in ("ranking", "palpites"):
+            response = self.client.get(self._url(), {"tab": tab})
+            body = response.content.decode()
+            selector_at = body.index('id="pool-selector"')
+            toggle_at = body.index("Classificação")
+            self.assertLess(selector_at, toggle_at, f"pool selector should be above the toggle on tab={tab}")
+
+
 class ToggleSupporterStarsTest(TestCase):
     def setUp(self):
         self.admin = User.objects.create_superuser(username="ts-su", email="ts-su@example.com", password="123456Aa!")

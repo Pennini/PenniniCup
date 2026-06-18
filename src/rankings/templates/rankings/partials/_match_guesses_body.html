@@ -14,40 +14,40 @@ guesses_locked, match_finished, guess_rows, pool, toggle_query_prefix (opcional)
         href="?{{ nav_prefix }}tab=palpites&match={{ prev_match.id }}"
         data-match="{{ prev_match.id }}"
         rel="prev"
-        class="carousel-arrow group flex w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-neutral-700/80 bg-neutral-950/70 px-1 py-3 text-center transition-colors hover:border-orange-500/40 hover:bg-neutral-900 sm:w-24"
+        class="carousel-arrow group flex w-14 shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-xl border border-neutral-700/80 bg-neutral-950/70 px-1 py-3 text-center transition-colors hover:border-orange-500/40 hover:bg-neutral-900 sm:w-24"
         aria-label="Jogo anterior"
     >
         <span class="text-xl leading-none text-neutral-400 group-hover:text-orange-300">‹</span>
-        <span class="text-[10px] text-neutral-500">{{ prev_match.match_date_brasilia|date:"d/m" }}</span>
-        <span class="text-[11px] font-semibold text-neutral-300 leading-tight">{{ prev_match.home_team.code|default:prev_match.home_placeholder|default:"?" }}<span class="text-neutral-600">×</span>{{ prev_match.away_team.code|default:prev_match.away_placeholder|default:"?" }}</span>
+        <span class="block w-full truncate text-[10px] text-neutral-500">{{ prev_match.match_date_brasilia|date:"d/m" }}</span>
+        <span class="block w-full truncate text-[11px] font-semibold leading-tight text-neutral-300">{{ prev_match.home_team.code|default:prev_match.home_placeholder|default:"?" }}<span class="text-neutral-600">×</span>{{ prev_match.away_team.code|default:prev_match.away_placeholder|default:"?" }}</span>
     </a>
     {% else %}
-    <span class="flex w-16 shrink-0 items-center justify-center rounded-xl border border-neutral-800/70 bg-neutral-950/40 px-1 py-3 text-xl leading-none text-neutral-700 sm:w-24" aria-hidden="true">‹</span>
+    <span class="flex w-14 shrink-0 items-center justify-center rounded-xl border border-neutral-800/70 bg-neutral-950/40 px-1 py-3 text-xl leading-none text-neutral-700 sm:w-24" aria-hidden="true">‹</span>
     {% endif %}
 
-    <div class="flex-1 rounded-xl border border-neutral-700/80 bg-neutral-950/70 p-4">
+    <div class="min-w-0 flex-1 rounded-xl border border-neutral-700/80 bg-neutral-950/70 p-3 sm:p-4">
         {% if selected_match %}
-        <div class="flex items-center justify-between text-xs uppercase tracking-wide text-neutral-400">
-            <span>{{ selected_stage_label }}{% if selected_match.group %} · {{ selected_match.group.name }}{% endif %}</span>
-            <span>{{ selected_match.match_date_brasilia|date:"d/m/Y H:i" }}</span>
+        <div class="flex flex-col gap-1 text-xs uppercase tracking-wide text-neutral-400 sm:flex-row sm:items-center sm:justify-between">
+            <span class="min-w-0 truncate">{{ selected_stage_label }}{% if selected_match.group %} · {{ selected_match.group.name }}{% endif %}</span>
+            <span class="shrink-0 whitespace-nowrap text-neutral-500 sm:text-neutral-400">{{ selected_match.match_date_brasilia|date:"d/m/Y H:i" }}</span>
         </div>
-        <div class="mt-3 flex items-center justify-center gap-4 text-lg font-semibold">
-            <span class="flex items-center gap-2">
+        <div class="mt-3 flex flex-wrap items-center justify-center gap-2 text-base font-semibold sm:gap-4 sm:text-lg">
+            <span class="flex min-w-0 items-center gap-1 sm:gap-2">
                 {% if selected_match.home_team %}
-                {% if selected_match.home_team.flag_image_url %}<img src="{{ selected_match.home_team.flag_image_url }}" alt="{{ selected_match.home_team.code }}" class="h-5 w-7 object-cover rounded-sm" />{% endif %}
+                {% if selected_match.home_team.flag_image_url %}<img src="{{ selected_match.home_team.flag_image_url }}" alt="{{ selected_match.home_team.code }}" class="h-5 w-7 shrink-0 rounded-sm object-cover" />{% endif %}
                 <span>{{ selected_match.home_team.code }}</span>
-                {% else %}<span class="text-neutral-300">{{ selected_match.home_placeholder|default:"?" }}</span>{% endif %}
+                {% else %}<span class="min-w-0 truncate text-neutral-300">{{ selected_match.home_placeholder|default:"?" }}</span>{% endif %}
             </span>
             {% if match_finished %}
-            <span class="text-2xl font-extrabold">{{ selected_match.home_score|default_if_none:"-" }} <span class="text-neutral-500 text-base font-normal">x</span> {{ selected_match.away_score|default_if_none:"-" }}</span>
+            <span class="shrink-0 text-xl font-extrabold sm:text-2xl">{{ selected_match.home_score|default_if_none:"-" }} <span class="text-base font-normal text-neutral-500">x</span> {{ selected_match.away_score|default_if_none:"-" }}</span>
             {% else %}
-            <span class="text-neutral-500">x</span>
+            <span class="shrink-0 text-neutral-500">x</span>
             {% endif %}
-            <span class="flex items-center gap-2">
+            <span class="flex min-w-0 items-center gap-1 sm:gap-2">
                 {% if selected_match.away_team %}
                 <span>{{ selected_match.away_team.code }}</span>
-                {% if selected_match.away_team.flag_image_url %}<img src="{{ selected_match.away_team.flag_image_url }}" alt="{{ selected_match.away_team.code }}" class="h-5 w-7 object-cover rounded-sm" />{% endif %}
-                {% else %}<span class="text-neutral-300">{{ selected_match.away_placeholder|default:"?" }}</span>{% endif %}
+                {% if selected_match.away_team.flag_image_url %}<img src="{{ selected_match.away_team.flag_image_url }}" alt="{{ selected_match.away_team.code }}" class="h-5 w-7 shrink-0 rounded-sm object-cover" />{% endif %}
+                {% else %}<span class="min-w-0 truncate text-neutral-300">{{ selected_match.away_placeholder|default:"?" }}</span>{% endif %}
             </span>
         </div>
         {% else %}
@@ -60,15 +60,15 @@ guesses_locked, match_finished, guess_rows, pool, toggle_query_prefix (opcional)
         href="?{{ nav_prefix }}tab=palpites&match={{ next_match.id }}"
         data-match="{{ next_match.id }}"
         rel="next"
-        class="carousel-arrow group flex w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-neutral-700/80 bg-neutral-950/70 px-1 py-3 text-center transition-colors hover:border-orange-500/40 hover:bg-neutral-900 sm:w-24"
+        class="carousel-arrow group flex w-14 shrink-0 flex-col items-center justify-center gap-1 overflow-hidden rounded-xl border border-neutral-700/80 bg-neutral-950/70 px-1 py-3 text-center transition-colors hover:border-orange-500/40 hover:bg-neutral-900 sm:w-24"
         aria-label="Próximo jogo"
     >
         <span class="text-xl leading-none text-neutral-400 group-hover:text-orange-300">›</span>
-        <span class="text-[10px] text-neutral-500">{{ next_match.match_date_brasilia|date:"d/m" }}</span>
-        <span class="text-[11px] font-semibold text-neutral-300 leading-tight">{{ next_match.home_team.code|default:next_match.home_placeholder|default:"?" }}<span class="text-neutral-600">×</span>{{ next_match.away_team.code|default:next_match.away_placeholder|default:"?" }}</span>
+        <span class="block w-full truncate text-[10px] text-neutral-500">{{ next_match.match_date_brasilia|date:"d/m" }}</span>
+        <span class="block w-full truncate text-[11px] font-semibold leading-tight text-neutral-300">{{ next_match.home_team.code|default:next_match.home_placeholder|default:"?" }}<span class="text-neutral-600">×</span>{{ next_match.away_team.code|default:next_match.away_placeholder|default:"?" }}</span>
     </a>
     {% else %}
-    <span class="flex w-16 shrink-0 items-center justify-center rounded-xl border border-neutral-800/70 bg-neutral-950/40 px-1 py-3 text-xl leading-none text-neutral-700 sm:w-24" aria-hidden="true">›</span>
+    <span class="flex w-14 shrink-0 items-center justify-center rounded-xl border border-neutral-800/70 bg-neutral-950/40 px-1 py-3 text-xl leading-none text-neutral-700 sm:w-24" aria-hidden="true">›</span>
     {% endif %}
 </div>
 {% endwith %}

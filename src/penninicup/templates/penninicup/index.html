@@ -175,11 +175,11 @@
 
             <div class="mt-5 space-y-5" data-home-tab-panel="overview">
                 <div class="grid gap-3 sm:grid-cols-2">
-                    <a href="{% url 'rankings:pool-dashboard' selected_pool.slug %}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
+                    <a href="{% url 'pool:ranking-tab' %}?pool={{ selected_pool.slug }}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
                         <p class="font-semibold">Ranking</p>
                         <p class="mt-1 text-xs text-neutral-400">Visualizar classificação completa e pódio</p>
                     </a>
-                    <a href="{% url 'pool:detail' selected_pool.slug %}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
+                    <a href="{% url 'pool:bets-tab' %}?pool={{ selected_pool.slug }}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
                         <p class="font-semibold">Palpites</p>
                         <p class="mt-1 text-xs text-neutral-400">Ir para a página de palpites deste bolão</p>
                     </a>

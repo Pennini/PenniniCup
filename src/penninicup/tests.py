@@ -110,6 +110,39 @@ class RulesPageTest(TestCase):
         refresh_mock.assert_called_once_with(save=True)
 
 
+class HomeShortcutsTest(TestCase):
+    """Homepage shortcuts must target the slugless tab views (which wire the
+    pool selector); otherwise the bolão selectbox never appears on arrival.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="home-user", email="home@example.com", password="123456Aa!")
+        self.client.force_login(self.user)
+        competition = Competition.objects.create(fifa_id=992, name="Copa Home")
+        season = Season.objects.create(
+            fifa_id=992,
+            competition=competition,
+            name="Temporada Home",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.pool = Pool.objects.create(
+            name="Pool Home",
+            slug="pool-home",
+            season=season,
+            created_by=self.user,
+            requires_payment=False,
+        )
+        PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+
+    def test_shortcuts_point_to_slugless_tab_views(self):
+        response = self.client.get(reverse("penninicup:index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f"{reverse('pool:ranking-tab')}?pool={self.pool.slug}")
+        self.assertContains(response, f"{reverse('pool:bets-tab')}?pool={self.pool.slug}")
+
+
 class ProfilePageTest(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
