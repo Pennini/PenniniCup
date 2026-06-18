@@ -1,0 +1,101 @@
+{% comment %}
+Aba "Palpites por jogo": seletor + carrossel de jogos com palpites de todos os
+participantes. O miolo (#match-guesses-body) é trocado dinamicamente via fetch do
+endpoint `rankings:match-guesses-partial`; sem JS, o select e as setas recarregam
+a página normalmente (progressive enhancement).
+
+Contexto: selectable_match_groups, selected_match e tudo que _match_guesses_body
+consome, pool, toggle_query_prefix (opcional).
+{% endcomment %}
+
+<section class="space-y-6">
+    <div class="rounded-2xl border border-neutral-800 bg-neutral-900/90 p-4 sm:p-6 shadow-lg shadow-black/15 space-y-5">
+        <form method="get" action="{{ request.path }}" class="flex items-center gap-3 rounded-xl border border-neutral-700 bg-neutral-950/60 px-3 py-2">
+            <input type="hidden" name="tab" value="palpites" />
+            {% if selected_pool %}<input type="hidden" name="pool" value="{{ selected_pool.slug }}" />{% endif %}
+            <label for="match-selector" class="text-xs uppercase tracking-[0.16em] text-neutral-400 shrink-0">Jogo</label>
+            <select
+                id="match-selector"
+                name="match"
+                class="flex-1 rounded-lg border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/40"
+                onchange="this.form.submit()"
+            >
+                {% for group in selectable_match_groups %}
+                <optgroup label="{{ group.label }}">
+                    {% for match in group.matches %}
+                    <option value="{{ match.id }}" {% if selected_match and match.id == selected_match.id %}selected{% endif %}>
+                        #{{ match.match_number }} · {{ match.home_team.code|default:match.home_placeholder|default:"?" }} x {{ match.away_team.code|default:match.away_placeholder|default:"?" }} — {{ match.match_date_brasilia|date:"d/m H:i" }}
+                    </option>
+                    {% endfor %}
+                </optgroup>
+                {% empty %}
+                <option disabled>Nenhum jogo disponível</option>
+                {% endfor %}
+            </select>
+        </form>
+
+        <div id="match-guesses-body" data-partial-url="{% url 'rankings:match-guesses-partial' pool.slug %}">
+            {% include "rankings/partials/_match_guesses_body.html" %}
+        </div>
+    </div>
+</section>
+
+<script>
+    (function () {
+        var body = document.getElementById('match-guesses-body');
+        var select = document.getElementById('match-selector');
+        if (!body) return;
+        var partialUrl = body.dataset.partialUrl;
+
+        function syncIcons() {
+            if (window.lucide && typeof window.lucide.createIcons === 'function') {
+                window.lucide.createIcons();
+            }
+        }
+
+        function navigate(matchId, push) {
+            if (!matchId) return;
+            fetch(partialUrl + '?match=' + encodeURIComponent(matchId), {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            })
+                .then(function (r) {
+                    if (!r.ok) throw new Error('bad status');
+                    return r.text();
+                })
+                .then(function (html) {
+                    body.innerHTML = html;
+                    if (select) select.value = matchId;
+                    syncIcons();
+                    if (push) {
+                        var url = new URL(window.location);
+                        url.searchParams.set('tab', 'palpites');
+                        url.searchParams.set('match', matchId);
+                        window.history.pushState({ matchId: matchId }, '', url);
+                    }
+                })
+                .catch(function () {
+                    // Falha de rede: cai pro comportamento padrão (reload).
+                    var url = new URL(window.location);
+                    url.searchParams.set('tab', 'palpites');
+                    url.searchParams.set('match', matchId);
+                    window.location.href = url.toString();
+                });
+        }
+
+        if (select) {
+            select.onchange = function () { navigate(this.value, true); };
+        }
+
+        body.addEventListener('click', function (event) {
+            var arrow = event.target.closest('[data-match]');
+            if (!arrow || !body.contains(arrow)) return;
+            event.preventDefault();
+            navigate(arrow.dataset.match, true);
+        });
+
+        window.addEventListener('popstate', function () {
+            var matchId = new URL(window.location).searchParams.get('match');
+            if (matchId) navigate(matchId, false);
+        });
+    })();
+</script>

@@ -15,6 +15,11 @@
         </div>
     </header>
 
+    {% include "components/ranking_view_toggle.html" %}
+
+    {% if active_tab == 'palpites' %}
+    {% include "rankings/partials/match_guesses.html" %}
+    {% else %}
     {% if participations %}
     {% include "pool/partials/pool_selector.html" %}
     {% endif %}
@@ -154,5 +159,6 @@
             </div>
         </section>
     </div>
+    {% endif %}
 </section>
 {% endblock %}

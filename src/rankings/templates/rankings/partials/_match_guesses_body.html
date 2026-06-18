@@ -1,0 +1,140 @@
+{% comment %}
+Corpo dinâmico da aba "Palpites por jogo": carrossel (setas-spoiler + card do
+jogo) e, abaixo, aviso de travado ou as linhas de palpites. Renderizado tanto na
+página completa quanto pelo endpoint AJAX `rankings:match-guesses-partial`, que
+reaplica o lock por fase no servidor.
+
+Contexto: selected_match, prev_match, next_match, selected_stage_label,
+guesses_locked, match_finished, guess_rows, pool, toggle_query_prefix (opcional).
+{% endcomment %}
+{% with toggle_query_prefix|default:'' as nav_prefix %}
+<div class="flex items-stretch gap-2 sm:gap-3">
+    {% if prev_match %}
+    <a
+        href="?{{ nav_prefix }}tab=palpites&match={{ prev_match.id }}"
+        data-match="{{ prev_match.id }}"
+        rel="prev"
+        class="carousel-arrow group flex w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-neutral-700/80 bg-neutral-950/70 px-1 py-3 text-center transition-colors hover:border-orange-500/40 hover:bg-neutral-900 sm:w-24"
+        aria-label="Jogo anterior"
+    >
+        <span class="text-xl leading-none text-neutral-400 group-hover:text-orange-300">‹</span>
+        <span class="text-[10px] text-neutral-500">{{ prev_match.match_date_brasilia|date:"d/m" }}</span>
+        <span class="text-[11px] font-semibold text-neutral-300 leading-tight">{{ prev_match.home_team.code|default:prev_match.home_placeholder|default:"?" }}<span class="text-neutral-600">×</span>{{ prev_match.away_team.code|default:prev_match.away_placeholder|default:"?" }}</span>
+    </a>
+    {% else %}
+    <span class="flex w-16 shrink-0 items-center justify-center rounded-xl border border-neutral-800/70 bg-neutral-950/40 px-1 py-3 text-xl leading-none text-neutral-700 sm:w-24" aria-hidden="true">‹</span>
+    {% endif %}
+
+    <div class="flex-1 rounded-xl border border-neutral-700/80 bg-neutral-950/70 p-4">
+        {% if selected_match %}
+        <div class="flex items-center justify-between text-xs uppercase tracking-wide text-neutral-400">
+            <span>{{ selected_stage_label }}{% if selected_match.group %} · {{ selected_match.group.name }}{% endif %}</span>
+            <span>{{ selected_match.match_date_brasilia|date:"d/m/Y H:i" }}</span>
+        </div>
+        <div class="mt-3 flex items-center justify-center gap-4 text-lg font-semibold">
+            <span class="flex items-center gap-2">
+                {% if selected_match.home_team %}
+                {% if selected_match.home_team.flag_image_url %}<img src="{{ selected_match.home_team.flag_image_url }}" alt="{{ selected_match.home_team.code }}" class="h-5 w-7 object-cover rounded-sm" />{% endif %}
+                <span>{{ selected_match.home_team.code }}</span>
+                {% else %}<span class="text-neutral-300">{{ selected_match.home_placeholder|default:"?" }}</span>{% endif %}
+            </span>
+            {% if match_finished %}
+            <span class="text-2xl font-extrabold">{{ selected_match.home_score|default_if_none:"-" }} <span class="text-neutral-500 text-base font-normal">x</span> {{ selected_match.away_score|default_if_none:"-" }}</span>
+            {% else %}
+            <span class="text-neutral-500">x</span>
+            {% endif %}
+            <span class="flex items-center gap-2">
+                {% if selected_match.away_team %}
+                <span>{{ selected_match.away_team.code }}</span>
+                {% if selected_match.away_team.flag_image_url %}<img src="{{ selected_match.away_team.flag_image_url }}" alt="{{ selected_match.away_team.code }}" class="h-5 w-7 object-cover rounded-sm" />{% endif %}
+                {% else %}<span class="text-neutral-300">{{ selected_match.away_placeholder|default:"?" }}</span>{% endif %}
+            </span>
+        </div>
+        {% else %}
+        <p class="text-center text-sm text-neutral-400">Nenhum jogo disponível para este bolão.</p>
+        {% endif %}
+    </div>
+
+    {% if next_match %}
+    <a
+        href="?{{ nav_prefix }}tab=palpites&match={{ next_match.id }}"
+        data-match="{{ next_match.id }}"
+        rel="next"
+        class="carousel-arrow group flex w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-neutral-700/80 bg-neutral-950/70 px-1 py-3 text-center transition-colors hover:border-orange-500/40 hover:bg-neutral-900 sm:w-24"
+        aria-label="Próximo jogo"
+    >
+        <span class="text-xl leading-none text-neutral-400 group-hover:text-orange-300">›</span>
+        <span class="text-[10px] text-neutral-500">{{ next_match.match_date_brasilia|date:"d/m" }}</span>
+        <span class="text-[11px] font-semibold text-neutral-300 leading-tight">{{ next_match.home_team.code|default:next_match.home_placeholder|default:"?" }}<span class="text-neutral-600">×</span>{{ next_match.away_team.code|default:next_match.away_placeholder|default:"?" }}</span>
+    </a>
+    {% else %}
+    <span class="flex w-16 shrink-0 items-center justify-center rounded-xl border border-neutral-800/70 bg-neutral-950/40 px-1 py-3 text-xl leading-none text-neutral-700 sm:w-24" aria-hidden="true">›</span>
+    {% endif %}
+</div>
+{% endwith %}
+
+{% if selected_match %}
+{% if guesses_locked %}
+<div class="mt-5 rounded-2xl border border-amber-500/25 bg-amber-500/10 p-5 text-center">
+    <p class="text-sm text-amber-200">Palpites travados até o fechamento das apostas desta fase.</p>
+    <p class="mt-1 text-xs text-amber-300/70">Os palpites dos participantes aparecem assim que o prazo deste jogo encerrar.</p>
+</div>
+{% else %}
+<div class="mt-5">
+    <h2 class="text-lg font-semibold">Palpites dos participantes</h2>
+
+    <div class="mt-4 space-y-3 md:hidden">
+        {% for row in guess_rows %}
+        <article class="rounded-xl border border-neutral-700/80 bg-neutral-950/70 p-4 {% if row.participant.user_id == request.user.id %}shadow-[inset_3px_0_0_0_rgba(251,146,60,0.95)]{% endif %}">
+            <div class="flex items-center justify-between gap-3">
+                <span class="inline-flex items-center gap-1 min-w-0">
+                    <span class="truncate font-semibold">{{ row.participant.user.username }}</span>
+                    {% if pool.show_supporter_stars and row.participant.user.profile.is_supporter %}<i data-lucide="star" class="h-4 w-4 text-yellow-400 fill-yellow-400 shrink-0"></i>{% endif %}
+                </span>
+                {% if match_finished %}
+                <span class="shrink-0 text-sm">{% if row.bet and row.bet.score %}<span class="font-bold text-orange-300">{{ row.bet.score.points }} pts</span>{% if row.bet.score.exact_score %} <span class="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">Exato</span>{% endif %}{% else %}<span class="text-neutral-500">—</span>{% endif %}</span>
+                {% endif %}
+            </div>
+            <p class="mt-2 text-lg font-semibold">
+                {% if row.bet %}{{ row.bet.home_score_pred|default_if_none:"–" }} <span class="text-neutral-500 text-sm">x</span> {{ row.bet.away_score_pred|default_if_none:"–" }}{% if row.bet.winner_pred %} <span class="text-[11px] text-neutral-400">→ {{ row.bet.winner_pred.code }}</span>{% endif %}{% else %}<span class="text-sm text-neutral-500">Sem palpite</span>{% endif %}
+            </p>
+        </article>
+        {% empty %}
+        <article class="rounded-xl border border-neutral-700/80 bg-neutral-950/70 px-4 py-6 text-center text-sm text-neutral-400">Nenhum participante ativo neste bolão.</article>
+        {% endfor %}
+    </div>
+
+    <div class="mt-4 hidden overflow-x-auto rounded-2xl border border-neutral-700/80 bg-neutral-950/60 md:block">
+        <table class="w-full min-w-[480px] text-sm text-neutral-200">
+            <thead class="bg-neutral-900/95">
+                <tr class="text-left text-[11px] uppercase tracking-[0.08em] text-neutral-400">
+                    <th class="px-4 py-3 font-semibold">Participante</th>
+                    <th class="px-4 py-3 font-semibold">Palpite</th>
+                    {% if match_finished %}<th class="px-4 py-3 font-semibold">Pontos</th>{% endif %}
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-neutral-800/90">
+                {% for row in guess_rows %}
+                <tr class="transition-colors duration-200 hover:bg-neutral-800/35 {% if row.participant.user_id == request.user.id %}bg-orange-500/12 shadow-[inset_3px_0_0_0_rgba(251,146,60,0.95)]{% endif %}">
+                    <td class="px-4 py-3 font-medium">
+                        <span class="inline-flex items-center gap-1">
+                            {{ row.participant.user.username }}
+                            {% if pool.show_supporter_stars and row.participant.user.profile.is_supporter %}<i data-lucide="star" class="h-3.5 w-3.5 text-yellow-400 fill-yellow-400"></i>{% endif %}
+                        </span>
+                    </td>
+                    <td class="px-4 py-3 font-semibold">
+                        {% if row.bet %}{{ row.bet.home_score_pred|default_if_none:"–" }} <span class="text-neutral-500">x</span> {{ row.bet.away_score_pred|default_if_none:"–" }}{% if row.bet.winner_pred %} <span class="text-[11px] text-neutral-400">→ {{ row.bet.winner_pred.code }}</span>{% endif %}{% else %}<span class="text-neutral-500 font-normal">Sem palpite</span>{% endif %}
+                    </td>
+                    {% if match_finished %}
+                    <td class="px-4 py-3">{% if row.bet and row.bet.score %}<span class="font-bold text-orange-300">{{ row.bet.score.points }}</span>{% if row.bet.score.exact_score %} <span class="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">Exato</span>{% endif %}{% else %}<span class="text-neutral-500">—</span>{% endif %}</td>
+                    {% endif %}
+                </tr>
+                {% empty %}
+                <tr><td colspan="3" class="px-4 py-6 text-center text-neutral-400">Nenhum participante ativo neste bolão.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endif %}

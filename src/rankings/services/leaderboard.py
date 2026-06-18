@@ -49,20 +49,26 @@ def _sort_tie_group(group_participants, override_map):
     return manual_rows + natural_rows, bool(local_override_map)
 
 
-def build_pool_leaderboard(pool: Pool):
-    participants_queryset = PoolParticipant.objects.filter(pool=pool, is_active=True).select_related(
-        "user", "user__profile"
-    )
-
+def eligible_participants(pool: Pool):
+    """Active participants who count for a pool: when the pool requires payment,
+    only those with an approved payment. Single source of truth shared by the
+    leaderboard and the per-match guesses view so both show the same people.
+    """
+    queryset = PoolParticipant.objects.filter(pool=pool, is_active=True)
     if pool.requires_payment:
         approved_payment_exists = Payment.objects.filter(
             pool_id=pool.id,
             user_id=OuterRef("user_id"),
             status="approved",
         )
-        participants_queryset = participants_queryset.annotate(
-            has_approved_payment=Exists(approved_payment_exists)
-        ).filter(has_approved_payment=True)
+        queryset = queryset.annotate(has_approved_payment=Exists(approved_payment_exists)).filter(
+            has_approved_payment=True
+        )
+    return queryset
+
+
+def build_pool_leaderboard(pool: Pool):
+    participants_queryset = eligible_participants(pool).select_related("user", "user__profile")
 
     participants = list(
         participants_queryset.order_by(

@@ -64,6 +64,27 @@ class NavigationTabsTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["selected_pool"].slug, "zebra")
 
+    def test_ranking_tab_defaults_to_ranking_view(self):
+        response = self.client.get(reverse("pool:ranking-tab"))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["active_tab"], "ranking")
+        self.assertIn("leaderboard_rows", response.context)
+
+    def test_ranking_tab_palpites_switches_view(self):
+        response = self.client.get(reverse("pool:ranking-tab"), data={"tab": "palpites", "pool": "alpha"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["active_tab"], "palpites")
+        self.assertIn("selectable_match_groups", response.context)
+        self.assertEqual(response.context["selected_pool"].slug, "alpha")
+        # Seletor de jogo deve preservar o bolão selecionado ao trocar de jogo.
+        self.assertContains(response, '<input type="hidden" name="pool" value="alpha"')
+
+    def test_ranking_tab_toggle_prefix_carries_selected_pool(self):
+        # Toggle Classificação/Palpites deve carregar ?pool=<slug> na pagina slugless.
+        response = self.client.get(reverse("pool:ranking-tab"), data={"pool": "alpha"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["toggle_query_prefix"], "pool=alpha&")
+
     def test_bets_tab_skips_inactive_pool_for_default(self):
         # Zebra was joined first but is now inactive -> default should skip to Alpha.
         self.pool_zebra.is_active = False
