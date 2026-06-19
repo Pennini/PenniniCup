@@ -10,7 +10,7 @@ from django.utils import timezone
 from django.utils.timezone import now as tz_now
 
 from src.accounts.models import InviteToken
-from src.football.models import AssignThird, Competition, Group, Match, Player, Season, Stage, Team
+from src.football.models import AssignThird, Competition, Group, Match, Player, Season, Stage, Standing, Team
 from src.payments.models import Payment
 from src.pool.models import Pool, PoolBet, PoolParticipant, PoolParticipantStanding, PoolProjectionRecalc
 from src.pool.services.asof_standings import AsOfStanding, compute_asof_standings
@@ -2857,3 +2857,152 @@ class ComputeAsOfStandingsBetsTest(TestCase):
         # Bônus ainda não implementado nesta task.
         self.assertFalse(row.champion_hit)
         self.assertFalse(row.top_scorer_hit)
+
+
+class ComputeAsOfStandingsBonusTest(TestCase):
+    """Group-qualifier bonus is gated: only fires when ALL group matches are in allowed_match_ids."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="bonus_owner", email="bonus_owner@example.com", password="123456Aa!"
+        )
+        self.user = User.objects.create_user(
+            username="bonus_user", email="bonus_user@example.com", password="123456Aa!"
+        )
+
+        self.competition = Competition.objects.create(fifa_id=9002, name="Copa Bonus")
+        self.season = Season.objects.create(
+            fifa_id=9002,
+            competition=self.competition,
+            name="Temporada Bonus",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        # Stage name "Group Stage" → normalize_stage_key → "GROUP" → phase_for_match → PHASE_GROUP
+        self.group_stage = Stage.objects.create(
+            fifa_id="GROUP9002", season=self.season, name="Group Stage", order=9002
+        )
+        self.group = Group.objects.create(fifa_id="G-BONUS", stage=self.group_stage, name="B")
+
+        # Two teams in the group
+        self.team_a = Team.objects.create(
+            fifa_id="BA1", name="Bonus Alpha", name_norm="bonus-alpha", code="BA1", group=self.group
+        )
+        self.team_b = Team.objects.create(
+            fifa_id="BA2", name="Bonus Beta", name_norm="bonus-beta", code="BA2", group=self.group
+        )
+
+        now = timezone.now()
+        past = now - timezone.timedelta(hours=2)
+
+        # Create group matches — all finished so _group_match_ids finds them
+        self.match1 = Match.objects.create(
+            fifa_id="BONUS-M1",
+            season=self.season,
+            stage=self.group_stage,
+            group=self.group,
+            match_number=9010,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=self.team_a,
+            away_team=self.team_b,
+            home_score=1,
+            away_score=0,
+            status=Match.STATUS_FINISHED,
+        )
+        self.match2 = Match.objects.create(
+            fifa_id="BONUS-M2",
+            season=self.season,
+            stage=self.group_stage,
+            group=self.group,
+            match_number=9011,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=self.team_b,
+            away_team=self.team_a,
+            home_score=0,
+            away_score=2,
+            status=Match.STATUS_FINISHED,
+        )
+        self.group_matches = [self.match1, self.match2]
+
+        # Real Standing: team_a is position 1 in group B (real qualifier)
+        Standing.objects.create(
+            season=self.season,
+            group=self.group,
+            team=self.team_a,
+            position=1,
+            played=2,
+            won=2,
+            drawn=0,
+            lost=0,
+            goals_for=3,
+            goals_against=0,
+            goal_difference=3,
+            points=6,
+        )
+        Standing.objects.create(
+            season=self.season,
+            group=self.group,
+            team=self.team_b,
+            position=2,
+            played=2,
+            won=0,
+            drawn=0,
+            lost=2,
+            goals_for=0,
+            goals_against=3,
+            goal_difference=-3,
+            points=0,
+        )
+
+        self.pool = Pool.objects.create(
+            name="Pool Bonus",
+            slug="pool-bonus",
+            season=self.season,
+            created_by=self.owner,
+            requires_payment=False,
+            pool_type=2,
+        )
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+
+        # Participant's projected standing: team_a at position 1 (matches real Standing → qualifier hit)
+        PoolParticipantStanding.objects.create(
+            participant=self.participant,
+            group=self.group,
+            team=self.team_a,
+            position=1,
+        )
+        PoolParticipantStanding.objects.create(
+            participant=self.participant,
+            group=self.group,
+            team=self.team_b,
+            position=2,
+        )
+
+        # No bets needed for the qualifier bonus tests (bonus is independent of bets)
+
+        self.scoring_config = self.pool.get_scoring_config()
+        self.official_result = self.pool.get_official_results()
+
+    def test_group_bonus_zero_when_group_not_complete_in_set(self):
+        # Only one match in allowed set → group stage NOT complete → no qualifier bonus
+        partial = {self.match1.id}
+        rows = compute_asof_standings(self.pool, partial, self.scoring_config, self.official_result)
+        self.assertEqual(len(rows), 1)
+        # With no bets, bet points are 0 whether partial or full
+        # Qualifier bonus must NOT be applied when group stage incomplete in set
+        self.assertEqual(rows[0].group_points, 0)
+
+    def test_group_bonus_applied_when_group_complete_in_set(self):
+        all_ids = {m.id for m in self.group_matches}
+        rows = compute_asof_standings(self.pool, all_ids, self.scoring_config, self.official_result)
+        self.assertEqual(len(rows), 1)
+        # team_a at position 1 is a real qualifier at position 1 → group_qualifier_points + position_bonus
+        self.assertGreaterEqual(
+            rows[0].group_points,
+            self.scoring_config.group_qualifier_points,
+        )
