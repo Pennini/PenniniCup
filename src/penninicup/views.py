@@ -401,7 +401,6 @@ def _build_home_dashboard_context(*, participant, pool):
 def index(request):
     context = {
         "hero_background_url": "",
-        "active_home_tab": (request.GET.get("tab") or "overview").strip(),
     }
 
     if not request.user.is_authenticated:
