@@ -6,6 +6,7 @@ from django.dispatch import receiver
 from src.football.models import Match
 from src.pool.services.projection_queue import enqueue_projection_recalc_for_season
 from src.pool.services.ranking import recalculate_match_scores
+from src.rankings.services.position_snapshot import snapshot_round_for_match
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,12 @@ def recalculate_pool_data_after_match_save(sender, instance, created, raw=False,
             recalculate_match_scores(match=instance)
         except Exception:
             logger.exception("Falha ao recalcular pontuacoes do bolao apos salvar partida: match_id=%s", instance.id)
+
+        if instance.home_score is not None and instance.away_score is not None:
+            try:
+                snapshot_round_for_match(instance)
+            except Exception:
+                logger.exception("Falha ao snapshotar rodada apos salvar partida: match_id=%s", instance.id)
 
     if projection_should_recalc:
         try:

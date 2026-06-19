@@ -920,3 +920,38 @@ class SnapshotRoundForMatchTest(TestCase):
             set(PoolRankingHistory.objects.filter(pool=self.pool).values_list("round_index", flat=True)),
             {1, 2},
         )
+
+
+class SnapshotSignalTest(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username="sig-owner", email="sigo@example.com", password="123456Aa!")
+        self.member = User.objects.create_user(username="sig-mem", email="sigm@example.com", password="123456Aa!")
+        competition = Competition.objects.create(fifa_id=942, name="Copa Sig")
+        self.season = Season.objects.create(
+            fifa_id=942,
+            competition=competition,
+            name="Temporada Sig",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="ST942G", season=self.season, name="Group Stage", order=1)
+        self.pool = Pool.objects.create(
+            name="Pool Sig", slug="pool-sig", season=self.season, created_by=self.owner, requires_payment=False
+        )
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.member, is_active=True)
+        self.match = _make_match(self.season, self.stage, number=1, kickoff=timezone.now())
+        PoolBet.objects.create(
+            participant=self.participant, match=self.match, home_score_pred=1, away_score_pred=0, is_active=True
+        )
+
+    def test_saving_match_with_score_creates_history(self):
+        self.match.home_score = 1
+        self.match.away_score = 0
+        self.match.save(update_fields=["home_score", "away_score"])
+        self.assertEqual(PoolRankingHistory.objects.filter(pool=self.pool, match=self.match).count(), 1)
+
+    def test_saving_match_without_score_creates_no_history(self):
+        self.match.match_number = 99
+        self.match.save(update_fields=["match_number"])
+        self.assertEqual(PoolRankingHistory.objects.filter(pool=self.pool).count(), 0)
