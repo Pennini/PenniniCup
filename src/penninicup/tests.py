@@ -625,3 +625,102 @@ class BuildKnockoutByPhasePredictedWinnersTest(SimpleTestCase):
         # team_b: match still pending → decided=False, advanced=False
         self.assertFalse(items_by_team_id[2]["decided"])
         self.assertFalse(items_by_team_id[2]["advanced"])
+
+
+class HomeNextMatchesContextTest(TestCase):
+    """_build_home_next_matches_context: jogos não finalizados dentro da janela
+    live (2h após kickoff) continuam na lista e vêm marcados is_live."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="nm-user", email="nm@example.com", password="123456Aa!")
+        competition = Competition.objects.create(fifa_id=771, name="Copa NM")
+        self.season = Season.objects.create(
+            fifa_id=771,
+            competition=competition,
+            name="Temporada NM",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="NM-STAGE", season=self.season, name="Fase de Grupos", order=1)
+        self.group = Group.objects.create(fifa_id="NM-GROUP", stage=self.stage, name="A")
+        self.team = Team.objects.create(
+            fifa_id="NM-TEAM", name="Time NM", name_norm="time nm", code="TNM", group=self.group
+        )
+        self.pool = Pool.objects.create(
+            name="Pool NM", slug="pool-nm", season=self.season, created_by=self.user, requires_payment=False
+        )
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+
+    def _make_match(self, *, fifa_id, number, kickoff, status=Match.STATUS_SCHEDULED):
+        return Match.objects.create(
+            fifa_id=fifa_id,
+            season=self.season,
+            stage=self.stage,
+            group=self.group,
+            match_number=number,
+            match_date_utc=kickoff,
+            match_date_local=kickoff,
+            match_date_brasilia=kickoff,
+            home_team=self.team,
+            away_team=self.team,
+            status=status,
+        )
+
+    def test_live_match_within_window_is_listed_and_flagged(self):
+        from src.penninicup.views import _build_home_next_matches_context
+
+        now = timezone.now()
+        self._make_match(fifa_id="NM-LIVE", number=1, kickoff=now - timezone.timedelta(minutes=30))
+
+        rows = _build_home_next_matches_context(participant=self.participant, pool=self.pool)
+
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]["is_live"])
+
+    def test_match_past_live_window_is_excluded(self):
+        from src.penninicup.views import _build_home_next_matches_context
+
+        now = timezone.now()
+        self._make_match(fifa_id="NM-OLD", number=2, kickoff=now - timezone.timedelta(hours=3))
+
+        rows = _build_home_next_matches_context(participant=self.participant, pool=self.pool)
+
+        self.assertEqual(rows, [])
+
+    def test_finished_match_is_excluded(self):
+        from src.penninicup.views import _build_home_next_matches_context
+
+        now = timezone.now()
+        self._make_match(
+            fifa_id="NM-FIN", number=3, kickoff=now - timezone.timedelta(minutes=30), status=Match.STATUS_FINISHED
+        )
+
+        rows = _build_home_next_matches_context(participant=self.participant, pool=self.pool)
+
+        self.assertEqual(rows, [])
+
+    def test_future_match_listed_not_live(self):
+        from src.penninicup.views import _build_home_next_matches_context
+
+        now = timezone.now()
+        self._make_match(fifa_id="NM-FUT", number=4, kickoff=now + timezone.timedelta(days=1))
+
+        rows = _build_home_next_matches_context(participant=self.participant, pool=self.pool)
+
+        self.assertEqual(len(rows), 1)
+        self.assertFalse(rows[0]["is_live"])
+
+    def test_respects_limit_and_order(self):
+        from src.penninicup.views import _build_home_next_matches_context
+
+        now = timezone.now()
+        self._make_match(fifa_id="NM-A", number=10, kickoff=now + timezone.timedelta(days=3))
+        self._make_match(fifa_id="NM-B", number=11, kickoff=now + timezone.timedelta(days=1))
+        self._make_match(fifa_id="NM-C", number=12, kickoff=now + timezone.timedelta(days=2))
+        self._make_match(fifa_id="NM-D", number=13, kickoff=now + timezone.timedelta(days=4))
+
+        rows = _build_home_next_matches_context(participant=self.participant, pool=self.pool, limit=3)
+
+        self.assertEqual(len(rows), 3)
+        self.assertEqual([r["match"].fifa_id for r in rows], ["NM-B", "NM-C", "NM-A"])

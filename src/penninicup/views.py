@@ -17,6 +17,7 @@ from src.pool.services.context_builder import build_pool_participant_view_contex
 from src.pool.services.participants import resolve_selected_participation
 from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, POOL_TYPE_1, POOL_TYPE_2, normalize_stage_key
 from src.rankings.services.leaderboard import build_pool_leaderboard
+from src.rankings.services.match_guesses import LIVE_WINDOW
 
 from .forms import ProfilePreferencesForm
 
@@ -328,11 +329,12 @@ def _build_profile_context(request, *, profile_user, is_owner):
 
 
 def _build_home_next_matches_context(*, participant, pool, limit=3):
+    now = timezone.now()
     upcoming_matches = list(
         Match.objects.filter(
             season=pool.season,
             status=Match.STATUS_SCHEDULED,
-            match_date_brasilia__gte=timezone.now(),
+            match_date_brasilia__gt=now - LIVE_WINDOW,
         )
         .select_related("stage", "group", "home_team", "away_team")
         .order_by("match_date_brasilia", "match_number")[:limit]
@@ -352,12 +354,14 @@ def _build_home_next_matches_context(*, participant, pool, limit=3):
     rows = []
     for match in upcoming_matches:
         bet = bets_by_match_id.get(match.id)
+        kickoff = match.match_date_brasilia
         rows.append(
             {
                 "match": match,
                 "bet": bet,
                 "has_prediction": bool(bet and bet.is_active),
                 "is_prediction_incomplete": bool(bet and not bet.is_active),
+                "is_live": kickoff <= now < kickoff + LIVE_WINDOW,
             }
         )
 
