@@ -626,10 +626,15 @@
             if (!card) return;
             event.preventDefault();
             card.scrollIntoView({ behavior: "smooth", block: "start" });
-            card.classList.add("ring-2", "ring-orange-400");
+            // Destaque suave: fade do box-shadow laranja, sem snap brusco.
+            card.style.transition = "box-shadow 0.5s ease";
+            card.style.boxShadow = "0 0 0 2px rgba(251, 146, 60, 0.9)";
             setTimeout(function () {
-                card.classList.remove("ring-2", "ring-orange-400");
-            }, 1500);
+                card.style.boxShadow = "";
+            }, 1800);
+            setTimeout(function () {
+                card.style.transition = "";
+            }, 2300);
         });
     })();
 </script>
