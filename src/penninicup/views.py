@@ -195,6 +195,28 @@ def _build_group_audit(participant, season, scoring_config):
     return audit
 
 
+def _resolve_profile_scroll_target(match_rows, now=None):
+    """match.id do jogo para onde o botão do perfil rola: jogo ao vivo (dentro de
+    LIVE_WINDOW após o kickoff), senão o próximo agendado, senão None. Sem fallback
+    para o último jogo — o botão some quando não há ao vivo nem próximo.
+    """
+    now = now or timezone.now()
+    live = None
+    upcoming = None
+    for row in match_rows:
+        match = row["match"]
+        kickoff = match.match_date_brasilia
+        if kickoff is None:
+            continue
+        if kickoff <= now < kickoff + LIVE_WINDOW:
+            if live is None or kickoff > live.match_date_brasilia:
+                live = match
+        elif kickoff > now and (upcoming is None or kickoff < upcoming.match_date_brasilia):
+            upcoming = match
+    target = live or upcoming
+    return target.id if target is not None else None
+
+
 def _build_profile_context(request, *, profile_user, is_owner):
     profile_obj, _ = UserProfile.objects.get_or_create(user=profile_user)
     active_tab = (request.GET.get("tab") or "bets").strip()
@@ -306,6 +328,9 @@ def _build_profile_context(request, *, profile_user, is_owner):
         else []
     )
 
+    rendered_match_rows = predictions_context.get("group_rows", []) + predictions_context.get("knockout_rows", [])
+    scroll_target_match_id = _resolve_profile_scroll_target(rendered_match_rows)
+
     context = {
         "profile_user": profile_user,
         "profile_obj": profile_obj,
@@ -323,6 +348,7 @@ def _build_profile_context(request, *, profile_user, is_owner):
         "official_result": official_result,
         "knockout_by_phase": knockout_by_phase,
         "group_audit": group_audit,
+        "scroll_target_match_id": scroll_target_match_id,
         **predictions_context,
     }
     return context, None

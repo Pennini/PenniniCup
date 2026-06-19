@@ -1,5 +1,7 @@
 import logging
+from datetime import timedelta
 from io import BytesIO
+from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
@@ -15,6 +17,7 @@ from src.common.logging_filters import RequestIdFilter
 from src.common.utils.request_id import clear_request_id, set_request_id
 from src.football.models import Competition, Group, Match, Season, Stage, Team
 from src.payments.models import Payment
+from src.penninicup.views import _resolve_profile_scroll_target
 from src.pool.models import Pool, PoolBet, PoolParticipant
 
 User = get_user_model()
@@ -360,6 +363,47 @@ class ProfilePageTest(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Meu palpite")
+
+    def test_profile_context_has_scroll_target_for_upcoming_match(self):
+        self.client.login(username="profile-user", password="123456Aa!")
+        response = self.client.get(reverse("penninicup:profile"), {"pool": self.pool.slug})
+        self.assertEqual(response.status_code, 200)
+        # self.match é daqui a 3 dias (próximo agendado) -> alvo = match.id
+        self.assertEqual(response.context["scroll_target_match_id"], self.match.id)
+
+
+class ProfileScrollTargetTest(SimpleTestCase):
+    def _row(self, match_id, kickoff):
+        return {"match": SimpleNamespace(id=match_id, match_date_brasilia=kickoff)}
+
+    def test_returns_live_match_within_window(self):
+        now = timezone.now()
+        rows = [
+            self._row(1, now - timedelta(days=2)),  # passado
+            self._row(2, now - timedelta(minutes=30)),  # ao vivo
+            self._row(3, now + timedelta(hours=5)),  # futuro
+        ]
+        self.assertEqual(_resolve_profile_scroll_target(rows, now=now), 2)
+
+    def test_returns_next_upcoming_when_no_live(self):
+        now = timezone.now()
+        rows = [
+            self._row(1, now - timedelta(days=2)),  # passado
+            self._row(2, now + timedelta(hours=10)),  # futuro distante
+            self._row(3, now + timedelta(hours=2)),  # próximo
+        ]
+        self.assertEqual(_resolve_profile_scroll_target(rows, now=now), 3)
+
+    def test_returns_none_when_only_past_matches(self):
+        now = timezone.now()
+        rows = [
+            self._row(1, now - timedelta(days=2)),
+            self._row(2, now - timedelta(hours=3)),  # fora da janela de 2h
+        ]
+        self.assertIsNone(_resolve_profile_scroll_target(rows, now=now))
+
+    def test_returns_none_for_empty_rows(self):
+        self.assertIsNone(_resolve_profile_scroll_target([], now=timezone.now()))
 
 
 class RequestUUIDMiddlewareTest(SimpleTestCase):
