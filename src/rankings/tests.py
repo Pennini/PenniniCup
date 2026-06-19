@@ -955,3 +955,60 @@ class SnapshotSignalTest(TestCase):
         self.match.match_number = 99
         self.match.save(update_fields=["match_number"])
         self.assertEqual(PoolRankingHistory.objects.filter(pool=self.pool).count(), 0)
+
+
+class LeaderboardMovementTest(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username="mov-owner", email="mvo@example.com", password="123456Aa!")
+        self.u_a = User.objects.create_user(username="mov-a", email="mva@example.com", password="123456Aa!")
+        self.u_b = User.objects.create_user(username="mov-b", email="mvb@example.com", password="123456Aa!")
+        competition = Competition.objects.create(fifa_id=943, name="Copa Mov")
+        self.season = Season.objects.create(
+            fifa_id=943,
+            competition=competition,
+            name="Temporada Mov",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="ST943G", season=self.season, name="Group Stage", order=1)
+        self.pool = Pool.objects.create(
+            name="Pool Mov", slug="pool-mov", season=self.season, created_by=self.owner, requires_payment=False
+        )
+        # Estado atual: A líder (1º), B (2º).
+        self.p_a = PoolParticipant.objects.create(pool=self.pool, user=self.u_a, is_active=True, total_points=50)
+        self.p_b = PoolParticipant.objects.create(pool=self.pool, user=self.u_b, is_active=True, total_points=30)
+        self.match1 = _make_match(self.season, self.stage, number=1, kickoff=timezone.now())
+        self.match2 = _make_match(self.season, self.stage, number=2, kickoff=timezone.now())
+
+    def _round(self, match, round_index, positions):
+        # positions: {participant: position}
+        for participant, position in positions.items():
+            PoolRankingHistory.objects.create(
+                pool=self.pool,
+                participant=participant,
+                match=match,
+                round_index=round_index,
+                position=position,
+            )
+
+    def test_movement_none_when_single_round(self):
+        self._round(self.match1, 1, {self.p_a: 1, self.p_b: 2})
+        rows = build_pool_leaderboard(pool=self.pool)
+        self.assertTrue(all(row.movement is None for row in rows))
+
+    def test_movement_up_down_and_equal(self):
+        # Rodada anterior (round 1): B 1º, A 2º. Atual: A 1º, B 2º.
+        self._round(self.match1, 1, {self.p_b: 1, self.p_a: 2})
+        self._round(self.match2, 2, {self.p_a: 1, self.p_b: 2})
+        rows = {row.participant.id: row for row in build_pool_leaderboard(pool=self.pool)}
+        self.assertEqual(rows[self.p_a.id].movement, 1)  # 2 -> 1, subiu 1
+        self.assertEqual(rows[self.p_b.id].movement, -1)  # 1 -> 2, caiu 1
+
+    def test_movement_none_for_participant_without_previous_round(self):
+        # Round anterior só tem A; B entrou depois.
+        self._round(self.match1, 1, {self.p_a: 1})
+        self._round(self.match2, 2, {self.p_a: 1, self.p_b: 2})
+        rows = {row.participant.id: row for row in build_pool_leaderboard(pool=self.pool)}
+        self.assertEqual(rows[self.p_a.id].movement, 0)
+        self.assertIsNone(rows[self.p_b.id].movement)

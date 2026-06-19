@@ -14,6 +14,7 @@ class RankingRow:
     participant: PoolParticipant
     is_tied: bool
     tie_resolved_manually: bool
+    movement: int | None = None
 
 
 def _score_key(participant):
@@ -67,6 +68,31 @@ def eligible_participants(pool: Pool):
     return queryset
 
 
+def _previous_round_positions(pool: Pool):
+    """Mapa {participant_id: position} da rodada anterior do bolão.
+
+    Rodada anterior = o segundo maior round_index gravado (o maior == estado
+    atual). Retorna {} se houver menos de duas rodadas.
+    """
+    from src.rankings.models import PoolRankingHistory
+
+    round_indexes = list(
+        PoolRankingHistory.objects.filter(pool=pool)
+        .values_list("round_index", flat=True)
+        .distinct()
+        .order_by("-round_index")[:2]
+    )
+    if len(round_indexes) < 2:
+        return {}
+
+    previous_round = round_indexes[1]
+    return dict(
+        PoolRankingHistory.objects.filter(pool=pool, round_index=previous_round).values_list(
+            "participant_id", "position"
+        )
+    )
+
+
 def build_pool_leaderboard(pool: Pool):
     participants_queryset = eligible_participants(pool).select_related("user", "user__profile")
 
@@ -101,15 +127,20 @@ def build_pool_leaderboard(pool: Pool):
         if has_manual_resolution:
             manual_resolution_ids.update(participant.id for participant in tie_group if participant.id in override_map)
 
+    previous_positions = _previous_round_positions(pool)
+
     rows = []
     for index, participant in enumerate(ordered_participants, start=1):
         score_key = _score_key(participant)
+        previous_position = previous_positions.get(participant.id)
+        movement = previous_position - index if previous_position is not None else None
         rows.append(
             RankingRow(
                 position=index,
                 participant=participant,
                 is_tied=tie_counts.get(score_key, 1) > 1,
                 tie_resolved_manually=participant.id in manual_resolution_ids,
+                movement=movement,
             )
         )
 
