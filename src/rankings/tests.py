@@ -11,6 +11,7 @@ from src.football.models import Competition, Match, Season, Stage, Team
 from src.payments.models import Payment
 from src.pool.models import Pool, PoolBet, PoolBetScore, PoolParticipant
 from src.rankings.models import PoolRankingHistory, RankingTieBreakOverride
+from src.rankings.services.history_backfill import backfill_pool_history, backfill_pools
 from src.rankings.services.leaderboard import build_pool_leaderboard
 from src.rankings.services.match_guesses import (
     _build_guess_rows,
@@ -1063,3 +1064,158 @@ class RankingBadgeTemplateTest(TestCase):
         body = response.content.decode()
         self.assertNotIn("▲", body)
         self.assertNotIn("▼", body)
+
+
+def _build_pool_with_3_rounds():
+    """Cria pool tipo 2 com 3 participantes, 3 jogos de grupo finalizados (datas crescentes)
+    e palpites que produzem pontuações diferentes por rodada, de modo que a posição
+    de cada participante varie entre as rodadas.
+
+    Retorna (pool, [p1, p2, p3], [m1, m2, m3]).
+    """
+    owner = User.objects.create_user(username="bf-owner", email="bf-owner@example.com", password="123456Aa!")
+    u1 = User.objects.create_user(username="bf-u1", email="bf-u1@example.com", password="123456Aa!")
+    u2 = User.objects.create_user(username="bf-u2", email="bf-u2@example.com", password="123456Aa!")
+    u3 = User.objects.create_user(username="bf-u3", email="bf-u3@example.com", password="123456Aa!")
+
+    competition = Competition.objects.create(fifa_id=950, name="Copa Backfill")
+    season = Season.objects.create(
+        fifa_id=950,
+        competition=competition,
+        name="Temporada Backfill",
+        year=2026,
+        start_date="2026-06-01",
+        end_date="2026-07-30",
+    )
+    # "Group Stage" -> normalize_stage_key -> "GROUP" -> PHASE_GROUP
+    stage = Stage.objects.create(fifa_id="ST950G", season=season, name="Group Stage", order=1)
+
+    pool = Pool.objects.create(
+        name="Pool Backfill",
+        slug="pool-backfill",
+        season=season,
+        created_by=owner,
+        requires_payment=False,
+        pool_type=Pool.POOL_TYPE_2,
+    )
+
+    p1 = PoolParticipant.objects.create(pool=pool, user=u1, is_active=True)
+    p2 = PoolParticipant.objects.create(pool=pool, user=u2, is_active=True)
+    p3 = PoolParticipant.objects.create(pool=pool, user=u3, is_active=True)
+
+    now = timezone.now()
+    # 3 jogos finalizados com datas crescentes e placar real definido.
+    # Jogo 1: 1-0 real. Jogo 2: 2-1 real. Jogo 3: 0-0 real.
+    m1 = Match.objects.create(
+        fifa_id="BF-M1",
+        season=season,
+        stage=stage,
+        match_number=1,
+        match_date_utc=now - timedelta(hours=6),
+        match_date_local=now - timedelta(hours=6),
+        match_date_brasilia=now - timedelta(hours=6),
+        home_score=1,
+        away_score=0,
+        status=Match.STATUS_FINISHED,
+    )
+    m2 = Match.objects.create(
+        fifa_id="BF-M2",
+        season=season,
+        stage=stage,
+        match_number=2,
+        match_date_utc=now - timedelta(hours=4),
+        match_date_local=now - timedelta(hours=4),
+        match_date_brasilia=now - timedelta(hours=4),
+        home_score=2,
+        away_score=1,
+        status=Match.STATUS_FINISHED,
+    )
+    m3 = Match.objects.create(
+        fifa_id="BF-M3",
+        season=season,
+        stage=stage,
+        match_number=3,
+        match_date_utc=now - timedelta(hours=2),
+        match_date_local=now - timedelta(hours=2),
+        match_date_brasilia=now - timedelta(hours=2),
+        home_score=0,
+        away_score=0,
+        status=Match.STATUS_FINISHED,
+    )
+
+    # Palpites concebidos para que a posição mude entre rodadas.
+    # Rodada 1 (m1: real 1-0):
+    #   p1 acerta exato (25 pts), p2 acerta winner+diff (15 pts), p3 erra (0 pts) -> ordem: p1, p2, p3
+    # Rodada 2 (m2: real 2-1):
+    #   p1 não acerta nada em m2 (+0), p2 acerta exato em m2 (+25), p3 acerta exato em m2 (+25)
+    #   Acumulado: p1=25, p2=40, p3=25 -> ordem: p2, p1/p3 (p3 entra no meio)
+    # Rodada 3 (m3: real 0-0):
+    #   p3 acerta exato em m3 (+25), p1 e p2 erram em m3
+    #   Acumulado: p1=25, p2=40, p3=50 -> ordem: p3, p2, p1
+
+    # Bets for p1: exato m1, errado m2, errado m3
+    PoolBet.objects.create(participant=p1, match=m1, home_score_pred=1, away_score_pred=0, is_active=True)
+    PoolBet.objects.create(participant=p1, match=m2, home_score_pred=3, away_score_pred=2, is_active=True)
+    PoolBet.objects.create(participant=p1, match=m3, home_score_pred=1, away_score_pred=0, is_active=True)
+
+    # Bets for p2: winner+diff m1, exato m2, errado m3
+    PoolBet.objects.create(participant=p2, match=m1, home_score_pred=2, away_score_pred=0, is_active=True)
+    PoolBet.objects.create(participant=p2, match=m2, home_score_pred=2, away_score_pred=1, is_active=True)
+    PoolBet.objects.create(participant=p2, match=m3, home_score_pred=1, away_score_pred=0, is_active=True)
+
+    # Bets for p3: errado m1, exato m2, exato m3
+    PoolBet.objects.create(participant=p3, match=m1, home_score_pred=0, away_score_pred=1, is_active=True)
+    PoolBet.objects.create(participant=p3, match=m2, home_score_pred=2, away_score_pred=1, is_active=True)
+    PoolBet.objects.create(participant=p3, match=m3, home_score_pred=0, away_score_pred=0, is_active=True)
+
+    return pool, [p1, p2, p3], [m1, m2, m3]
+
+
+class BackfillPoolHistoryTest(TestCase):
+    def setUp(self):
+        # 3 participantes, 3 jogos de grupo finalizados em datas crescentes,
+        # com palpites que fazem a classificação mudar de uma rodada para outra.
+        self.pool, self.participants, self.matches = _build_pool_with_3_rounds()
+
+    def test_backfill_creates_one_round_per_finished_match(self):
+        count = backfill_pool_history(self.pool)
+        self.assertEqual(count, 3)
+        round_indexes = sorted(
+            PoolRankingHistory.objects.filter(pool=self.pool)
+            .order_by("round_index")
+            .values_list("round_index", flat=True)
+            .distinct()
+        )
+        self.assertEqual(round_indexes, [1, 2, 3])
+        # Cada rodada tem uma linha por participante.
+        for r in (1, 2, 3):
+            self.assertEqual(
+                PoolRankingHistory.objects.filter(pool=self.pool, round_index=r).count(),
+                len(self.participants),
+            )
+        # Posições de cada rodada são 1..N sem buracos.
+        for r in (1, 2, 3):
+            positions = sorted(
+                PoolRankingHistory.objects.filter(pool=self.pool, round_index=r).values_list("position", flat=True)
+            )
+            self.assertEqual(positions, list(range(1, len(self.participants) + 1)))
+
+    def test_backfill_is_idempotent(self):
+        first = backfill_pool_history(self.pool)
+        rows_first = sorted(
+            PoolRankingHistory.objects.filter(pool=self.pool).values_list(
+                "round_index", "participant_id", "position", "total_points"
+            )
+        )
+        second = backfill_pool_history(self.pool)
+        rows_second = sorted(
+            PoolRankingHistory.objects.filter(pool=self.pool).values_list(
+                "round_index", "participant_id", "position", "total_points"
+            )
+        )
+        self.assertEqual(first, second)
+        self.assertEqual(rows_first, rows_second)
+
+    def test_backfill_pools_sums_rounds(self):
+        total = backfill_pools([self.pool])
+        self.assertEqual(total, 3)
