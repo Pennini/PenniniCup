@@ -13,6 +13,7 @@ from src.accounts.models import InviteToken
 from src.football.models import AssignThird, Competition, Group, Match, Player, Season, Stage, Team
 from src.payments.models import Payment
 from src.pool.models import Pool, PoolBet, PoolParticipant, PoolParticipantStanding, PoolProjectionRecalc
+from src.pool.services.asof_standings import AsOfStanding, compute_asof_standings
 from src.pool.services.context_builder import (
     _build_projected_groups_from_rows,
     _build_third_rows_from_rows,
@@ -2752,3 +2753,107 @@ class Tipo2KnockoutOpenTestCase(TestCase):
         bet.full_clean()  # não deve levantar
         bet.save()
         self.assertTrue(PoolBet.objects.get(participant=self.participant, match=self.r16).is_active)
+
+
+class ComputeAsOfStandingsBetsTest(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(
+            username="asof_owner", email="asof_owner@example.com", password="123456Aa!"
+        )
+        self.user = User.objects.create_user(username="asof_user", email="asof_user@example.com", password="123456Aa!")
+
+        self.competition = Competition.objects.create(fifa_id=9001, name="Copa AsOf")
+        self.season = Season.objects.create(
+            fifa_id=9001,
+            competition=self.competition,
+            name="Temporada AsOf",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        # Stage name "Group Stage" → normalize_stage_key → "GROUP" → PHASE_GROUP
+        self.group_stage = Stage.objects.create(
+            fifa_id="GROUP9001", season=self.season, name="Group Stage", order=9001
+        )
+
+        self.home_team = Team.objects.create(fifa_id="AH1", name="AsOf Home", name_norm="asof-home", code="ASH")
+        self.away_team = Team.objects.create(fifa_id="AH2", name="AsOf Away", name_norm="asof-away", code="ASA")
+
+        now = timezone.now()
+        past = now - timezone.timedelta(hours=2)
+
+        self.match1 = Match.objects.create(
+            fifa_id="ASOF-M1",
+            season=self.season,
+            stage=self.group_stage,
+            match_number=9001,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=self.home_team,
+            away_team=self.away_team,
+            home_score=1,
+            away_score=0,
+            status=Match.STATUS_FINISHED,
+        )
+        self.match2 = Match.objects.create(
+            fifa_id="ASOF-M2",
+            season=self.season,
+            stage=self.group_stage,
+            match_number=9002,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=self.home_team,
+            away_team=self.away_team,
+            home_score=2,
+            away_score=2,
+            status=Match.STATUS_FINISHED,
+        )
+
+        self.pool = Pool.objects.create(
+            name="Pool AsOf",
+            slug="pool-asof",
+            season=self.season,
+            created_by=self.owner,
+            requires_payment=False,
+            pool_type=2,
+        )
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+
+        # Exact bet on match1 (1-0) and wrong bet on match2
+        PoolBet.objects.create(
+            participant=self.participant,
+            match=self.match1,
+            home_score_pred=1,
+            away_score_pred=0,
+        )
+        PoolBet.objects.create(
+            participant=self.participant,
+            match=self.match2,
+            home_score_pred=0,
+            away_score_pred=0,
+        )
+
+        self.scoring_config = self.pool.get_scoring_config()
+        self.official_result = self.pool.get_official_results()
+
+    def test_only_allowed_matches_count(self):
+        rows = compute_asof_standings(
+            self.pool,
+            allowed_match_ids={self.match1.id},
+            scoring_config=self.scoring_config,
+            official_result=self.official_result,
+        )
+        self.assertEqual(len(rows), 1)
+        row = rows[0]
+        self.assertIsInstance(row, AsOfStanding)
+        self.assertEqual(row.participant.id, self.participant.id)
+        # Só o match1 (placar exato) conta; match2 fora do conjunto é ignorado.
+        self.assertEqual(row.total_points, self.scoring_config.group_exact_score)
+        self.assertEqual(row.group_points, self.scoring_config.group_exact_score)
+        self.assertEqual(row.knockout_points, 0)
+        self.assertEqual(row.exact_score_hits, 1)
+        # Bônus ainda não implementado nesta task.
+        self.assertFalse(row.champion_hit)
+        self.assertFalse(row.top_scorer_hit)
