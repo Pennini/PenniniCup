@@ -138,6 +138,55 @@ def _build_guess_rows(pool, match):
     ]
 
 
+def build_guess_aggregates(guess_rows):
+    """Same guesses, grouped by scoreline for the "por palpite" view. Consumes
+    the ranking-ordered guess_rows, so rows inside each group keep ranking order
+    (and their #position) for free. Groups are sorted most-guessed first, ties
+    broken by scoreline (home desc, away desc); the "sem palpite" group (rows
+    without a bet) is always last, whatever its size.
+    """
+    groups = {}
+    no_guess_rows = []
+    for row in guess_rows:
+        bet = row["bet"]
+        if bet is None:
+            no_guess_rows.append(row)
+            continue
+        key = (bet.home_score_pred, bet.away_score_pred)
+        group = groups.get(key)
+        if group is None:
+            group = {
+                "label": f"{bet.home_score_pred} x {bet.away_score_pred}",
+                "home": bet.home_score_pred,
+                "away": bet.away_score_pred,
+                "count": 0,
+                "is_no_guess": False,
+                "rows": [],
+            }
+            groups[key] = group
+        group["rows"].append(row)
+        group["count"] += 1
+
+    def sort_key(group):
+        home = group["home"] if group["home"] is not None else -1
+        away = group["away"] if group["away"] is not None else -1
+        return (-group["count"], -home, -away)
+
+    aggregates = sorted(groups.values(), key=sort_key)
+    if no_guess_rows:
+        aggregates.append(
+            {
+                "label": None,
+                "home": None,
+                "away": None,
+                "count": len(no_guess_rows),
+                "is_no_guess": True,
+                "rows": no_guess_rows,
+            }
+        )
+    return aggregates
+
+
 def build_match_guesses_context(*, pool, request):
     matches = get_selectable_matches(pool.season)
     selected_match = resolve_selected_match(request, pool.season)
@@ -151,6 +200,7 @@ def build_match_guesses_context(*, pool, request):
         "guesses_locked": False,
         "match_finished": False,
         "guess_rows": [],
+        "guess_aggregates": [],
     }
     if selected_match is None:
         return context
@@ -165,5 +215,6 @@ def build_match_guesses_context(*, pool, request):
     context["guesses_locked"] = not revealed
     if revealed:
         context["guess_rows"] = _build_guess_rows(pool, selected_match)
+        context["guess_aggregates"] = build_guess_aggregates(context["guess_rows"])
 
     return context

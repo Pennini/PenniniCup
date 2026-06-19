@@ -1,4 +1,5 @@
 from datetime import timedelta
+from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
@@ -12,6 +13,7 @@ from src.rankings.models import RankingTieBreakOverride
 from src.rankings.services.leaderboard import build_pool_leaderboard
 from src.rankings.services.match_guesses import (
     _build_guess_rows,
+    build_guess_aggregates,
     build_match_guesses_context,
     resolve_adjacent,
     resolve_default_match,
@@ -325,6 +327,28 @@ class MatchGuessesServiceTest(TestCase):
         rows = _build_guess_rows(paid_pool, match)
         self.assertEqual([row["participant"].user.username for row in rows], ["mg-paid"])
 
+    def test_context_includes_guess_aggregates_when_revealed(self):
+        now = timezone.now()
+        match = _make_match(self.season, self.group_stage, number=1, kickoff=now - timedelta(hours=1))
+        u1 = User.objects.create_user(username="agg1", email="agg1@example.com", password="123456Aa!")
+        u2 = User.objects.create_user(username="agg2", email="agg2@example.com", password="123456Aa!")
+        u3 = User.objects.create_user(username="agg3", email="agg3@example.com", password="123456Aa!")
+        p1 = PoolParticipant.objects.create(pool=self.pool, user=u1, is_active=True, total_points=30)
+        p2 = PoolParticipant.objects.create(pool=self.pool, user=u2, is_active=True, total_points=20)
+        PoolParticipant.objects.create(pool=self.pool, user=u3, is_active=True, total_points=10)
+        PoolBet.objects.create(participant=p1, match=match, home_score_pred=2, away_score_pred=0, is_active=True)
+        PoolBet.objects.create(participant=p2, match=match, home_score_pred=2, away_score_pred=0, is_active=True)
+
+        context = build_match_guesses_context(pool=self.pool, request=self.factory.get("/"))
+
+        aggregates = context["guess_aggregates"]
+        # Most-guessed first (2x0 with two), then "Sem palpite" (u3) last.
+        self.assertEqual(aggregates[0]["label"], "2 x 0")
+        self.assertEqual(aggregates[0]["count"], 2)
+        self.assertEqual([r["participant"].user.username for r in aggregates[0]["rows"]], ["agg1", "agg2"])
+        self.assertTrue(aggregates[-1]["is_no_guess"])
+        self.assertEqual([r["participant"].user.username for r in aggregates[-1]["rows"]], ["agg3"])
+
     def test_build_guess_rows_ordered_by_ranking_with_position(self):
         now = timezone.now()
         match = _make_match(self.season, self.group_stage, number=1, kickoff=now - timedelta(hours=1))
@@ -555,6 +579,10 @@ class MatchGuessesViewTest(TestCase):
         self.assertContains(response, "match-guesses-body")
         self.assertContains(response, reverse("rankings:match-guesses-partial", kwargs={"slug": self.pool.slug}))
         self.assertContains(response, "data-match=")
+        # Ambas as visões de palpites disponíveis via toggle.
+        self.assertContains(response, 'data-guesses-view-btn="by-participant"')
+        self.assertContains(response, 'data-guesses-view-btn="by-guess"')
+        self.assertContains(response, 'data-guesses-view="by-guess"')
 
     def _partial_url(self):
         return reverse("rankings:match-guesses-partial", kwargs={"slug": self.pool.slug})
@@ -598,6 +626,55 @@ class MatchGuessesViewTest(TestCase):
         self.client.force_login(self.outsider)
         response = self.client.get(self._partial_url(), {"match": self.match.id})
         self.assertEqual(response.status_code, 404)
+
+
+class BuildGuessAggregatesTest(TestCase):
+    """Pure aggregation over ranking-ordered guess_rows: group by scoreline,
+    order groups by popularity (count desc, then scoreline desc), 'sem palpite'
+    always last, ranking order preserved within each group.
+    """
+
+    @staticmethod
+    def _row(position, username, bet):
+        participant = SimpleNamespace(user=SimpleNamespace(username=username))
+        return {"position": position, "participant": participant, "bet": bet}
+
+    @staticmethod
+    def _bet(home, away, winner=None):
+        return SimpleNamespace(home_score_pred=home, away_score_pred=away, winner_pred=winner)
+
+    def test_groups_ordered_by_count_then_scoreline_with_no_guess_last(self):
+        rows = [
+            self._row(1, "a", self._bet(2, 0)),
+            self._row(2, "b", self._bet(1, 0)),
+            self._row(3, "c", self._bet(2, 0)),
+            self._row(4, "d", None),
+            self._row(5, "e", self._bet(1, 0)),
+            self._row(6, "f", self._bet(3, 1)),
+        ]
+
+        aggregates = build_guess_aggregates(rows)
+
+        # 2x0 (count 2) and 1x0 (count 2) tie -> scoreline desc puts 2x0 first;
+        # 3x1 (count 1) next; "sem palpite" always last.
+        self.assertEqual(
+            [(g["label"], g["count"], g["is_no_guess"]) for g in aggregates],
+            [("2 x 0", 2, False), ("1 x 0", 2, False), ("3 x 1", 1, False), (None, 1, True)],
+        )
+
+    def test_rows_within_group_keep_ranking_order_and_position(self):
+        rows = [
+            self._row(1, "leader", self._bet(2, 0)),
+            self._row(4, "tail", self._bet(2, 0)),
+        ]
+
+        [group] = build_guess_aggregates(rows)
+
+        self.assertEqual([r["position"] for r in group["rows"]], [1, 4])
+        self.assertEqual([r["participant"].user.username for r in group["rows"]], ["leader", "tail"])
+
+    def test_empty_rows_returns_empty(self):
+        self.assertEqual(build_guess_aggregates([]), [])
 
 
 class RankingTabPoolSelectorTest(TestCase):

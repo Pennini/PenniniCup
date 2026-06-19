@@ -81,15 +81,22 @@ guesses_locked, match_finished, guess_rows, pool, toggle_query_prefix (opcional)
 </div>
 {% else %}
 <div class="mt-5">
-    <h2 class="text-lg font-semibold">Palpites dos participantes</h2>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-lg font-semibold">Palpites dos participantes</h2>
+        <div class="inline-flex rounded-lg border border-neutral-700 bg-neutral-900 p-0.5 text-xs" role="tablist">
+            <button type="button" data-guesses-view-btn="by-participant" class="guesses-view-btn rounded-md px-3 py-1.5 font-medium transition-colors">Por participante</button>
+            <button type="button" data-guesses-view-btn="by-guess" class="guesses-view-btn rounded-md px-3 py-1.5 font-medium transition-colors">Por palpite</button>
+        </div>
+    </div>
 
+    <div data-guesses-view="by-participant">
     <div class="mt-4 space-y-3 md:hidden">
         {% for row in guess_rows %}
-        <article class="rounded-xl border border-neutral-700/80 bg-neutral-950/70 p-4 {% if row.participant.user_id == request.user.id %}shadow-[inset_3px_0_0_0_rgba(251,146,60,0.95)]{% endif %}">
+        <article class="rounded-xl border border-neutral-700/80 bg-neutral-950/70 p-4 cursor-pointer {% if row.participant.user_id == request.user.id %}shadow-[inset_3px_0_0_0_rgba(251,146,60,0.95)]{% endif %}" onclick="if(event.target.closest('a')||event.ctrlKey||event.metaKey||event.shiftKey||event.button!==0)return;window.location='{% url 'penninicup:profile-user' row.participant.user.username %}?pool={{ pool.slug }}'">
             <div class="flex items-center justify-between gap-3">
                 <span class="inline-flex items-center gap-2 min-w-0">
                     <span class="shrink-0 text-sm font-bold tabular-nums {% if row.position == 1 %}text-yellow-200{% elif row.position == 2 %}text-slate-100{% elif row.position == 3 %}text-amber-200{% else %}text-neutral-400{% endif %}">#{{ row.position }}</span>
-                    <span class="truncate font-semibold">{{ row.participant.user.username }}</span>
+                    <a href="{% url 'penninicup:profile-user' row.participant.user.username %}?pool={{ pool.slug }}" class="truncate font-semibold hover:text-orange-300 transition-colors">{{ row.participant.user.username }}</a>
                     {% if pool.show_supporter_stars and row.participant.user.profile.is_supporter %}<i data-lucide="star" class="h-4 w-4 text-yellow-400 fill-yellow-400 shrink-0"></i>{% endif %}
                 </span>
                 {% if match_finished %}
@@ -117,11 +124,11 @@ guesses_locked, match_finished, guess_rows, pool, toggle_query_prefix (opcional)
             </thead>
             <tbody class="divide-y divide-neutral-800/90">
                 {% for row in guess_rows %}
-                <tr class="transition-colors duration-200 hover:bg-neutral-800/35 {% if row.participant.user_id == request.user.id %}bg-orange-500/12 shadow-[inset_3px_0_0_0_rgba(251,146,60,0.95)]{% endif %}">
+                <tr class="transition-colors duration-200 hover:bg-neutral-800/35 cursor-pointer {% if row.participant.user_id == request.user.id %}bg-orange-500/12 shadow-[inset_3px_0_0_0_rgba(251,146,60,0.95)]{% endif %}" onclick="if(event.target.closest('a')||event.ctrlKey||event.metaKey||event.shiftKey||event.button!==0)return;window.location='{% url 'penninicup:profile-user' row.participant.user.username %}?pool={{ pool.slug }}'">
                     <td class="px-4 py-3 font-semibold {% if row.position == 1 %}text-yellow-200{% elif row.position == 2 %}text-slate-100{% elif row.position == 3 %}text-amber-200{% endif %}">#{{ row.position }}</td>
                     <td class="px-4 py-3 font-medium">
                         <span class="inline-flex items-center gap-1">
-                            {{ row.participant.user.username }}
+                            <a href="{% url 'penninicup:profile-user' row.participant.user.username %}?pool={{ pool.slug }}" class="hover:text-orange-300 transition-colors">{{ row.participant.user.username }}</a>
                             {% if pool.show_supporter_stars and row.participant.user.profile.is_supporter %}<i data-lucide="star" class="h-3.5 w-3.5 text-yellow-400 fill-yellow-400"></i>{% endif %}
                         </span>
                     </td>
@@ -137,6 +144,37 @@ guesses_locked, match_finished, guess_rows, pool, toggle_query_prefix (opcional)
                 {% endfor %}
             </tbody>
         </table>
+    </div>
+    </div>
+
+    <div data-guesses-view="by-guess" hidden>
+        <div class="mt-4 space-y-3">
+            {% for group in guess_aggregates %}
+            <div class="overflow-hidden rounded-xl border border-neutral-700/80 bg-neutral-950/60">
+                <div class="flex items-center justify-between gap-3 bg-neutral-900/80 px-4 py-2.5">
+                    <span class="text-base font-bold {% if group.is_no_guess %}text-neutral-400{% else %}text-neutral-100{% endif %}">{% if group.is_no_guess %}Sem palpite{% else %}{{ group.label }}{% endif %}</span>
+                    <span class="shrink-0 text-xs text-neutral-400">{{ group.count }} palpite{{ group.count|pluralize }}</span>
+                </div>
+                <ul class="divide-y divide-neutral-800/80">
+                    {% for row in group.rows %}
+                    <li class="flex items-center justify-between gap-3 px-4 py-2.5 cursor-pointer transition-colors hover:bg-neutral-800/35 {% if row.participant.user_id == request.user.id %}bg-orange-500/12 shadow-[inset_3px_0_0_0_rgba(251,146,60,0.95)]{% endif %}" onclick="if(event.target.closest('a')||event.ctrlKey||event.metaKey||event.shiftKey||event.button!==0)return;window.location='{% url 'penninicup:profile-user' row.participant.user.username %}?pool={{ pool.slug }}'">
+                        <span class="inline-flex min-w-0 items-center gap-2">
+                            <span class="shrink-0 text-sm font-bold tabular-nums {% if row.position == 1 %}text-yellow-200{% elif row.position == 2 %}text-slate-100{% elif row.position == 3 %}text-amber-200{% else %}text-neutral-400{% endif %}">#{{ row.position }}</span>
+                            <a href="{% url 'penninicup:profile-user' row.participant.user.username %}?pool={{ pool.slug }}" class="truncate font-medium hover:text-orange-300 transition-colors">{{ row.participant.user.username }}</a>
+                            {% if pool.show_supporter_stars and row.participant.user.profile.is_supporter %}<i data-lucide="star" class="h-3.5 w-3.5 shrink-0 text-yellow-400 fill-yellow-400"></i>{% endif %}
+                        </span>
+                        <span class="inline-flex shrink-0 items-center gap-2 text-sm">
+                            {% if not group.is_no_guess and row.bet.winner_pred %}<span class="text-[11px] text-neutral-400">→ {{ row.bet.winner_pred.code }}</span>{% endif %}
+                            {% if match_finished and not group.is_no_guess and row.bet.score %}<span class="font-bold text-orange-300">{{ row.bet.score.points }} pts</span>{% if row.bet.score.exact_score %} <span class="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">Exato</span>{% endif %}{% endif %}
+                        </span>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% empty %}
+            <article class="rounded-xl border border-neutral-700/80 bg-neutral-950/70 px-4 py-6 text-center text-sm text-neutral-400">Nenhum participante ativo neste bolão.</article>
+            {% endfor %}
+        </div>
     </div>
 </div>
 {% endif %}
