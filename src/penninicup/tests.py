@@ -756,9 +756,11 @@ class HomeLayoutTest(TestCase):
         response = self.client.get(reverse("penninicup:index"))
         self.assertEqual(response.status_code, 200)
         self.assertNotContains(response, "data-home-tab-trigger")
+        self.assertNotContains(response, "data-home-tab-panel")
 
     def test_shows_shortcuts_and_next_games_together(self):
         response = self.client.get(reverse("penninicup:index"))
+        self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Atalhos")
         self.assertContains(response, "Próximos jogos")
 
@@ -778,4 +780,6 @@ class HomeLayoutTest(TestCase):
         )
 
         response = self.client.get(reverse("penninicup:index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Jogo 1")
         self.assertContains(response, "AO VIVO")
