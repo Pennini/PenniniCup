@@ -2,6 +2,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
+from django.db import IntegrityError
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -9,7 +10,7 @@ from django.utils import timezone
 from src.football.models import Competition, Match, Season, Stage, Team
 from src.payments.models import Payment
 from src.pool.models import Pool, PoolBet, PoolBetScore, PoolParticipant
-from src.rankings.models import RankingTieBreakOverride
+from src.rankings.models import PoolRankingHistory, RankingTieBreakOverride
 from src.rankings.services.leaderboard import build_pool_leaderboard
 from src.rankings.services.match_guesses import (
     _build_guess_rows,
@@ -779,3 +780,54 @@ class ToggleSupporterStarsTest(TestCase):
         self.client.post(self._url())
         self.pool.refresh_from_db()
         self.assertTrue(self.pool.show_supporter_stars)
+
+
+class PoolRankingHistoryModelTest(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username="hist-owner", email="ho@example.com", password="123456Aa!")
+        self.member = User.objects.create_user(username="hist-member", email="hm@example.com", password="123456Aa!")
+        competition = Competition.objects.create(fifa_id=940, name="Copa Hist")
+        self.season = Season.objects.create(
+            fifa_id=940,
+            competition=competition,
+            name="Temporada Hist",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="ST940G", season=self.season, name="Group Stage", order=1)
+        self.pool = Pool.objects.create(
+            name="Pool Hist", slug="pool-hist", season=self.season, created_by=self.owner, requires_payment=False
+        )
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.member, is_active=True)
+        self.match = _make_match(self.season, self.stage, number=1, kickoff=timezone.now())
+
+    def test_history_row_persists_ranking_snapshot(self):
+        row = PoolRankingHistory.objects.create(
+            pool=self.pool,
+            participant=self.participant,
+            match=self.match,
+            round_index=1,
+            position=3,
+            total_points=42,
+            group_points=20,
+            knockout_points=22,
+            exact_score_hits=4,
+            advancing_hits=6,
+            champion_hit=True,
+            top_scorer_hit=False,
+        )
+        row.refresh_from_db()
+        self.assertEqual(row.round_index, 1)
+        self.assertEqual(row.position, 3)
+        self.assertEqual(row.total_points, 42)
+        self.assertTrue(row.champion_hit)
+
+    def test_history_unique_per_pool_participant_match(self):
+        PoolRankingHistory.objects.create(
+            pool=self.pool, participant=self.participant, match=self.match, round_index=1, position=1
+        )
+        with self.assertRaises(IntegrityError):
+            PoolRankingHistory.objects.create(
+                pool=self.pool, participant=self.participant, match=self.match, round_index=2, position=2
+            )

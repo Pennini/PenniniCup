@@ -37,3 +37,31 @@ class RankingTieBreakOverride(models.Model):
     def clean(self):
         if self.participant_id and self.pool_id and self.participant.pool_id != self.pool_id:
             raise ValidationError("Participante deve pertencer ao mesmo bolao do override.")
+
+
+class PoolRankingHistory(models.Model):
+    pool = models.ForeignKey(Pool, on_delete=models.CASCADE, related_name="ranking_history")
+    participant = models.ForeignKey(PoolParticipant, on_delete=models.CASCADE, related_name="ranking_history")
+    match = models.ForeignKey("football.Match", on_delete=models.CASCADE, related_name="ranking_history")
+    round_index = models.PositiveIntegerField()
+    position = models.PositiveIntegerField()
+
+    total_points = models.IntegerField(default=0)
+    group_points = models.IntegerField(default=0)
+    knockout_points = models.IntegerField(default=0)
+    exact_score_hits = models.IntegerField(default=0)
+    advancing_hits = models.IntegerField(default=0)
+    champion_hit = models.BooleanField(default=False)
+    top_scorer_hit = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = (("pool", "participant", "match"),)
+        indexes = [
+            models.Index(fields=["pool", "round_index"], name="pool_rank_hist_round_idx"),
+        ]
+        ordering = ["pool", "round_index", "position"]
+
+    def __str__(self):
+        return f"{self.pool.slug} r{self.round_index} #{self.position} {self.participant.user}"
