@@ -1012,3 +1012,54 @@ class LeaderboardMovementTest(TestCase):
         rows = {row.participant.id: row for row in build_pool_leaderboard(pool=self.pool)}
         self.assertEqual(rows[self.p_a.id].movement, 0)
         self.assertIsNone(rows[self.p_b.id].movement)
+
+
+class RankingBadgeTemplateTest(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username="bdg-owner", email="bdo@example.com", password="123456Aa!")
+        self.u_a = User.objects.create_user(username="bdg-a", email="bda@example.com", password="123456Aa!")
+        self.u_b = User.objects.create_user(username="bdg-b", email="bdb@example.com", password="123456Aa!")
+        competition = Competition.objects.create(fifa_id=944, name="Copa Bdg")
+        self.season = Season.objects.create(
+            fifa_id=944,
+            competition=competition,
+            name="Temporada Bdg",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="ST944G", season=self.season, name="Group Stage", order=1)
+        self.pool = Pool.objects.create(
+            name="Pool Bdg", slug="pool-bdg", season=self.season, created_by=self.owner, requires_payment=False
+        )
+        # Atual: A 1º (50), B 2º (30).
+        self.p_a = PoolParticipant.objects.create(pool=self.pool, user=self.u_a, is_active=True, total_points=50)
+        self.p_b = PoolParticipant.objects.create(pool=self.pool, user=self.u_b, is_active=True, total_points=30)
+        self.match1 = _make_match(self.season, self.stage, number=1, kickoff=timezone.now())
+        self.match2 = _make_match(self.season, self.stage, number=2, kickoff=timezone.now())
+        # Rodada anterior: B 1º, A 2º -> A subiu 1 (▲1), B caiu 1 (▼1).
+        for participant, position in {self.p_b: 1, self.p_a: 2}.items():
+            PoolRankingHistory.objects.create(
+                pool=self.pool, participant=participant, match=self.match1, round_index=1, position=position
+            )
+        for participant, position in {self.p_a: 1, self.p_b: 2}.items():
+            PoolRankingHistory.objects.create(
+                pool=self.pool, participant=participant, match=self.match2, round_index=2, position=position
+            )
+
+    def test_dashboard_renders_movement_badges(self):
+        self.client.force_login(self.u_a)
+        response = self.client.get(reverse("pool:ranking", kwargs={"slug": self.pool.slug}))
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("▲1", body)
+        self.assertIn("▼1", body)
+
+    def test_dashboard_omits_badge_when_no_movement(self):
+        # Sem rodada anterior distinta -> sem badge.
+        PoolRankingHistory.objects.filter(pool=self.pool, round_index=1).delete()
+        self.client.force_login(self.u_a)
+        response = self.client.get(reverse("pool:ranking", kwargs={"slug": self.pool.slug}))
+        body = response.content.decode()
+        self.assertNotIn("▲", body)
+        self.assertNotIn("▼", body)
