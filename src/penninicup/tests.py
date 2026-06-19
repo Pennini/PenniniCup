@@ -724,3 +724,58 @@ class HomeNextMatchesContextTest(TestCase):
 
         self.assertEqual(len(rows), 3)
         self.assertEqual([r["match"].fifa_id for r in rows], ["NM-B", "NM-C", "NM-A"])
+
+
+class HomeLayoutTest(TestCase):
+    """Painel da home: duas colunas (atalhos | próximos jogos), sem abas, e o
+    jogo live aparece marcado AO VIVO."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="layout-user", email="layout@example.com", password="123456Aa!")
+        self.client.force_login(self.user)
+        competition = Competition.objects.create(fifa_id=772, name="Copa Layout")
+        self.season = Season.objects.create(
+            fifa_id=772,
+            competition=competition,
+            name="Temporada Layout",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="LO-STAGE", season=self.season, name="Fase de Grupos", order=1)
+        self.group = Group.objects.create(fifa_id="LO-GROUP", stage=self.stage, name="A")
+        self.team = Team.objects.create(
+            fifa_id="LO-TEAM", name="Time Layout", name_norm="time layout", code="TLO", group=self.group
+        )
+        self.pool = Pool.objects.create(
+            name="Pool Layout", slug="pool-layout", season=self.season, created_by=self.user, requires_payment=False
+        )
+        PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+
+    def test_tab_buttons_removed(self):
+        response = self.client.get(reverse("penninicup:index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "data-home-tab-trigger")
+
+    def test_shows_shortcuts_and_next_games_together(self):
+        response = self.client.get(reverse("penninicup:index"))
+        self.assertContains(response, "Atalhos")
+        self.assertContains(response, "Próximos jogos")
+
+    def test_live_match_shows_ao_vivo_badge(self):
+        now = timezone.now()
+        Match.objects.create(
+            fifa_id="LO-LIVE",
+            season=self.season,
+            stage=self.stage,
+            group=self.group,
+            match_number=1,
+            match_date_utc=now - timezone.timedelta(minutes=15),
+            match_date_local=now - timezone.timedelta(minutes=15),
+            match_date_brasilia=now - timezone.timedelta(minutes=15),
+            home_team=self.team,
+            away_team=self.team,
+        )
+
+        response = self.client.get(reverse("penninicup:index"))
+        self.assertContains(response, "AO VIVO")
