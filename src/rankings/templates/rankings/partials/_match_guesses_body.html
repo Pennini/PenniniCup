@@ -87,7 +87,8 @@ guesses_locked, match_finished, guess_rows, pool, toggle_query_prefix (opcional)
         {% for row in guess_rows %}
         <article class="rounded-xl border border-neutral-700/80 bg-neutral-950/70 p-4 {% if row.participant.user_id == request.user.id %}shadow-[inset_3px_0_0_0_rgba(251,146,60,0.95)]{% endif %}">
             <div class="flex items-center justify-between gap-3">
-                <span class="inline-flex items-center gap-1 min-w-0">
+                <span class="inline-flex items-center gap-2 min-w-0">
+                    <span class="shrink-0 text-sm font-bold tabular-nums {% if row.position == 1 %}text-yellow-200{% elif row.position == 2 %}text-slate-100{% elif row.position == 3 %}text-amber-200{% else %}text-neutral-400{% endif %}">#{{ row.position }}</span>
                     <span class="truncate font-semibold">{{ row.participant.user.username }}</span>
                     {% if pool.show_supporter_stars and row.participant.user.profile.is_supporter %}<i data-lucide="star" class="h-4 w-4 text-yellow-400 fill-yellow-400 shrink-0"></i>{% endif %}
                 </span>
@@ -108,6 +109,7 @@ guesses_locked, match_finished, guess_rows, pool, toggle_query_prefix (opcional)
         <table class="w-full min-w-[480px] text-sm text-neutral-200">
             <thead class="bg-neutral-900/95">
                 <tr class="text-left text-[11px] uppercase tracking-[0.08em] text-neutral-400">
+                    <th class="px-4 py-3 font-semibold">Pos.</th>
                     <th class="px-4 py-3 font-semibold">Participante</th>
                     <th class="px-4 py-3 font-semibold">Palpite</th>
                     {% if match_finished %}<th class="px-4 py-3 font-semibold">Pontos</th>{% endif %}
@@ -116,6 +118,7 @@ guesses_locked, match_finished, guess_rows, pool, toggle_query_prefix (opcional)
             <tbody class="divide-y divide-neutral-800/90">
                 {% for row in guess_rows %}
                 <tr class="transition-colors duration-200 hover:bg-neutral-800/35 {% if row.participant.user_id == request.user.id %}bg-orange-500/12 shadow-[inset_3px_0_0_0_rgba(251,146,60,0.95)]{% endif %}">
+                    <td class="px-4 py-3 font-semibold {% if row.position == 1 %}text-yellow-200{% elif row.position == 2 %}text-slate-100{% elif row.position == 3 %}text-amber-200{% endif %}">#{{ row.position }}</td>
                     <td class="px-4 py-3 font-medium">
                         <span class="inline-flex items-center gap-1">
                             {{ row.participant.user.username }}
@@ -130,7 +133,7 @@ guesses_locked, match_finished, guess_rows, pool, toggle_query_prefix (opcional)
                     {% endif %}
                 </tr>
                 {% empty %}
-                <tr><td colspan="3" class="px-4 py-6 text-center text-neutral-400">Nenhum participante ativo neste bolão.</td></tr>
+                <tr><td colspan="4" class="px-4 py-6 text-center text-neutral-400">Nenhum participante ativo neste bolão.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

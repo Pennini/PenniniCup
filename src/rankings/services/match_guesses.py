@@ -10,7 +10,7 @@ from django.utils import timezone
 from src.football.models import Match
 from src.pool.models import PoolBet
 from src.pool.services.rules import normalize_stage_key, phase_for_match
-from src.rankings.services.leaderboard import eligible_participants
+from src.rankings.services.leaderboard import build_pool_leaderboard
 
 # A game counts as "live" while inside this window after kickoff.
 LIVE_WINDOW = timedelta(hours=2)
@@ -121,14 +121,21 @@ def resolve_selected_match(request, season):
 
 
 def _build_guess_rows(pool, match):
-    participants = list(eligible_participants(pool).select_related("user", "user__profile").order_by("user__username"))
+    """Rows in the same order as the ranking, each carrying the participant's
+    leaderboard position (so the guesses table mirrors the ranking, #position
+    and all). Reuses build_pool_leaderboard, the single source of order/eligibility.
+    """
+    ranking_rows = build_pool_leaderboard(pool)
     bets = {
         bet.participant_id: bet
         for bet in PoolBet.objects.filter(participant__pool=pool, match=match, is_active=True).select_related(
             "winner_pred", "score"
         )
     }
-    return [{"participant": participant, "bet": bets.get(participant.id)} for participant in participants]
+    return [
+        {"position": row.position, "participant": row.participant, "bet": bets.get(row.participant.id)}
+        for row in ranking_rows
+    ]
 
 
 def build_match_guesses_context(*, pool, request):
@@ -149,7 +156,10 @@ def build_match_guesses_context(*, pool, request):
         return context
 
     context["selected_stage_label"] = stage_label(selected_match)
-    context["match_finished"] = selected_match.status == Match.STATUS_FINISHED
+    # Reveal the real result + points once both scores are known, even if the
+    # match status hasn't flipped to FINISHED yet (e.g. the FIFA sync lagged).
+    has_scores = selected_match.home_score is not None and selected_match.away_score is not None
+    context["match_finished"] = selected_match.status == Match.STATUS_FINISHED or has_scores
 
     revealed = pool.is_phase_locked(phase_for_match(selected_match))
     context["guesses_locked"] = not revealed

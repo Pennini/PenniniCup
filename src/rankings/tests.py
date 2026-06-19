@@ -325,6 +325,21 @@ class MatchGuessesServiceTest(TestCase):
         rows = _build_guess_rows(paid_pool, match)
         self.assertEqual([row["participant"].user.username for row in rows], ["mg-paid"])
 
+    def test_build_guess_rows_ordered_by_ranking_with_position(self):
+        now = timezone.now()
+        match = _make_match(self.season, self.group_stage, number=1, kickoff=now - timedelta(hours=1))
+        low = User.objects.create_user(username="mg-low", email="mg-low@example.com", password="123456Aa!")
+        high = User.objects.create_user(username="mg-high", email="mg-high@example.com", password="123456Aa!")
+        mid = User.objects.create_user(username="mg-mid", email="mg-mid@example.com", password="123456Aa!")
+        PoolParticipant.objects.create(pool=self.pool, user=low, is_active=True, total_points=10)
+        PoolParticipant.objects.create(pool=self.pool, user=high, is_active=True, total_points=30)
+        PoolParticipant.objects.create(pool=self.pool, user=mid, is_active=True, total_points=20)
+
+        rows = _build_guess_rows(self.pool, match)
+
+        self.assertEqual([row["participant"].user.username for row in rows], ["mg-high", "mg-mid", "mg-low"])
+        self.assertEqual([row["position"] for row in rows], [1, 2, 3])
+
     def test_resolve_selected_match_honors_valid_match_id(self):
         now = timezone.now()
         default_match = _make_match(self.season, self.group_stage, number=1, kickoff=now - timedelta(hours=1))
@@ -370,6 +385,17 @@ class MatchGuessesServiceTest(TestCase):
         self.assertTrue(context["match_finished"])
         self.assertEqual(context["guess_rows"][0]["bet"].score.points, 10)
         self.assertTrue(context["guess_rows"][0]["bet"].score.exact_score)
+
+    def test_context_reveals_result_when_scores_present_but_status_not_finished(self):
+        now = timezone.now()
+        match = _make_match(
+            self.season, self.group_stage, number=1, kickoff=now - timedelta(hours=3), status=Match.STATUS_SCHEDULED
+        )
+        match.home_score = 2
+        match.away_score = 1
+        match.save(update_fields=["home_score", "away_score"])
+        context = build_match_guesses_context(pool=self.pool, request=self.factory.get("/"))
+        self.assertTrue(context["match_finished"])
 
     def test_context_without_matches_returns_no_selection(self):
         context = build_match_guesses_context(pool=self.pool, request=self.factory.get("/"))
