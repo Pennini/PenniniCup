@@ -19,6 +19,7 @@ from src.rankings.services.match_guesses import (
     resolve_adjacent,
     resolve_default_match,
 )
+from src.rankings.services.position_snapshot import snapshot_round_for_match
 
 User = get_user_model()
 
@@ -831,3 +832,91 @@ class PoolRankingHistoryModelTest(TestCase):
             PoolRankingHistory.objects.create(
                 pool=self.pool, participant=self.participant, match=self.match, round_index=2, position=2
             )
+
+
+class SnapshotRoundForMatchTest(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username="snap-owner", email="so@example.com", password="123456Aa!")
+        self.u_high = User.objects.create_user(username="snap-high", email="sh@example.com", password="123456Aa!")
+        self.u_low = User.objects.create_user(username="snap-low", email="sl@example.com", password="123456Aa!")
+        competition = Competition.objects.create(fifa_id=941, name="Copa Snap")
+        self.season = Season.objects.create(
+            fifa_id=941,
+            competition=competition,
+            name="Temporada Snap",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="ST941G", season=self.season, name="Group Stage", order=1)
+        self.pool = Pool.objects.create(
+            name="Pool Snap", slug="pool-snap", season=self.season, created_by=self.owner, requires_payment=False
+        )
+        self.p_high = PoolParticipant.objects.create(pool=self.pool, user=self.u_high, is_active=True, total_points=30)
+        self.p_low = PoolParticipant.objects.create(pool=self.pool, user=self.u_low, is_active=True, total_points=10)
+        self.match = _make_match(self.season, self.stage, number=1, kickoff=timezone.now())
+        PoolBet.objects.create(
+            participant=self.p_high, match=self.match, home_score_pred=1, away_score_pred=0, is_active=True
+        )
+
+    def _finish(self, match, home=1, away=0):
+        match.home_score = home
+        match.away_score = away
+        match.save(update_fields=["home_score", "away_score"])
+
+    def test_no_score_writes_nothing(self):
+        snapshot_round_for_match(self.match)
+        self.assertEqual(PoolRankingHistory.objects.count(), 0)
+
+    def test_finished_match_writes_one_row_per_participant(self):
+        self._finish(self.match)
+        snapshot_round_for_match(self.match)
+        rows = PoolRankingHistory.objects.filter(pool=self.pool, match=self.match)
+        self.assertEqual(rows.count(), 2)
+        by_pid = {r.participant_id: r for r in rows}
+        self.p_high.refresh_from_db()
+        self.assertEqual(by_pid[self.p_high.id].position, 1)
+        # Snapshot espelha o agregado vivo (pós-recálculo disparado pelo placar).
+        self.assertEqual(by_pid[self.p_high.id].total_points, self.p_high.total_points)
+        self.assertEqual(by_pid[self.p_low.id].position, 2)
+        self.assertTrue(all(r.round_index == 1 for r in rows))
+
+    def test_only_affected_pools_are_snapshotted(self):
+        other_pool = Pool.objects.create(
+            name="Pool Outro",
+            slug="pool-outro",
+            season=self.season,
+            created_by=self.owner,
+            requires_payment=False,
+        )
+        PoolParticipant.objects.create(pool=other_pool, user=self.u_low, is_active=True, total_points=5)
+        self._finish(self.match)
+        snapshot_round_for_match(self.match)
+        self.assertEqual(PoolRankingHistory.objects.filter(pool=other_pool).count(), 0)
+
+    def test_re_snapshot_same_match_updates_in_place(self):
+        self._finish(self.match)
+        snapshot_round_for_match(self.match)
+        # Correção: inverte a liderança e re-snapshota.
+        self.p_low.total_points = 99
+        self.p_low.save(update_fields=["total_points"])
+        snapshot_round_for_match(self.match)
+        rows = PoolRankingHistory.objects.filter(pool=self.pool, match=self.match)
+        self.assertEqual(rows.count(), 2)
+        by_pid = {r.participant_id: r for r in rows}
+        self.assertEqual(by_pid[self.p_low.id].position, 1)
+        self.assertTrue(all(r.round_index == 1 for r in rows))
+
+    def test_second_match_increments_round_index(self):
+        self._finish(self.match)
+        snapshot_round_for_match(self.match)
+        match2 = _make_match(self.season, self.stage, number=2, kickoff=timezone.now())
+        PoolBet.objects.create(
+            participant=self.p_high, match=match2, home_score_pred=2, away_score_pred=2, is_active=True
+        )
+        self._finish(match2)
+        snapshot_round_for_match(match2)
+        self.assertEqual(
+            set(PoolRankingHistory.objects.filter(pool=self.pool).values_list("round_index", flat=True)),
+            {1, 2},
+        )
