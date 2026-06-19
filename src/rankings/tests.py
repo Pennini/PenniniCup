@@ -1,7 +1,10 @@
 from datetime import timedelta
+from io import StringIO
 from types import SimpleNamespace
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import IntegrityError
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
@@ -1219,3 +1222,22 @@ class BackfillPoolHistoryTest(TestCase):
     def test_backfill_pools_sums_rounds(self):
         total = backfill_pools([self.pool])
         self.assertEqual(total, 3)
+
+
+class BackfillCommandTest(TestCase):
+    def setUp(self):
+        self.pool, self.participants, self.matches = _build_pool_with_3_rounds()
+
+    def test_command_with_pool_slug_backfills(self):
+        out = StringIO()
+        call_command("backfill_ranking_history", pool=self.pool.slug, stdout=out)
+        self.assertEqual(PoolRankingHistory.objects.filter(pool=self.pool).count(), 3 * len(self.participants))
+        self.assertIn(self.pool.slug, out.getvalue())
+
+    def test_command_requires_a_selector(self):
+        with self.assertRaises(CommandError):
+            call_command("backfill_ranking_history")
+
+    def test_command_unknown_pool_errors(self):
+        with self.assertRaises(CommandError):
+            call_command("backfill_ranking_history", pool="nao-existe")
