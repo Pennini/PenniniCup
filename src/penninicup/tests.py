@@ -371,6 +371,20 @@ class ProfilePageTest(TestCase):
         # self.match é daqui a 3 dias (próximo agendado) -> alvo = match.id
         self.assertEqual(response.context["scroll_target_match_id"], self.match.id)
 
+    def test_profile_renders_scroll_button_and_card_anchor(self):
+        self.client.login(username="profile-user", password="123456Aa!")
+        response = self.client.get(reverse("penninicup:profile"), {"pool": self.pool.slug, "tab": "bets"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ir para o jogo atual")
+        self.assertContains(response, f'href="#jogo-{self.match.id}"')
+        self.assertContains(response, f'id="jogo-{self.match.id}"')
+
+    def test_scroll_button_hidden_on_classification_tab(self):
+        self.client.login(username="profile-user", password="123456Aa!")
+        response = self.client.get(reverse("penninicup:profile"), {"pool": self.pool.slug, "tab": "classification"})
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Ir para o jogo atual")
+
 
 class ProfileScrollTargetTest(SimpleTestCase):
     def _row(self, match_id, kickoff):

@@ -8,6 +8,17 @@
     <header class="rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-900 to-neutral-950 p-6 sm:p-8 shadow-xl shadow-black/20">
         <p class="text-[11px] uppercase tracking-[0.2em] text-orange-400/90">PenniniCup</p>
         <h1 class="mt-2 text-3xl sm:text-4xl font-semibold leading-tight">{% if is_owner_profile %}Meu Perfil{% else %}Perfil de {{ profile_user.username }}{% endif %}</h1>
+        {% if scroll_target_match_id and active_tab == "bets" %}
+        <a
+            id="profile-scroll-to-match"
+            href="#jogo-{{ scroll_target_match_id }}"
+            data-scroll-target="jogo-{{ scroll_target_match_id }}"
+            class="mt-4 inline-flex items-center gap-2 px-4 py-2.5 rounded-lg bg-orange-500 text-black font-semibold hover:bg-orange-400 transition-colors"
+        >
+            <i data-lucide="radio" class="h-4 w-4"></i>
+            Ir para o jogo atual
+        </a>
+        {% endif %}
     </header>
 
     <article class="rounded-2xl border border-neutral-800 bg-neutral-900/90 p-5 sm:p-6 shadow-lg shadow-black/15">
@@ -209,7 +220,8 @@
 
             <div id="profile-group-rows-list">
             {% for row in group_rows %}
-            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 space-y-2"
+            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 space-y-2 scroll-mt-24"
+                     id="jogo-{{ row.match.id }}"
                      data-match-item
                      data-match-date="{{ row.match.match_date_brasilia|date:'Y-m-d' }}"
                      data-match-date-label="{{ row.match.match_date_brasilia|date:'d/m - l' }}"
@@ -341,7 +353,7 @@
             {% for phase in knockout_by_phase %}
 
             {% for row in phase.rows %}
-            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 space-y-2">
+            <article class="rounded-xl border border-neutral-700 p-4 bg-neutral-900 space-y-2 scroll-mt-24" id="jogo-{{ row.match.id }}">
                 <p class="text-xs uppercase tracking-wide text-neutral-400">Mata-mata · {{ phase.stage_label }} · Jogo #{{ row.match.match_number }}</p>
                 <h3 class="text-base font-semibold flex flex-wrap items-center gap-2">
                     <span class="inline-flex items-center gap-2">
@@ -604,4 +616,21 @@
     })();
 </script>
 {% endif %}
+<script>
+    (function () {
+        var btn = document.getElementById("profile-scroll-to-match");
+        if (!btn) return;
+        btn.addEventListener("click", function (event) {
+            var id = btn.getAttribute("data-scroll-target");
+            var card = document.getElementById(id);
+            if (!card) return;
+            event.preventDefault();
+            card.scrollIntoView({ behavior: "smooth", block: "start" });
+            card.classList.add("ring-2", "ring-orange-400");
+            setTimeout(function () {
+                card.classList.remove("ring-2", "ring-orange-400");
+            }, 1500);
+        });
+    })();
+</script>
 {% endblock %}
