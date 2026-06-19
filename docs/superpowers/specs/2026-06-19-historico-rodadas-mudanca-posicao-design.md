@@ -24,13 +24,14 @@ os pontos e os dados de ranking de cada participante ao longo das rodadas do bol
   (`src/pool/services/ranking.py`), chamada pelo signal `post_save` de `Match`
   (`src/football/signals.py`) quando campos de placar mudam
   (`_SCORE_RELEVANT_FIELDS`).
-- `Match.STATUS_FINISHED == 0` indica jogo encerrado.
+- Jogo é considerado encerrado quando **já possui placar** (`home_score` e
+  `away_score` não nulos). Não se usa o campo `status` como gatilho.
 
 ## Decisões
 
-- **Granularidade:** 1 rodada por jogo encerrado. Cada `Match` que entra em
-  `STATUS_FINISHED` gera uma rodada (uma linha de histórico por participante dos
-  bolões afetados).
+- **Granularidade:** 1 rodada por jogo encerrado. Jogo encerrado = `Match` que já
+  possui placar (`home_score` e `away_score` não nulos). Cada um gera uma rodada
+  (uma linha de histórico por participante dos bolões afetados).
 - **Escopo do badge:** todas as linhas do ranking, mas o badge só aparece para
   quem **realmente mudou** de posição (delta ≠ 0). Sem mudança → nada.
 - **Sem baseline** (primeira rodada / participante sem registro anterior): nada.
@@ -81,7 +82,8 @@ Migration nova em `src/rankings/migrations/`.
 
 `snapshot_round_for_match(match)`:
 
-1. Retorna cedo se `match.status != Match.STATUS_FINISHED`.
+1. Retorna cedo se o jogo não tem placar
+   (`match.home_score is None or match.away_score is None`).
 1. Bolões afetados = `Pool` ativos da `match.season` que tenham participante com
    aposta nesse jogo:
    `Pool.objects.filter(season=match.season, is_active=True, participants__bets__match=match).distinct()`.
@@ -102,7 +104,8 @@ Função isolada e testável: entra um `match`, grava/atualiza rodadas. Depende 
 Dentro de `recalculate_pool_data_after_match_save`, quando `score_should_recalc`:
 
 1. `recalculate_match_scores(match=instance)` (já existe — atualiza os agregados).
-1. **Depois**, se `instance.status == Match.STATUS_FINISHED`:
+1. **Depois**, se o jogo tem placar
+   (`instance.home_score is not None and instance.away_score is not None`):
    `snapshot_round_for_match(instance)`.
 
 A ordem importa: snapshot **depois** do recálculo grava o estado já atualizado
@@ -144,13 +147,13 @@ Sem alterar o layout existente além de acrescentar o badge.
 1. **Serviço `snapshot_round_for_match`:**
    - Jogo encerrado grava 1 linha por participante do bolão afetado, com
      `position` e dados corretos.
-   - Jogo `STATUS_SCHEDULED` não grava nada.
+   - Jogo sem placar (`home_score`/`away_score` nulos) não grava nada.
    - Só bolões com aposta no jogo são afetados.
    - Re-snapshot do mesmo match (correção) atualiza a linha existente e mantém o
      `round_index` (não cria rodada nova).
    - Segundo jogo encerrado incrementa `round_index`.
-1. **Signal:** salvar um `Match` com placar e `STATUS_FINISHED` dispara o snapshot
-   (depois do recálculo); `STATUS_SCHEDULED` não.
+1. **Signal:** salvar um `Match` com placar dispara o snapshot (depois do
+   recálculo); `Match` sem placar não.
 1. **`build_pool_leaderboard` / `RankingRow.movement`:**
    - Sobe → `movement` positivo; desce → negativo; igual → 0.
    - Participante sem rodada anterior → `None`.
