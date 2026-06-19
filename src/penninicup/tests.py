@@ -110,6 +110,39 @@ class RulesPageTest(TestCase):
         refresh_mock.assert_called_once_with(save=True)
 
 
+class HomeShortcutsTest(TestCase):
+    """Homepage shortcuts must target the slugless tab views (which wire the
+    pool selector); otherwise the bolão selectbox never appears on arrival.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="home-user", email="home@example.com", password="123456Aa!")
+        self.client.force_login(self.user)
+        competition = Competition.objects.create(fifa_id=992, name="Copa Home")
+        season = Season.objects.create(
+            fifa_id=992,
+            competition=competition,
+            name="Temporada Home",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.pool = Pool.objects.create(
+            name="Pool Home",
+            slug="pool-home",
+            season=season,
+            created_by=self.user,
+            requires_payment=False,
+        )
+        PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+
+    def test_shortcuts_point_to_slugless_tab_views(self):
+        response = self.client.get(reverse("penninicup:index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, f"{reverse('pool:ranking-tab')}?pool={self.pool.slug}")
+        self.assertContains(response, f"{reverse('pool:bets-tab')}?pool={self.pool.slug}")
+
+
 class ProfilePageTest(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -223,6 +256,71 @@ class ProfilePageTest(TestCase):
 
         profile = UserProfile.objects.get(user=self.user)
         self.assertTrue(profile.profile_image.name.startswith("profiles/"))
+
+    def _upload_image_as(self, username, *, filename="image.png", size=(10, 10)):
+        self.client.login(username=username, password="123456Aa!")
+        buf = BytesIO()
+        Image.new("RGB", size, color="red").save(buf, format="PNG")
+        buf.seek(0)
+        uploaded = SimpleUploadedFile(filename, buf.read(), content_type="image/png")
+        response = self.client.post(
+            reverse("penninicup:profile"),
+            data={
+                "favorite_team": "",
+                "world_cup_team": "",
+                "selected_pool": self.pool.slug,
+                "active_tab": "bets",
+                "profile_image": uploaded,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+    def test_profile_image_uses_unique_filename_per_upload(self):
+        # Bug: nomes iguais no S3 (file_overwrite) sobrescreviam, vazando foto entre usuários.
+        self._upload_image_as("profile-user", filename="image.png")
+        self._upload_image_as("other-user", filename="image.png")
+
+        mine = UserProfile.objects.get(user=self.user).profile_image.name
+        theirs = UserProfile.objects.get(user=self.other_user).profile_image.name
+
+        self.assertNotEqual(mine, theirs)
+        self.assertNotIn("image.png", mine)
+        self.assertNotIn("image.png", theirs)
+
+    def test_profile_image_resized_and_converted_to_jpeg(self):
+        # Fotos de celular são grandes; redimensiona e converte para JPEG no upload.
+        self._upload_image_as("profile-user", filename="foto.png", size=(2000, 1500))
+
+        profile = UserProfile.objects.get(user=self.user)
+        self.assertTrue(profile.profile_image.name.endswith(".jpg"))
+        with Image.open(profile.profile_image) as stored:
+            self.assertLessEqual(max(stored.size), 1024)
+            self.assertEqual(stored.format, "JPEG")
+
+    def test_profile_image_accepts_heic_and_stores_jpeg(self):
+        # Foto do iPhone (HEIC) deve ser aceita e convertida para JPEG.
+        self.client.login(username="profile-user", password="123456Aa!")
+        buf = BytesIO()
+        Image.new("RGB", (60, 60), color="blue").save(buf, format="HEIF")
+        buf.seek(0)
+        uploaded = SimpleUploadedFile("foto.heic", buf.read(), content_type="image/heic")
+
+        response = self.client.post(
+            reverse("penninicup:profile"),
+            data={
+                "favorite_team": "",
+                "world_cup_team": "",
+                "selected_pool": self.pool.slug,
+                "active_tab": "bets",
+                "profile_image": uploaded,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        profile = UserProfile.objects.get(user=self.user)
+        self.assertTrue(profile.profile_image.name.endswith(".jpg"))
+        with Image.open(profile.profile_image) as stored:
+            self.assertEqual(stored.format, "JPEG")
 
     def test_profile_invalid_pool_query_ignores_selection(self):
         self.client.login(username="profile-user", password="123456Aa!")

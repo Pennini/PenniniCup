@@ -204,7 +204,7 @@ def bets_tab(request):
 
 @login_required
 def ranking_tab(request):
-    from src.rankings.views import build_ranking_dashboard_context
+    from src.rankings.views import build_dashboard_tab_context
 
     participations = _active_participations(request.user)
     selected, _ = resolve_selected_participation(request, participations)
@@ -212,10 +212,10 @@ def ranking_tab(request):
         return render(request, "pool/no_pool_selected.html", {"page_kind": "ranking"})
 
     pool = selected.pool
-    pool.refresh_prize_distribution()
-    context = build_ranking_dashboard_context(pool=pool, participant=selected)
+    context = build_dashboard_tab_context(pool=pool, participant=selected, request=request)
     context["participations"] = participations
     context["selected_pool"] = pool
+    context["toggle_query_prefix"] = f"pool={pool.slug}&"
     return render(request, "rankings/pool_dashboard.html", context)
 
 

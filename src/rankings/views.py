@@ -4,6 +4,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from src.pool.models import Pool, PoolParticipant
 from src.rankings.services.leaderboard import build_pool_leaderboard
+from src.rankings.services.match_guesses import build_match_guesses_context
 
 
 def build_ranking_dashboard_context(*, pool, participant):
@@ -60,13 +61,47 @@ def build_ranking_dashboard_context(*, pool, participant):
     }
 
 
+def build_dashboard_tab_context(*, pool, participant, request):
+    """Branch the ranking dashboard between the leaderboard and the per-match
+    guesses view based on ?tab. Shared by both entry points — the slug-based
+    `pool_ranking_dashboard` and the slugless `pool.views.ranking_tab` (the one
+    the navbar links to) — so the toggle behaves identically on both.
+    """
+    active_tab = request.GET.get("tab") or "ranking"
+    if active_tab not in ("ranking", "palpites"):
+        active_tab = "ranking"
+
+    if active_tab == "palpites":
+        context = {"pool": pool, "current_participant": participant}
+        context.update(build_match_guesses_context(pool=pool, request=request))
+    else:
+        pool.refresh_prize_distribution()
+        context = build_ranking_dashboard_context(pool=pool, participant=participant)
+
+    context["active_tab"] = active_tab
+    return context
+
+
 @login_required
 def pool_ranking_dashboard(request, slug):
     pool = get_object_or_404(Pool.objects.select_related("season"), slug=slug, is_active=True)
-    pool.refresh_prize_distribution()
     current_participant = get_object_or_404(PoolParticipant, pool=pool, user=request.user, is_active=True)
-    context = build_ranking_dashboard_context(pool=pool, participant=current_participant)
+    context = build_dashboard_tab_context(pool=pool, participant=current_participant, request=request)
     return render(request, "rankings/pool_dashboard.html", context)
+
+
+@login_required
+def match_guesses_partial(request, slug):
+    """Server-rendered body of the per-match guesses carousel, fetched via AJAX
+    when the user moves the carousel or picks a game — so switching games is
+    dynamic without a full reload. The per-phase lock is re-applied here, so a
+    user can never reveal a still-locked game's guesses by forging ?match=<id>.
+    """
+    pool = get_object_or_404(Pool.objects.select_related("season"), slug=slug, is_active=True)
+    get_object_or_404(PoolParticipant, pool=pool, user=request.user, is_active=True)
+    context = {"pool": pool}
+    context.update(build_match_guesses_context(pool=pool, request=request))
+    return render(request, "rankings/partials/_match_guesses_body.html", context)
 
 
 @login_required
