@@ -5,16 +5,6 @@ from src.pool.services.asof_standings import compute_asof_standings
 from src.rankings.models import PoolRankingHistory, RankingTieBreakOverride
 from src.rankings.services.leaderboard import _natural_key, _score_key
 
-_HISTORY_FIELDS = (
-    "total_points",
-    "group_points",
-    "knockout_points",
-    "exact_score_hits",
-    "advancing_hits",
-    "champion_hit",
-    "top_scorer_hit",
-)
-
 
 def _round_matches(pool):
     """Jogos encerrados da season em que ≥1 participante ativo apostou, em ordem."""

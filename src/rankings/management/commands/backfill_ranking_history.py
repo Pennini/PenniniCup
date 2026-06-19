@@ -32,9 +32,11 @@ class Command(BaseCommand):
         else:  # --all
             pools = list(Pool.objects.filter(is_active=True))
 
+        total_rounds = 0
         for pool in pools:
             rounds = backfill_pool_history(pool)
+            total_rounds += rounds
             self.stdout.write(f"{pool.slug}: {rounds} rodadas")
-        total = len(pools)
-        self.stdout.write(f"Concluído: {total} bolões")
-        logger.info("Backfill ranking history em massa: %s bolões", total)
+        total_pools = len(pools)
+        self.stdout.write(f"Concluído: {total_pools} bolões, {total_rounds} rodadas")
+        logger.info("Backfill ranking history em massa: %s bolões, %s rodadas", total_pools, total_rounds)

@@ -1223,6 +1223,31 @@ class BackfillPoolHistoryTest(TestCase):
         total = backfill_pools([self.pool])
         self.assertEqual(total, 3)
 
+    def test_position_changes_across_rounds(self):
+        """Pelo menos um participante muda de posição entre duas rodadas consecutivas."""
+        backfill_pool_history(self.pool)
+        # Coleta posição por (participant_id, round_index).
+        rows = PoolRankingHistory.objects.filter(pool=self.pool).values("participant_id", "round_index", "position")
+        by_participant = {}
+        for r in rows:
+            by_participant.setdefault(r["participant_id"], {})[r["round_index"]] = r["position"]
+        # Verifica que ao menos um participante tem posições diferentes entre duas rodadas.
+        found_movement = False
+        for positions_by_round in by_participant.values():
+            sorted_rounds = sorted(positions_by_round.keys())
+            for i in range(len(sorted_rounds) - 1):
+                r_before = sorted_rounds[i]
+                r_after = sorted_rounds[i + 1]
+                if positions_by_round[r_before] != positions_by_round[r_after]:
+                    found_movement = True
+                    break
+            if found_movement:
+                break
+        self.assertTrue(
+            found_movement,
+            "Nenhum participante mudou de posição entre rodadas; verifique _build_pool_with_3_rounds.",
+        )
+
 
 class BackfillCommandTest(TestCase):
     def setUp(self):

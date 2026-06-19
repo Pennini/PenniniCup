@@ -75,8 +75,12 @@ def _asof_group_qualifier_bonus(participant, season, allowed_match_ids, scoring_
     return total
 
 
-def _asof_podium(season, allowed_match_ids):
-    """(champion_id, runner_up_id, third_id) derivados só dos jogos no conjunto."""
+def _asof_podium(season, allowed_match_ids, official_result):
+    """(champion_id, runner_up_id, third_id) derivados só dos jogos no conjunto.
+
+    Prefere os campos oficial_result (editáveis pelo admin) quando o jogo
+    correspondente está no conjunto permitido, com fallback para _match_winner_loser.
+    """
     champion_id = runner_up_id = third_id = None
     final_match = (
         Match.objects.filter(season=season, stage__order=7).select_related("home_team", "away_team", "winner").first()
@@ -85,12 +89,22 @@ def _asof_podium(season, allowed_match_ids):
         Match.objects.filter(season=season, stage__order=6).select_related("home_team", "away_team", "winner").first()
     )
     if final_match and final_match.id in allowed_match_ids:
-        champion, runner_up = _match_winner_loser(final_match)
-        champion_id = champion.id if champion else None
-        runner_up_id = runner_up.id if runner_up else None
+        if official_result.champion_id is not None:
+            champion_id = official_result.champion_id
+        else:
+            champion, _ = _match_winner_loser(final_match)
+            champion_id = champion.id if champion else None
+        if official_result.runner_up_id is not None:
+            runner_up_id = official_result.runner_up_id
+        else:
+            _, runner_up = _match_winner_loser(final_match)
+            runner_up_id = runner_up.id if runner_up else None
     if third_match and third_match.id in allowed_match_ids:
-        third, _ = _match_winner_loser(third_match)
-        third_id = third.id if third else None
+        if official_result.third_place_id is not None:
+            third_id = official_result.third_place_id
+        else:
+            third, _ = _match_winner_loser(third_match)
+            third_id = third.id if third else None
     return champion_id, runner_up_id, third_id
 
 
@@ -135,7 +149,7 @@ def compute_asof_standings(pool, allowed_match_ids, scoring_config, official_res
     pool_type = pool.pool_type
     participants = list(eligible_participants(pool).select_related("user"))
 
-    podium = _asof_podium(pool.season, allowed_match_ids)
+    podium = _asof_podium(pool.season, allowed_match_ids, official_result)
 
     rows = []
     for participant in participants:

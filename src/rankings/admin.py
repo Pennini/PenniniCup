@@ -33,6 +33,3 @@ def backfill_ranking_history_action(modeladmin, request, queryset):
     if failed:
         messages.error(request, f"Falha ao reprocessar: {', '.join(failed)}")
     messages.success(request, f"Histórico reprocessado: {total_rounds} rodadas em {queryset.count()} bolão(ões).")
-
-
-admin.site.add_action(backfill_ranking_history_action, "backfill_ranking_history_action")
