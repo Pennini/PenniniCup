@@ -1241,3 +1241,33 @@ class BackfillCommandTest(TestCase):
     def test_command_unknown_pool_errors(self):
         with self.assertRaises(CommandError):
             call_command("backfill_ranking_history", pool="nao-existe")
+
+
+def _make_admin_request():
+    from django.contrib.messages.storage.fallback import FallbackStorage
+
+    request = RequestFactory().get("/")
+    request.session = "session"
+    request._messages = FallbackStorage(request)
+    return request
+
+
+class BackfillAdminActionTest(TestCase):
+    def setUp(self):
+        self.pool, self.participants, self.matches = _build_pool_with_3_rounds()
+
+    def test_admin_action_backfills_selected_pools(self):
+        from django.contrib.admin.sites import site
+
+        from src.pool.models import Pool
+        from src.rankings.admin import backfill_ranking_history_action
+
+        model_admin = site._registry[Pool]
+        request = _make_admin_request()
+        queryset = Pool.objects.filter(id=self.pool.id)
+        backfill_ranking_history_action(model_admin, request, queryset)
+
+        self.assertEqual(
+            PoolRankingHistory.objects.filter(pool=self.pool).count(),
+            3 * len(self.participants),
+        )
