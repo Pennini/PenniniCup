@@ -13,8 +13,18 @@ from django.utils import timezone
 from src.football.models import Competition, Match, Season, Stage, Team
 from src.payments.models import Payment
 from src.pool.models import Pool, PoolBet, PoolBetScore, PoolParticipant
-from src.rankings.models import PoolRankingHistory, RankingTieBreakOverride
-from src.rankings.services.dashboard import build_dashboard_data
+from src.rankings.models import (
+    PoolDashboardSnapshot,
+    PoolDashboardSnapshotJob,
+    PoolRankingHistory,
+    PoolRankingSnapshotJob,
+    RankingTieBreakOverride,
+)
+from src.rankings.services.dashboard import build_dashboard_data, build_dashboard_pool_payload
+from src.rankings.services.dashboard_queue import (
+    enqueue_dashboard_snapshot,
+    process_next_dashboard_snapshot_job,
+)
 from src.rankings.services.history_backfill import backfill_pool_history, backfill_pools
 from src.rankings.services.leaderboard import build_pool_leaderboard
 from src.rankings.services.match_guesses import (
@@ -25,6 +35,7 @@ from src.rankings.services.match_guesses import (
     resolve_default_match,
 )
 from src.rankings.services.position_snapshot import snapshot_round_for_match
+from src.rankings.services.snapshot_queue import enqueue_ranking_snapshot, process_next_ranking_snapshot_job
 
 User = get_user_model()
 
@@ -950,16 +961,78 @@ class SnapshotSignalTest(TestCase):
             participant=self.participant, match=self.match, home_score_pred=1, away_score_pred=0, is_active=True
         )
 
-    def test_saving_match_with_score_creates_history(self):
+    def test_saving_match_with_score_enqueues_job_worker_creates_history(self):
         self.match.home_score = 1
         self.match.away_score = 0
         self.match.save(update_fields=["home_score", "away_score"])
+        # O signal só enfileira: histórico ainda não existe, o job está PENDING.
+        self.assertEqual(PoolRankingHistory.objects.filter(pool=self.pool, match=self.match).count(), 0)
+        job = PoolRankingSnapshotJob.objects.get(match=self.match)
+        self.assertEqual(job.status, PoolRankingSnapshotJob.STATUS_PENDING)
+        # O worker processa o job e grava o histórico.
+        process_next_ranking_snapshot_job()
         self.assertEqual(PoolRankingHistory.objects.filter(pool=self.pool, match=self.match).count(), 1)
+        job.refresh_from_db()
+        self.assertEqual(job.status, PoolRankingSnapshotJob.STATUS_IDLE)
 
-    def test_saving_match_without_score_creates_no_history(self):
+    def test_saving_match_without_score_creates_no_job(self):
         self.match.match_number = 99
         self.match.save(update_fields=["match_number"])
+        self.assertEqual(PoolRankingSnapshotJob.objects.count(), 0)
         self.assertEqual(PoolRankingHistory.objects.filter(pool=self.pool).count(), 0)
+
+
+class SnapshotQueueTest(TestCase):
+    def setUp(self):
+        self.owner = User.objects.create_user(username="q-owner", email="qo@example.com", password="123456Aa!")
+        self.member = User.objects.create_user(username="q-mem", email="qm@example.com", password="123456Aa!")
+        competition = Competition.objects.create(fifa_id=944, name="Copa Q")
+        self.season = Season.objects.create(
+            fifa_id=944,
+            competition=competition,
+            name="Temporada Q",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="ST944G", season=self.season, name="Group Stage", order=1)
+        self.pool = Pool.objects.create(
+            name="Pool Q", slug="pool-q", season=self.season, created_by=self.owner, requires_payment=False
+        )
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.member, is_active=True)
+        self.match = _make_match(self.season, self.stage, number=1, kickoff=timezone.now())
+        PoolBet.objects.create(
+            participant=self.participant, match=self.match, home_score_pred=1, away_score_pred=0, is_active=True
+        )
+        # Placar via .update() não dispara o signal — setUp não enfileira jobs.
+        Match.objects.filter(id=self.match.id).update(home_score=1, away_score=0)
+        self.match.refresh_from_db()
+
+    def test_process_with_no_jobs_returns_none(self):
+        self.assertIsNone(process_next_ranking_snapshot_job())
+
+    def test_enqueue_is_idempotent_one_job_per_match(self):
+        enqueue_ranking_snapshot(self.match)
+        enqueue_ranking_snapshot(self.match)
+        self.assertEqual(PoolRankingSnapshotJob.objects.filter(match=self.match).count(), 1)
+
+    def test_re_enqueue_resets_failed_job(self):
+        job = enqueue_ranking_snapshot(self.match)
+        PoolRankingSnapshotJob.objects.filter(id=job.id).update(
+            status=PoolRankingSnapshotJob.STATUS_FAILED, attempts=5, last_error="boom"
+        )
+        enqueue_ranking_snapshot(self.match)
+        job.refresh_from_db()
+        self.assertEqual(job.status, PoolRankingSnapshotJob.STATUS_PENDING)
+        self.assertEqual(job.attempts, 0)
+        self.assertEqual(job.last_error, "")
+
+    def test_process_writes_history_and_marks_idle(self):
+        enqueue_ranking_snapshot(self.match)
+        processed = process_next_ranking_snapshot_job()
+        processed.refresh_from_db()
+        self.assertEqual(processed.status, PoolRankingSnapshotJob.STATUS_IDLE)
+        self.assertEqual(PoolRankingHistory.objects.filter(pool=self.pool, match=self.match).count(), 1)
 
 
 class LeaderboardMovementTest(TestCase):
@@ -1489,6 +1562,122 @@ class DashboardServiceTest(TestCase):
         response = self.client.get(reverse("pool:dashboard-tab"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="pool-selector"')
+
+
+class DashboardCacheTest(TestCase):
+    """The dashboard no longer recomputes the heavy pool-wide aggregate on every
+    access: it reads `PoolDashboardSnapshot`, computing+storing once on a miss and
+    recomputing only when the match-save signal flows through the worker.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username="dc-owner", email="dco@example.com", password="123456Aa!")
+        self.member = User.objects.create_user(username="dc-mem", email="dcm@example.com", password="123456Aa!")
+        competition = Competition.objects.create(fifa_id=970, name="Copa Cache")
+        self.season = Season.objects.create(
+            fifa_id=970,
+            competition=competition,
+            name="Temporada Cache",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="ST970G", season=self.season, name="Group Stage", order=1)
+        self.pool = Pool.objects.create(
+            name="Pool Cache", slug="pool-cache", season=self.season, created_by=self.owner, requires_payment=False
+        )
+        self.participant = PoolParticipant.objects.create(
+            pool=self.pool, user=self.member, is_active=True, total_points=10, exact_score_hits=2
+        )
+        self.match = _make_match(self.season, self.stage, number=1, kickoff=timezone.now())
+        PoolBet.objects.create(
+            participant=self.participant, match=self.match, home_score_pred=1, away_score_pred=0, is_active=True
+        )
+
+    def test_first_access_computes_and_stores_snapshot(self):
+        self.assertFalse(PoolDashboardSnapshot.objects.filter(pool=self.pool).exists())
+        data = build_dashboard_data(pool=self.pool, participant=self.participant)
+        self.assertEqual(data["hall_of_fame"]["exact_scores"], {"username": "dc-mem", "value": 2})
+        self.assertTrue(PoolDashboardSnapshot.objects.filter(pool=self.pool).exists())
+
+    def test_second_access_reuses_cache_and_is_stale_until_recompute(self):
+        build_dashboard_data(pool=self.pool, participant=self.participant)
+        snapshot = PoolDashboardSnapshot.objects.get(pool=self.pool)
+        stored_at = snapshot.computed_at
+
+        # Mutate the underlying data WITHOUT going through the recompute path.
+        PoolParticipant.objects.filter(pk=self.participant.pk).update(exact_score_hits=99)
+
+        data = build_dashboard_data(pool=self.pool, participant=self.participant)
+        # Still the cached value — proves the heavy compute was skipped.
+        self.assertEqual(data["hall_of_fame"]["exact_scores"]["value"], 2)
+        snapshot.refresh_from_db()
+        self.assertEqual(snapshot.computed_at, stored_at)
+
+    def test_enqueue_is_idempotent_one_job_per_pool(self):
+        enqueue_dashboard_snapshot(self.pool)
+        enqueue_dashboard_snapshot(self.pool)
+        self.assertEqual(PoolDashboardSnapshotJob.objects.filter(pool=self.pool).count(), 1)
+
+    def test_re_enqueue_resets_failed_job(self):
+        job = enqueue_dashboard_snapshot(self.pool)
+        PoolDashboardSnapshotJob.objects.filter(id=job.id).update(
+            status=PoolDashboardSnapshotJob.STATUS_FAILED, attempts=5, last_error="boom"
+        )
+        enqueue_dashboard_snapshot(self.pool)
+        job.refresh_from_db()
+        self.assertEqual(job.status, PoolDashboardSnapshotJob.STATUS_PENDING)
+        self.assertEqual(job.attempts, 0)
+        self.assertEqual(job.last_error, "")
+
+    def test_process_with_no_jobs_returns_none(self):
+        self.assertIsNone(process_next_dashboard_snapshot_job())
+
+    def test_process_job_refreshes_snapshot_and_marks_idle(self):
+        # Seed a stale snapshot, then recompute via the worker after a data change.
+        build_dashboard_data(pool=self.pool, participant=self.participant)
+        PoolParticipant.objects.filter(pk=self.participant.pk).update(exact_score_hits=7)
+
+        enqueue_dashboard_snapshot(self.pool)
+        job = process_next_dashboard_snapshot_job()
+        job.refresh_from_db()
+        self.assertEqual(job.status, PoolDashboardSnapshotJob.STATUS_IDLE)
+
+        self.participant.refresh_from_db()
+        data = build_dashboard_data(pool=self.pool, participant=self.participant)
+        self.assertEqual(data["hall_of_fame"]["exact_scores"]["value"], 7)
+
+    def test_match_score_signal_recomputes_dashboard_via_workers(self):
+        # Prime the cache, then a fresh score must end up reflected after both
+        # workers run (ranking snapshot writes history, then enqueues dashboard).
+        build_dashboard_data(pool=self.pool, participant=self.participant)
+
+        self.match.home_score = 1
+        self.match.away_score = 0
+        self.match.save(update_fields=["home_score", "away_score"])
+
+        # Signal only enqueued the ranking snapshot job; no dashboard job yet.
+        self.assertFalse(PoolDashboardSnapshotJob.objects.filter(pool=self.pool).exists())
+
+        process_next_ranking_snapshot_job()
+        # Ranking snapshot done -> dashboard job now enqueued for the affected pool.
+        dash_job = PoolDashboardSnapshotJob.objects.get(pool=self.pool)
+        self.assertEqual(dash_job.status, PoolDashboardSnapshotJob.STATUS_PENDING)
+
+        process_next_dashboard_snapshot_job()
+        snapshot = PoolDashboardSnapshot.objects.get(pool=self.pool)
+        # The recomputed payload now carries the post-score evolution history.
+        self.assertTrue(snapshot.payload["evolution_series"])
+
+    def test_overlay_matches_freshly_built_payload(self):
+        # Output parity: cached path must equal a live build of the same pool.
+        cached = build_dashboard_data(pool=self.pool, participant=self.participant)
+        PoolDashboardSnapshot.objects.filter(pool=self.pool).delete()
+        # Force the no-cache branch by deleting; build_dashboard_pool_payload is
+        # the same compute the worker runs.
+        fresh_payload = build_dashboard_pool_payload(pool=self.pool)
+        self.assertEqual(cached["hall_of_fame"], fresh_payload["hall_of_fame"])
+        self.assertEqual(cached["utilization"]["has_data"], fresh_payload["utilization_rows"]["has_data"])
 
 
 class BackfillCommandTest(TestCase):

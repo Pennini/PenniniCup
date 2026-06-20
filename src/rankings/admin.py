@@ -1,6 +1,12 @@
 from django.contrib import admin, messages
 
-from src.rankings.models import PoolRankingHistory, RankingTieBreakOverride
+from src.rankings.models import (
+    PoolDashboardSnapshot,
+    PoolDashboardSnapshotJob,
+    PoolRankingHistory,
+    PoolRankingSnapshotJob,
+    RankingTieBreakOverride,
+)
 from src.rankings.services.history_backfill import backfill_pool_history
 
 
@@ -46,6 +52,67 @@ class RankingTieBreakOverrideAdmin(admin.ModelAdmin):
         "participant__user__username",
         "participant__user__email",
     )
+
+
+@admin.register(PoolRankingSnapshotJob)
+class PoolRankingSnapshotJobAdmin(admin.ModelAdmin):
+    list_display = (
+        "match",
+        "status",
+        "attempts",
+        "requested_at",
+        "last_started_at",
+        "last_finished_at",
+    )
+    list_filter = ("status",)
+    search_fields = ("match__match_number",)
+    ordering = ("-requested_at",)
+    list_select_related = ("match",)
+    readonly_fields = ("last_error",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(PoolDashboardSnapshot)
+class PoolDashboardSnapshotAdmin(admin.ModelAdmin):
+    list_display = ("pool", "computed_at")
+    search_fields = ("pool__name", "pool__slug")
+    ordering = ("pool",)
+    list_select_related = ("pool",)
+    readonly_fields = ("payload", "computed_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(PoolDashboardSnapshotJob)
+class PoolDashboardSnapshotJobAdmin(admin.ModelAdmin):
+    list_display = (
+        "pool",
+        "status",
+        "attempts",
+        "requested_at",
+        "last_started_at",
+        "last_finished_at",
+    )
+    list_filter = ("status",)
+    search_fields = ("pool__name", "pool__slug")
+    ordering = ("-requested_at",)
+    list_select_related = ("pool",)
+    readonly_fields = ("last_error",)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
 
 
 @admin.action(description="Reprocessar histórico de ranking")

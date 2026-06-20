@@ -27,13 +27,15 @@ def snapshot_round_for_match(match):
     o mesmo match (correção de placar) atualiza as linhas mantendo o round_index.
     """
     if match.home_score is None or match.away_score is None:
-        return
+        return []
 
-    affected_pools = Pool.objects.filter(
-        season=match.season,
-        is_active=True,
-        participants__bets__match=match,
-    ).distinct()
+    affected_pools = list(
+        Pool.objects.filter(
+            season=match.season,
+            is_active=True,
+            participants__bets__match=match,
+        ).distinct()
+    )
 
     for pool in affected_pools:
         existing_round = (
@@ -69,3 +71,5 @@ def snapshot_round_for_match(match):
                 unique_fields=["pool", "participant", "match"],
                 update_fields=_SNAPSHOT_FIELDS,
             )
+
+    return affected_pools

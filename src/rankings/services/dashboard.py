@@ -32,6 +32,25 @@ _DEFAULT_KNOCKOUT_MAX = 35
 
 
 def build_dashboard_data(*, pool, participant):
+    """Dashboard payload for a logged participant.
+
+    Reads the cached pool-wide aggregate (`PoolDashboardSnapshot`) and overlays
+    the cheap per-participant bits live. On a cache miss (brand-new pool, fresh
+    deploy) it computes the heavy part once, stores it, then returns — the next
+    visitor hits the cache. The signal/worker keeps the cache fresh after that.
+    """
+    payload = _get_or_build_pool_payload(pool)
+    return _overlay_participant(pool, participant, payload)
+
+
+def build_dashboard_pool_payload(*, pool):
+    """Pool-wide (participant-independent) part of the dashboard.
+
+    Everything here is identical for every participant, so it is computed once
+    and cached. Per-participant data (KPIs, current-user flags) is added later in
+    `_overlay_participant`. Maps are keyed by participant id; after a JSON round
+    trip those keys come back as strings, so `_normalize_payload` re-ints them.
+    """
     leaderboard = build_pool_leaderboard(pool)
     username_by_id = {row.participant.id: row.participant.user.username for row in leaderboard}
     eligible_ids = set(username_by_id)
@@ -40,12 +59,50 @@ def build_dashboard_data(*, pool, participant):
     finished_ids = [match.id for match in finished_matches]
     max_points_by_id, denominator = _utilization_inputs(pool, finished_matches)
 
+    selected_ids = [row.participant.id for row in leaderboard[:EVOLUTION_TOP_N]]
+
+    return {
+        "leader_points": leaderboard[0].participant.total_points if leaderboard else 0,
+        "denominator": denominator,
+        "positions": {row.participant.id: row.position for row in leaderboard},
+        "username_by_id": username_by_id,
+        "max_points_by_id": max_points_by_id,
+        "selected_ids": selected_ids,
+        "evolution_series": _evolution_series(pool, selected_ids, username_by_id),
+        "utilization_rows": _utilization_rows(leaderboard, max_points_by_id, denominator),
+        "hall_of_fame": _hall_of_fame(pool, eligible_ids, username_by_id, leaderboard, finished_ids),
+    }
+
+
+def _get_or_build_pool_payload(pool):
+    from src.rankings.models import PoolDashboardSnapshot
+
+    snapshot = PoolDashboardSnapshot.objects.filter(pool=pool).first()
+    if snapshot is not None:
+        return _normalize_payload(snapshot.payload)
+
+    payload = build_dashboard_pool_payload(pool=pool)
+    PoolDashboardSnapshot.objects.update_or_create(pool=pool, defaults={"payload": payload})
+    return payload
+
+
+def _normalize_payload(payload):
+    """Re-key the id-keyed maps to ints after a JSON round trip."""
+    return {
+        **payload,
+        "positions": {int(k): v for k, v in payload.get("positions", {}).items()},
+        "username_by_id": {int(k): v for k, v in payload.get("username_by_id", {}).items()},
+        "max_points_by_id": {int(k): v for k, v in payload.get("max_points_by_id", {}).items()},
+    }
+
+
+def _overlay_participant(pool, participant, payload):
     return {
         "progress": _progress(pool),
-        "kpis": _kpis(participant, leaderboard, max_points_by_id, denominator),
-        "evolution": _evolution(pool, participant, leaderboard, username_by_id),
-        "utilization": _utilization(leaderboard, max_points_by_id, denominator, participant),
-        "hall_of_fame": _hall_of_fame(pool, eligible_ids, username_by_id, leaderboard, finished_ids),
+        "kpis": _kpis_from_payload(payload, participant),
+        "evolution": _evolution_overlay(pool, payload, participant),
+        "utilization": _utilization_overlay(payload, participant),
+        "hall_of_fame": payload["hall_of_fame"],
     }
 
 
@@ -126,34 +183,26 @@ def _progress(pool):
     }
 
 
-def _kpis(participant, leaderboard, max_points_by_id, denominator):
-    current_row = next((row for row in leaderboard if row.participant.id == participant.id), None)
-    leader_points = leaderboard[0].participant.total_points if leaderboard else 0
-    is_leader = current_row is not None and current_row.position == 1
+def _kpis_from_payload(payload, participant):
+    position = payload["positions"].get(participant.id)
+    leader_points = payload["leader_points"]
     gap = max(leader_points - participant.total_points, 0)
-
-    user_pct = _utilization_pct(max_points_by_id.get(participant.id, 0), denominator)
+    user_pct = _utilization_pct(payload["max_points_by_id"].get(participant.id, 0), payload["denominator"])
 
     return {
-        "position": current_row.position if current_row else None,
+        "position": position,
         "points": participant.total_points,
         "gap_to_leader": gap,
-        "is_leader": is_leader,
+        "is_leader": position == 1,
         "utilization": user_pct,
     }
 
 
-def _evolution(pool, participant, leaderboard, username_by_id):
-    """Ranking trajectories for the top 5 current participants plus the logged
-    user (no duplicate series when the user is already in the top 5).
-    """
-    selected_ids = [row.participant.id for row in leaderboard[:EVOLUTION_TOP_N]]
-    if participant.id in username_by_id and participant.id not in selected_ids:
-        selected_ids.append(participant.id)
-
-    series_by_id = {pid: [] for pid in selected_ids}
+def _series_for_ids(pool, ids, username_by_id):
+    """Per-round ranking trajectory (no current-user flag) for the given ids."""
+    series_by_id = {pid: [] for pid in ids}
     history = (
-        PoolRankingHistory.objects.filter(pool=pool, participant_id__in=selected_ids)
+        PoolRankingHistory.objects.filter(pool=pool, participant_id__in=ids)
         .values("participant_id", "round_index", "position", "total_points")
         .order_by("round_index")
     )
@@ -165,32 +214,53 @@ def _evolution(pool, participant, leaderboard, username_by_id):
                 "points": snapshot["total_points"],
             }
         )
-
-    series = [
+    return [
         {
             "participant_id": pid,
             "label": username_by_id.get(pid, ""),
-            "is_current_user": pid == participant.id,
             "points": series_by_id[pid],
         }
-        for pid in selected_ids
+        for pid in ids
         if series_by_id[pid]
     ]
+
+
+def _evolution_series(pool, selected_ids, username_by_id):
+    """Pool-wide trajectories for the top N current participants (cacheable)."""
+    return _series_for_ids(pool, selected_ids, username_by_id)
+
+
+def _evolution_overlay(pool, payload, participant):
+    """Top N cached series + the logged user's own series when outside the top N,
+    flagging which series is the current user. Mirrors the original behaviour.
+    """
+    selected_ids = payload["selected_ids"]
+    series = [
+        {**row, "is_current_user": row["participant_id"] == participant.id} for row in payload["evolution_series"]
+    ]
+    if participant.id in payload["username_by_id"] and participant.id not in selected_ids:
+        own = _series_for_ids(pool, [participant.id], payload["username_by_id"])
+        series.extend({**row, "is_current_user": True} for row in own)
     return {"series": series}
 
 
-def _utilization(leaderboard, max_points_by_id, denominator, participant):
+def _utilization_rows(leaderboard, max_points_by_id, denominator):
     rows = [
         {
             "participant_id": row.participant.id,
             "label": row.participant.user.username,
             "percent": _utilization_pct(max_points_by_id.get(row.participant.id, 0), denominator),
-            "is_current_user": row.participant.id == participant.id,
         }
         for row in leaderboard
     ]
     rows.sort(key=lambda item: item["percent"], reverse=True)
     return {"has_data": bool(denominator), "rows": rows[:UTILIZATION_TOP_N]}
+
+
+def _utilization_overlay(payload, participant):
+    util = payload["utilization_rows"]
+    rows = [{**row, "is_current_user": row["participant_id"] == participant.id} for row in util["rows"]]
+    return {"has_data": util["has_data"], "rows": rows}
 
 
 def _hall_of_fame(pool, eligible_ids, username_by_id, leaderboard, finished_ids):
