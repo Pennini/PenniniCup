@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Dashboard - {{ pool.name }}{% endblock %}
+
+{% block extra_head %}
+<style>
+    /* Mobile: natural DOM order (Progresso → KPIs → Evolução → Hall → Aproveitamento).
+       Desktop: 35% / 65% with the evolution chart spanning the left stack, then the
+       Hall full-width band, then the utilization chart full-width below it. */
+    @media (min-width: 1024px) {
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 35% 65%;
+            grid-template-areas:
+                "progress evolution"
+                "kpis     evolution"
+                "hall     hall"
+                "util     util";
+            align-items: start;
+            column-gap: 1.5rem;
+            row-gap: 0.75rem;
+        }
+        .area-progress { grid-area: progress; }
+        .area-kpis { grid-area: kpis; }
+        .area-evolution { grid-area: evolution; }
+        .area-hall { grid-area: hall; }
+        .area-util { grid-area: util; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="space-y-6 pb-8" id="dashboard-root" data-url="{% url 'rankings:pool-dashboard-data' pool.slug %}">
+    <header class="rounded-2xl border border-neutral-800 bg-gradient-to-br from-neutral-900 via-neutral-900 to-neutral-950 p-5 sm:p-8 shadow-xl shadow-black/20">
+        <div class="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+            <div>
+                <p class="text-[11px] uppercase tracking-[0.2em] text-orange-400/90">Dashboard do bolão</p>
+                <h1 class="mt-2 text-2xl sm:text-3xl font-semibold leading-tight">{{ pool.name }}</h1>
+                <p class="mt-2 text-sm sm:text-base text-neutral-300 max-w-2xl">Temporada {{ pool.season.name }}</p>
+            </div>
+            <a href="{% url 'pool:ranking-tab' %}?pool={{ pool.slug }}" class="inline-flex w-full items-center justify-center px-3 py-2 rounded-md border border-neutral-600 text-sm sm:w-auto">Ver ranking completo</a>
+        </div>
+    </header>
+
+    {% if participations %}
+    {% include "pool/partials/pool_selector.html" %}
+    {% endif %}
+
+    <div class="dashboard-grid gap-4 lg:gap-6 space-y-4 lg:space-y-0">
+
+        {# ---- Progresso do campeonato ---- #}
+        <article class="area-progress rounded-xl border border-neutral-800 bg-neutral-900/90 p-5 shadow-lg shadow-black/15" data-card="progress">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-400">Progresso do campeonato</h2>
+            <div data-state="loading" class="mt-6 h-40 animate-pulse rounded-lg bg-neutral-800/60"></div>
+            <p data-state="error" hidden class="mt-6 text-sm text-red-400">Não foi possível carregar.</p>
+            <div data-state="content" hidden class="mt-4 flex flex-col items-center gap-4">
+                <div class="relative h-44 w-44">
+                    <canvas id="chart-progress"></canvas>
+                    <div class="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                        <span data-field="percent" class="text-3xl font-bold text-orange-400">0%</span>
+                        <span data-field="counts" class="text-xs text-neutral-400"></span>
+                    </div>
+                </div>
+                <div class="w-full space-y-1 text-center">
+                    <p data-field="phase" class="text-sm font-semibold text-neutral-200"></p>
+                    <p class="text-xs text-neutral-400">Próximo jogo: <span data-field="next-match" class="text-neutral-200"></span></p>
+                </div>
+            </div>
+        </article>
+
+        {# ---- KPIs do usuário ---- #}
+        <section class="area-kpis grid grid-cols-2 gap-3" data-card="kpis">
+            <article class="rounded-xl border border-neutral-800 bg-neutral-900/90 p-4 shadow-lg shadow-black/15">
+                <p class="text-xs uppercase tracking-wide text-neutral-400">Minha posição</p>
+                <p data-field="position" class="mt-2 text-3xl font-semibold text-orange-400">—</p>
+            </article>
+            <article class="rounded-xl border border-neutral-800 bg-neutral-900/90 p-4 shadow-lg shadow-black/15">
+                <p class="text-xs uppercase tracking-wide text-neutral-400">Meus pontos</p>
+                <p data-field="points" class="mt-2 text-3xl font-semibold">—</p>
+            </article>
+            <article class="rounded-xl border border-neutral-800 bg-neutral-900/90 p-4 shadow-lg shadow-black/15">
+                <p class="text-xs uppercase tracking-wide text-neutral-400">Distância p/ líder</p>
+                <p data-field="gap" class="mt-2 text-3xl font-semibold text-blue-400">—</p>
+            </article>
+            <article class="rounded-xl border border-neutral-800 bg-neutral-900/90 p-4 shadow-lg shadow-black/15">
+                <p class="text-xs uppercase tracking-wide text-neutral-400">Aproveitamento</p>
+                <p data-field="utilization" class="mt-2 text-3xl font-semibold text-emerald-400">—</p>
+            </article>
+        </section>
+
+        {# ---- Evolução dos participantes ---- #}
+        <article class="area-evolution rounded-xl border border-neutral-800 bg-neutral-900/90 p-5 shadow-lg shadow-black/15" data-card="evolution">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-400">Evolução dos participantes</h2>
+            <div data-state="loading" class="mt-6 h-72 animate-pulse rounded-lg bg-neutral-800/60"></div>
+            <p data-state="error" hidden class="mt-6 text-sm text-red-400">Não foi possível carregar.</p>
+            <p data-state="empty" hidden class="mt-6 text-sm text-neutral-400">Ainda não há histórico de rodadas para exibir.</p>
+            <div data-state="content" hidden class="mt-4">
+                <div class="relative h-72 sm:h-80 lg:h-[26rem]">
+                    <canvas id="chart-evolution"></canvas>
+                </div>
+            </div>
+        </article>
+
+        {# ---- Hall da Fama ---- #}
+        <article class="area-hall rounded-xl border border-neutral-800 bg-neutral-900/90 p-5 shadow-lg shadow-black/15" data-card="hall">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-400">Hall da Fama</h2>
+            <div data-state="loading" class="mt-6 h-40 animate-pulse rounded-lg bg-neutral-800/60"></div>
+            <p data-state="error" hidden class="mt-6 text-sm text-red-400">Não foi possível carregar.</p>
+            <div data-state="content" hidden class="mt-4">
+                {# Cards injetados por dashboard.js a partir do config HALL. #}
+                <div data-hof-grid class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4"></div>
+            </div>
+        </article>
+
+        {# ---- Aproveitamento dos participantes ---- #}
+        <article class="area-util rounded-xl border border-neutral-800 bg-neutral-900/90 p-5 shadow-lg shadow-black/15" data-card="utilization">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-400">Aproveitamento dos participantes</h2>
+            <div data-state="loading" class="mt-6 h-64 animate-pulse rounded-lg bg-neutral-800/60"></div>
+            <p data-state="error" hidden class="mt-6 text-sm text-red-400">Não foi possível carregar.</p>
+            <p data-state="empty" hidden class="mt-6 text-sm text-neutral-400">Sem jogos finalizados para calcular aproveitamento.</p>
+            <div data-state="content" hidden class="mt-4">
+                <div class="relative" style="height: clamp(16rem, 4rem + 2.2rem * var(--bars, 5), 36rem);">
+                    <canvas id="chart-utilization"></canvas>
+                </div>
+            </div>
+        </article>
+
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{% static 'rankings/vendor/chart.umd.min.js' %}"></script>
+<script src="{% static 'rankings/dashboard.js' %}"></script>
+{% endblock %}

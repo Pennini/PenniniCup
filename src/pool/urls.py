@@ -12,6 +12,7 @@ urlpatterns = [
     path("open/", views.open_pool, name="open"),
     path("palpites/", views.bets_tab, name="bets-tab"),
     path("ranking/", views.ranking_tab, name="ranking-tab"),
+    path("dashboard/", views.dashboard_tab, name="dashboard-tab"),
     path("<slug:slug>/ranking/", pool_ranking_dashboard, name="ranking"),
     path("<slug:slug>/", views.pool_detail, name="detail"),
     path("<slug:slug>/join/", views.join_pool, name="join"),

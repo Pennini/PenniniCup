@@ -51,11 +51,26 @@ consome, pool, toggle_query_prefix (opcional).
         var select = document.getElementById('match-selector');
         if (!body) return;
         var partialUrl = body.dataset.partialUrl;
+        var activeView = 'by-participant';
 
         function syncIcons() {
             if (window.lucide && typeof window.lucide.createIcons === 'function') {
                 window.lucide.createIcons();
             }
+        }
+
+        // Toggle "Por participante" / "Por palpite". State lives here (outside the
+        // swapped body), so the chosen view survives AJAX game navigation.
+        function applyView() {
+            body.querySelectorAll('[data-guesses-view]').forEach(function (el) {
+                el.hidden = el.dataset.guessesView !== activeView;
+            });
+            body.querySelectorAll('[data-guesses-view-btn]').forEach(function (btn) {
+                var on = btn.dataset.guessesViewBtn === activeView;
+                btn.classList.toggle('bg-orange-500/20', on);
+                btn.classList.toggle('text-orange-200', on);
+                btn.classList.toggle('text-neutral-400', !on);
+            });
         }
 
         function navigate(matchId, push) {
@@ -71,6 +86,7 @@ consome, pool, toggle_query_prefix (opcional).
                     body.innerHTML = html;
                     if (select) select.value = matchId;
                     syncIcons();
+                    applyView();
                     if (push) {
                         var url = new URL(window.location);
                         url.searchParams.set('tab', 'palpites');
@@ -92,11 +108,19 @@ consome, pool, toggle_query_prefix (opcional).
         }
 
         body.addEventListener('click', function (event) {
+            var viewBtn = event.target.closest('[data-guesses-view-btn]');
+            if (viewBtn && body.contains(viewBtn)) {
+                activeView = viewBtn.dataset.guessesViewBtn;
+                applyView();
+                return;
+            }
             var arrow = event.target.closest('[data-match]');
             if (!arrow || !body.contains(arrow)) return;
             event.preventDefault();
             navigate(arrow.dataset.match, true);
         });
+
+        applyView();
 
         window.addEventListener('popstate', function () {
             var matchId = new URL(window.location).searchParams.get('match');

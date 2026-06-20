@@ -105,6 +105,12 @@
             >
                 Ranking
             </a>
+            <a
+                href="{% url 'pool:dashboard-tab' %}"
+                class="nav-link flex items-center h-16 px-3 border-b-2 -mb-[1px] transition-colors {% if current_view == 'pool:dashboard-tab' or current_view == 'rankings:pool-dashboard-overview' %}nav-link-active{% endif %}"
+            >
+                Dashboard
+            </a>
             {% if user.is_superuser %}
             <a
                 href="{% url 'admin:index' %}"

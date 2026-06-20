@@ -20,6 +20,7 @@ from src.pool.models import (
     PoolProjectionRecalc,
     PoolScoringConfig,
 )
+from src.rankings.admin import backfill_ranking_history_action
 
 
 @admin.register(Pool)
@@ -36,6 +37,7 @@ class PoolAdmin(admin.ModelAdmin):
     search_fields = ("name", "slug")
     list_filter = ("is_active", "requires_payment", "season", "pool_type")
     change_list_template = "admin/pool/pool_change_list.html"
+    actions = [backfill_ranking_history_action]
 
     def get_urls(self):
         urls = super().get_urls()

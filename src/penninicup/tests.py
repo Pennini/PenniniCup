@@ -1,5 +1,7 @@
 import logging
+from datetime import timedelta
 from io import BytesIO
+from types import SimpleNamespace
 from unittest.mock import patch
 from uuid import UUID, uuid4
 
@@ -15,6 +17,7 @@ from src.common.logging_filters import RequestIdFilter
 from src.common.utils.request_id import clear_request_id, set_request_id
 from src.football.models import Competition, Group, Match, Season, Stage, Team
 from src.payments.models import Payment
+from src.penninicup.views import _resolve_profile_scroll_target
 from src.pool.models import Pool, PoolBet, PoolParticipant
 
 User = get_user_model()
@@ -361,6 +364,61 @@ class ProfilePageTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Meu palpite")
 
+    def test_profile_context_has_scroll_target_for_upcoming_match(self):
+        self.client.login(username="profile-user", password="123456Aa!")
+        response = self.client.get(reverse("penninicup:profile"), {"pool": self.pool.slug})
+        self.assertEqual(response.status_code, 200)
+        # self.match é daqui a 3 dias (próximo agendado) -> alvo = match.id
+        self.assertEqual(response.context["scroll_target_match_id"], self.match.id)
+
+    def test_profile_renders_scroll_button_and_card_anchor(self):
+        self.client.login(username="profile-user", password="123456Aa!")
+        response = self.client.get(reverse("penninicup:profile"), {"pool": self.pool.slug, "tab": "bets"})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Ir para o jogo atual")
+        self.assertContains(response, f'href="#jogo-{self.match.id}"')
+        self.assertContains(response, f'id="jogo-{self.match.id}"')
+
+    def test_scroll_button_hidden_on_classification_tab(self):
+        self.client.login(username="profile-user", password="123456Aa!")
+        response = self.client.get(reverse("penninicup:profile"), {"pool": self.pool.slug, "tab": "classification"})
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Ir para o jogo atual")
+
+
+class ProfileScrollTargetTest(SimpleTestCase):
+    def _row(self, match_id, kickoff):
+        return {"match": SimpleNamespace(id=match_id, match_date_brasilia=kickoff)}
+
+    def test_returns_live_match_within_window(self):
+        now = timezone.now()
+        rows = [
+            self._row(1, now - timedelta(days=2)),  # passado
+            self._row(2, now - timedelta(minutes=30)),  # ao vivo
+            self._row(3, now + timedelta(hours=5)),  # futuro
+        ]
+        self.assertEqual(_resolve_profile_scroll_target(rows, now=now), 2)
+
+    def test_returns_next_upcoming_when_no_live(self):
+        now = timezone.now()
+        rows = [
+            self._row(1, now - timedelta(days=2)),  # passado
+            self._row(2, now + timedelta(hours=10)),  # futuro distante
+            self._row(3, now + timedelta(hours=2)),  # próximo
+        ]
+        self.assertEqual(_resolve_profile_scroll_target(rows, now=now), 3)
+
+    def test_returns_none_when_only_past_matches(self):
+        now = timezone.now()
+        rows = [
+            self._row(1, now - timedelta(days=2)),
+            self._row(2, now - timedelta(hours=3)),  # fora da janela de 2h
+        ]
+        self.assertIsNone(_resolve_profile_scroll_target(rows, now=now))
+
+    def test_returns_none_for_empty_rows(self):
+        self.assertIsNone(_resolve_profile_scroll_target([], now=timezone.now()))
+
 
 class RequestUUIDMiddlewareTest(SimpleTestCase):
     def test_response_has_x_request_uuid_header(self):
@@ -625,3 +683,161 @@ class BuildKnockoutByPhasePredictedWinnersTest(SimpleTestCase):
         # team_b: match still pending → decided=False, advanced=False
         self.assertFalse(items_by_team_id[2]["decided"])
         self.assertFalse(items_by_team_id[2]["advanced"])
+
+
+class HomeNextMatchesContextTest(TestCase):
+    """_build_home_next_matches_context: jogos não finalizados dentro da janela
+    live (2h após kickoff) continuam na lista e vêm marcados is_live."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="nm-user", email="nm@example.com", password="123456Aa!")
+        competition = Competition.objects.create(fifa_id=771, name="Copa NM")
+        self.season = Season.objects.create(
+            fifa_id=771,
+            competition=competition,
+            name="Temporada NM",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="NM-STAGE", season=self.season, name="Fase de Grupos", order=1)
+        self.group = Group.objects.create(fifa_id="NM-GROUP", stage=self.stage, name="A")
+        self.team = Team.objects.create(
+            fifa_id="NM-TEAM", name="Time NM", name_norm="time nm", code="TNM", group=self.group
+        )
+        self.pool = Pool.objects.create(
+            name="Pool NM", slug="pool-nm", season=self.season, created_by=self.user, requires_payment=False
+        )
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+
+    def _make_match(self, *, fifa_id, number, kickoff, status=Match.STATUS_SCHEDULED):
+        return Match.objects.create(
+            fifa_id=fifa_id,
+            season=self.season,
+            stage=self.stage,
+            group=self.group,
+            match_number=number,
+            match_date_utc=kickoff,
+            match_date_local=kickoff,
+            match_date_brasilia=kickoff,
+            home_team=self.team,
+            away_team=self.team,
+            status=status,
+        )
+
+    def test_live_match_within_window_is_listed_and_flagged(self):
+        from src.penninicup.views import _build_home_next_matches_context
+
+        now = timezone.now()
+        self._make_match(fifa_id="NM-LIVE", number=1, kickoff=now - timezone.timedelta(minutes=30))
+
+        rows = _build_home_next_matches_context(participant=self.participant, pool=self.pool)
+
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]["is_live"])
+
+    def test_match_past_live_window_is_excluded(self):
+        from src.penninicup.views import _build_home_next_matches_context
+
+        now = timezone.now()
+        self._make_match(fifa_id="NM-OLD", number=2, kickoff=now - timezone.timedelta(hours=3))
+
+        rows = _build_home_next_matches_context(participant=self.participant, pool=self.pool)
+
+        self.assertEqual(rows, [])
+
+    def test_finished_match_is_excluded(self):
+        from src.penninicup.views import _build_home_next_matches_context
+
+        now = timezone.now()
+        self._make_match(
+            fifa_id="NM-FIN", number=3, kickoff=now - timezone.timedelta(minutes=30), status=Match.STATUS_FINISHED
+        )
+
+        rows = _build_home_next_matches_context(participant=self.participant, pool=self.pool)
+
+        self.assertEqual(rows, [])
+
+    def test_future_match_listed_not_live(self):
+        from src.penninicup.views import _build_home_next_matches_context
+
+        now = timezone.now()
+        self._make_match(fifa_id="NM-FUT", number=4, kickoff=now + timezone.timedelta(days=1))
+
+        rows = _build_home_next_matches_context(participant=self.participant, pool=self.pool)
+
+        self.assertEqual(len(rows), 1)
+        self.assertFalse(rows[0]["is_live"])
+
+    def test_respects_limit_and_order(self):
+        from src.penninicup.views import _build_home_next_matches_context
+
+        now = timezone.now()
+        self._make_match(fifa_id="NM-A", number=10, kickoff=now + timezone.timedelta(days=3))
+        self._make_match(fifa_id="NM-B", number=11, kickoff=now + timezone.timedelta(days=1))
+        self._make_match(fifa_id="NM-C", number=12, kickoff=now + timezone.timedelta(days=2))
+        self._make_match(fifa_id="NM-D", number=13, kickoff=now + timezone.timedelta(days=4))
+
+        rows = _build_home_next_matches_context(participant=self.participant, pool=self.pool, limit=3)
+
+        self.assertEqual(len(rows), 3)
+        self.assertEqual([r["match"].fifa_id for r in rows], ["NM-B", "NM-C", "NM-A"])
+
+
+class HomeLayoutTest(TestCase):
+    """Painel da home: duas colunas (atalhos | próximos jogos), sem abas, e o
+    jogo live aparece marcado AO VIVO."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="layout-user", email="layout@example.com", password="123456Aa!")
+        self.client.force_login(self.user)
+        competition = Competition.objects.create(fifa_id=772, name="Copa Layout")
+        self.season = Season.objects.create(
+            fifa_id=772,
+            competition=competition,
+            name="Temporada Layout",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="LO-STAGE", season=self.season, name="Fase de Grupos", order=1)
+        self.group = Group.objects.create(fifa_id="LO-GROUP", stage=self.stage, name="A")
+        self.team = Team.objects.create(
+            fifa_id="LO-TEAM", name="Time Layout", name_norm="time layout", code="TLO", group=self.group
+        )
+        self.pool = Pool.objects.create(
+            name="Pool Layout", slug="pool-layout", season=self.season, created_by=self.user, requires_payment=False
+        )
+        PoolParticipant.objects.create(pool=self.pool, user=self.user, is_active=True)
+
+    def test_tab_buttons_removed(self):
+        response = self.client.get(reverse("penninicup:index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "data-home-tab-trigger")
+        self.assertNotContains(response, "data-home-tab-panel")
+
+    def test_shows_shortcuts_and_next_games_together(self):
+        response = self.client.get(reverse("penninicup:index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Atalhos")
+        self.assertContains(response, "Próximos jogos")
+
+    def test_live_match_shows_ao_vivo_badge(self):
+        now = timezone.now()
+        Match.objects.create(
+            fifa_id="LO-LIVE",
+            season=self.season,
+            stage=self.stage,
+            group=self.group,
+            match_number=1,
+            match_date_utc=now - timezone.timedelta(minutes=15),
+            match_date_local=now - timezone.timedelta(minutes=15),
+            match_date_brasilia=now - timezone.timedelta(minutes=15),
+            home_team=self.team,
+            away_team=self.team,
+        )
+
+        response = self.client.get(reverse("penninicup:index"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Jogo 1")
+        self.assertContains(response, "AO VIVO")
