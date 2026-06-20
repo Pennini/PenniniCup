@@ -177,9 +177,9 @@
                             <p class="font-semibold">Palpites</p>
                             <p class="mt-1 text-xs text-neutral-400">Ir para a página de palpites deste bolão</p>
                         </a>
-                        <a href="{% url 'pool:list' %}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
-                            <p class="font-semibold">Bolões</p>
-                            <p class="mt-1 text-xs text-neutral-400">Entrar em um novo bolão ou ver bolões que estou inscrito</p>
+                        <a href="{% url 'pool:dashboard-tab' %}?pool={{ selected_pool.slug }}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
+                            <p class="font-semibold">Dashboard</p>
+                            <p class="mt-1 text-xs text-neutral-400">Visão geral do bolão: progresso, KPIs e evolução</p>
                         </a>
                         <a href="{% url 'football:matches' %}" class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-sm transition-colors hover:border-orange-500/60 hover:bg-orange-500/5">
                             <p class="font-semibold">Partidas</p>

@@ -1,8 +1,9 @@
 from django.contrib.auth.decorators import login_required
-from django.http import HttpResponseForbidden, HttpResponseNotAllowed
+from django.http import HttpResponseForbidden, HttpResponseNotAllowed, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 
 from src.pool.models import Pool, PoolParticipant
+from src.rankings.services.dashboard import build_dashboard_data
 from src.rankings.services.leaderboard import build_pool_leaderboard
 from src.rankings.services.match_guesses import build_match_guesses_context
 
@@ -102,6 +103,29 @@ def match_guesses_partial(request, slug):
     context = {"pool": pool}
     context.update(build_match_guesses_context(pool=pool, request=request))
     return render(request, "rankings/partials/_match_guesses_body.html", context)
+
+
+@login_required
+def pool_dashboard_overview(request, slug):
+    """Standalone overview dashboard for a single pool (donut, KPIs, evolution,
+    utilization, hall of fame). Renders only the shell — the page fetches the
+    aggregated metrics from `pool_dashboard_data` and draws them client-side.
+    """
+    pool = get_object_or_404(Pool.objects.select_related("season"), slug=slug, is_active=True)
+    participant = get_object_or_404(PoolParticipant, pool=pool, user=request.user, is_active=True)
+    return render(
+        request,
+        "rankings/dashboard_overview.html",
+        {"pool": pool, "current_participant": participant},
+    )
+
+
+@login_required
+def pool_dashboard_data(request, slug):
+    """Aggregated dashboard metrics as JSON, consumed by the overview page."""
+    pool = get_object_or_404(Pool.objects.select_related("season"), slug=slug, is_active=True)
+    participant = get_object_or_404(PoolParticipant, pool=pool, user=request.user, is_active=True)
+    return JsonResponse(build_dashboard_data(pool=pool, participant=participant))
 
 
 @login_required

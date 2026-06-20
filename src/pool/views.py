@@ -220,6 +220,30 @@ def ranking_tab(request):
 
 
 @login_required
+def dashboard_tab(request):
+    """Overview dashboard reached from the navbar (no slug). Resolves the user's
+    selected pool — same ?pool=<slug> selector as the ranking/palpites tabs — and
+    renders the dashboard shell, which then fetches its metrics as JSON.
+    """
+    participations = _active_participations(request.user)
+    selected, _ = resolve_selected_participation(request, participations)
+    if selected is None:
+        return render(request, "pool/no_pool_selected.html", {"page_kind": "ranking"})
+
+    pool = selected.pool
+    return render(
+        request,
+        "rankings/dashboard_overview.html",
+        {
+            "pool": pool,
+            "current_participant": selected,
+            "participations": participations,
+            "selected_pool": pool,
+        },
+    )
+
+
+@login_required
 @require_http_methods(["POST"])
 def join_pool(request, slug):
     pool = get_object_or_404(Pool, slug=slug, is_active=True)

@@ -14,6 +14,7 @@ from src.football.models import Competition, Match, Season, Stage, Team
 from src.payments.models import Payment
 from src.pool.models import Pool, PoolBet, PoolBetScore, PoolParticipant
 from src.rankings.models import PoolRankingHistory, RankingTieBreakOverride
+from src.rankings.services.dashboard import build_dashboard_data
 from src.rankings.services.history_backfill import backfill_pool_history, backfill_pools
 from src.rankings.services.leaderboard import build_pool_leaderboard
 from src.rankings.services.match_guesses import (
@@ -1247,6 +1248,247 @@ class BackfillPoolHistoryTest(TestCase):
             found_movement,
             "Nenhum participante mudou de posição entre rodadas; verifique _build_pool_with_3_rounds.",
         )
+
+
+class DashboardServiceTest(TestCase):
+    """build_dashboard_data over a controlled pool: 3 participants, 2 finished
+    group games (same calendar day) + 1 scheduled, with explicit per-game scores
+    and ranking history so every metric is deterministic.
+    """
+
+    def setUp(self):
+        import datetime
+
+        self.owner = User.objects.create_user(username="dash-owner", email="do@example.com", password="123456Aa!")
+        self.u1 = User.objects.create_user(username="dash-u1", email="d1@example.com", password="123456Aa!")
+        self.u2 = User.objects.create_user(username="dash-u2", email="d2@example.com", password="123456Aa!")
+        self.u3 = User.objects.create_user(username="dash-u3", email="d3@example.com", password="123456Aa!")
+        self.outsider = User.objects.create_user(username="dash-out", email="dx@example.com", password="123456Aa!")
+
+        competition = Competition.objects.create(fifa_id=960, name="Copa Dash")
+        self.season = Season.objects.create(
+            fifa_id=960,
+            competition=competition,
+            name="Temporada Dash",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="ST960G", season=self.season, name="Group Stage", order=1)
+        self.pool = Pool.objects.create(
+            name="Pool Dash", slug="pool-dash", season=self.season, created_by=self.owner, requires_payment=False
+        )
+
+        # Two finished group games on the same calendar day + one scheduled game.
+        day = timezone.make_aware(datetime.datetime(2026, 6, 10, 10, 0))
+        self.m1 = Match.objects.create(
+            fifa_id="DASH-M1",
+            season=self.season,
+            stage=self.stage,
+            match_number=1,
+            match_date_utc=day,
+            match_date_local=day,
+            match_date_brasilia=day,
+            home_score=1,
+            away_score=0,
+            status=Match.STATUS_FINISHED,
+        )
+        self.m2 = Match.objects.create(
+            fifa_id="DASH-M2",
+            season=self.season,
+            stage=self.stage,
+            match_number=2,
+            match_date_utc=day + timedelta(hours=6),
+            match_date_local=day + timedelta(hours=6),
+            match_date_brasilia=day + timedelta(hours=6),
+            home_score=2,
+            away_score=1,
+            status=Match.STATUS_FINISHED,
+        )
+        self.m3 = Match.objects.create(
+            fifa_id="DASH-M3",
+            season=self.season,
+            stage=self.stage,
+            match_number=3,
+            match_date_utc=day + timedelta(days=2),
+            match_date_local=day + timedelta(days=2),
+            match_date_brasilia=day + timedelta(days=2),
+            status=Match.STATUS_SCHEDULED,
+        )
+
+        # Totals drive leaderboard order: p2 (1º), p1 (2º), p3 (3º).
+        self.p1 = PoolParticipant.objects.create(
+            pool=self.pool, user=self.u1, is_active=True, total_points=25, exact_score_hits=1
+        )
+        self.p2 = PoolParticipant.objects.create(
+            pool=self.pool, user=self.u2, is_active=True, total_points=35, exact_score_hits=3
+        )
+        self.p3 = PoolParticipant.objects.create(
+            pool=self.pool, user=self.u3, is_active=True, total_points=15, exact_score_hits=0
+        )
+
+        # Per-game points: denominator = 2 * 25 = 50.
+        # p1: 25 -> 50% | p2: 35 -> 70% | p3: 15 -> 30%.
+        self._score(self.p1, self.m1, 25)
+        self._score(self.p1, self.m2, 0)
+        self._score(self.p2, self.m1, 10)
+        self._score(self.p2, self.m2, 25)
+        self._score(self.p3, self.m1, 0)
+        self._score(self.p3, self.m2, 15)
+
+        # Ranking history: p2 climbs from 3rd to 1st (biggest climb = 2).
+        self._history(self.m1, 1, {self.p1: 1, self.p2: 3, self.p3: 2}, {self.p1: 25, self.p2: 10, self.p3: 0})
+        self._history(self.m2, 2, {self.p2: 1, self.p1: 2, self.p3: 3}, {self.p2: 35, self.p1: 25, self.p3: 15})
+
+    def _score(self, participant, match, points):
+        bet = PoolBet.objects.create(
+            participant=participant, match=match, home_score_pred=1, away_score_pred=0, is_active=True
+        )
+        PoolBetScore.objects.create(bet=bet, points=points, exact_score=points == 25)
+
+    def _history(self, match, round_index, positions, points):
+        for participant, position in positions.items():
+            PoolRankingHistory.objects.create(
+                pool=self.pool,
+                participant=participant,
+                match=match,
+                round_index=round_index,
+                position=position,
+                total_points=points[participant],
+            )
+
+    def test_progress_counts_and_percent(self):
+        progress = build_dashboard_data(pool=self.pool, participant=self.p1)["progress"]
+        self.assertEqual(progress["total_matches"], 3)
+        self.assertEqual(progress["finished_matches"], 2)
+        self.assertEqual(progress["percent"], 66.7)
+        self.assertEqual(progress["current_phase"], "Fase de Grupos")
+
+    def test_kpis_for_logged_user(self):
+        kpis = build_dashboard_data(pool=self.pool, participant=self.p1)["kpis"]
+        self.assertEqual(kpis["position"], 2)
+        self.assertEqual(kpis["points"], 25)
+        self.assertEqual(kpis["gap_to_leader"], 10)
+        self.assertFalse(kpis["is_leader"])
+        self.assertEqual(kpis["utilization"], 50.0)
+
+    def test_kpis_leader_flag(self):
+        kpis = build_dashboard_data(pool=self.pool, participant=self.p2)["kpis"]
+        self.assertEqual(kpis["position"], 1)
+        self.assertTrue(kpis["is_leader"])
+        self.assertEqual(kpis["utilization"], 70.0)
+
+    def test_utilization_ranked_desc_with_user_flag(self):
+        util = build_dashboard_data(pool=self.pool, participant=self.p1)["utilization"]
+        self.assertTrue(util["has_data"])
+        self.assertEqual(
+            [(r["label"], r["percent"]) for r in util["rows"]],
+            [("dash-u2", 70.0), ("dash-u1", 50.0), ("dash-u3", 30.0)],
+        )
+        flagged = [r for r in util["rows"] if r["is_current_user"]]
+        self.assertEqual([r["label"] for r in flagged], ["dash-u1"])
+
+    def test_evolution_top5_plus_user_no_duplicates(self):
+        evolution = build_dashboard_data(pool=self.pool, participant=self.p1)["evolution"]
+        series = evolution["series"]
+        self.assertEqual(len(series), 3)
+        self.assertTrue(all(len(s["points"]) == 2 for s in series))
+        self.assertEqual(sum(1 for s in series if s["is_current_user"]), 1)
+
+    def test_hall_of_fame_highlights(self):
+        hof = build_dashboard_data(pool=self.pool, participant=self.p1)["hall_of_fame"]
+        self.assertEqual(hof["exact_scores"], {"username": "dash-u2", "value": 3})
+        self.assertEqual(hof["biggest_climb"], {"username": "dash-u2", "value": 2})
+        self.assertEqual(hof["longest_streak"], {"username": "dash-u2", "value": 2})
+        self.assertEqual(hof["best_day"]["username"], "dash-u2")
+        self.assertEqual(hof["best_day"]["value"], 35)
+
+    def test_hall_of_fame_new_trophies(self):
+        import datetime
+
+        # p1 (m2=0) and p3 (m1=0) tie at 1 zeroed game; pin p1 as the earliest
+        # joiner so the joined_at tie-break is deterministic.
+        early = timezone.make_aware(datetime.datetime(2026, 6, 1, 8, 0))
+        PoolParticipant.objects.filter(pk=self.p1.pk).update(joined_at=early)
+
+        hof = build_dashboard_data(pool=self.pool, participant=self.p1)["hall_of_fame"]
+        # Pé Frio: tie broken by joined_at -> p1.
+        self.assertEqual(hof["pe_frio"], {"username": "dash-u1", "value": 1})
+        # Lanterna: last in the leaderboard (p3, 3rd place).
+        self.assertEqual(hof["lanterna"], {"username": "dash-u3", "value": 3})
+        # Tobogã: p1 dropped 1->2 (drop 1); first to set the max.
+        self.assertEqual(hof["maior_queda"], {"username": "dash-u1", "value": 1})
+        # Ioiô: churn p1=1, p2=2, p3=1 -> p2 most volatile.
+        self.assertEqual(hof["ioio"], {"username": "dash-u2", "value": 2})
+
+    def test_lanterna_none_with_single_participant(self):
+        competition = Competition.objects.create(fifa_id=962, name="Copa Solo")
+        season = Season.objects.create(
+            fifa_id=962,
+            competition=competition,
+            name="Temporada Solo",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        solo_pool = Pool.objects.create(
+            name="Pool Solo", slug="pool-solo", season=season, created_by=self.owner, requires_payment=False
+        )
+        participant = PoolParticipant.objects.create(pool=solo_pool, user=self.u1, is_active=True, total_points=10)
+        hof = build_dashboard_data(pool=solo_pool, participant=participant)["hall_of_fame"]
+        self.assertIsNone(hof["lanterna"])
+
+    def test_empty_pool_returns_safe_states(self):
+        # Fresh season with no finished games -> every metric in its empty state.
+        competition = Competition.objects.create(fifa_id=961, name="Copa Vazia")
+        season = Season.objects.create(
+            fifa_id=961,
+            competition=competition,
+            name="Temporada Vazia",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        empty_pool = Pool.objects.create(
+            name="Pool Vazio", slug="pool-vazio", season=season, created_by=self.owner, requires_payment=False
+        )
+        participant = PoolParticipant.objects.create(pool=empty_pool, user=self.u1, is_active=True)
+        data = build_dashboard_data(pool=empty_pool, participant=participant)
+        self.assertEqual(data["progress"]["percent"], 0.0)
+        self.assertFalse(data["utilization"]["has_data"])
+        self.assertEqual(data["evolution"]["series"], [])
+        self.assertIsNone(data["hall_of_fame"]["exact_scores"])
+        self.assertIsNone(data["hall_of_fame"]["biggest_climb"])
+        self.assertIsNone(data["hall_of_fame"]["pe_frio"])
+        self.assertIsNone(data["hall_of_fame"]["lanterna"])
+        self.assertIsNone(data["hall_of_fame"]["maior_queda"])
+        self.assertIsNone(data["hall_of_fame"]["ioio"])
+
+    def test_data_endpoint_returns_json(self):
+        self.client.force_login(self.u1)
+        response = self.client.get(reverse("rankings:pool-dashboard-data", kwargs={"slug": self.pool.slug}))
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(set(payload), {"progress", "kpis", "evolution", "utilization", "hall_of_fame"})
+        self.assertEqual(payload["kpis"]["position"], 2)
+
+    def test_data_endpoint_blocks_non_participant(self):
+        self.client.force_login(self.outsider)
+        response = self.client.get(reverse("rankings:pool-dashboard-data", kwargs={"slug": self.pool.slug}))
+        self.assertEqual(response.status_code, 404)
+
+    def test_overview_page_renders_shell(self):
+        self.client.force_login(self.u1)
+        response = self.client.get(reverse("rankings:pool-dashboard-overview", kwargs={"slug": self.pool.slug}))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "chart-evolution")
+        self.assertContains(response, reverse("rankings:pool-dashboard-data", kwargs={"slug": self.pool.slug}))
+
+    def test_dashboard_tab_renders_with_pool_selector(self):
+        self.client.force_login(self.u1)
+        response = self.client.get(reverse("pool:dashboard-tab"))
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="pool-selector"')
 
 
 class BackfillCommandTest(TestCase):
