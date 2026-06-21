@@ -1706,14 +1706,14 @@ class DashboardCacheTest(TestCase):
         self.assertTrue(snapshot.payload["evolution_all"])
 
     def test_overlay_matches_freshly_built_payload(self):
-        # Output parity: cached path must equal a live build of the same pool.
+        # Hall/evolução vêm do cache; KPIs/aproveitamento são ao vivo.
         cached = build_dashboard_data(pool=self.pool, participant=self.participant)
-        PoolDashboardSnapshot.objects.filter(pool=self.pool).delete()
-        # Force the no-cache branch by deleting; build_dashboard_pool_payload is
-        # the same compute the worker runs.
         fresh_payload = build_dashboard_pool_payload(pool=self.pool)
         self.assertEqual(cached["hall_of_fame"], fresh_payload["hall_of_fame"])
-        self.assertEqual(cached["utilization"]["has_data"], fresh_payload["utilization_rows"]["has_data"])
+        # Após C1 o payload cacheado guarda só o pesado (version entra na Task 5).
+        self.assertEqual(set(fresh_payload), {"evolution_all", "hall_of_fame"})
+        # Fixture sem jogos finalizados -> aproveitamento sem dados (determinístico).
+        self.assertFalse(cached["utilization"]["has_data"])
 
 
 class BackfillCommandTest(TestCase):

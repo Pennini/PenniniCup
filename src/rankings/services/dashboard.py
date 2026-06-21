@@ -46,9 +46,8 @@ def build_dashboard_pool_payload(*, pool):
     """Pool-wide (participant-independent) part of the dashboard.
 
     Everything here is identical for every participant, so it is computed once
-    and cached. Per-participant data (KPIs, current-user flags) is added later in
-    `_overlay_participant`. Maps are keyed by participant id; after a JSON round
-    trip those keys come back as strings, so `_normalize_payload` re-ints them.
+    and cached. Per-participant data (KPIs, current-user flags) is computed live
+    in `_overlay_participant` from `build_pool_leaderboard`.
     """
     leaderboard = build_pool_leaderboard(pool)
     username_by_id = {row.participant.id: row.participant.user.username for row in leaderboard}
@@ -56,16 +55,9 @@ def build_dashboard_pool_payload(*, pool):
 
     finished_matches = _finished_matches(pool.season)
     finished_ids = [match.id for match in finished_matches]
-    max_points_by_id, denominator = _utilization_inputs(pool, finished_matches)
 
     return {
-        "leader_points": leaderboard[0].participant.total_points if leaderboard else 0,
-        "denominator": denominator,
-        "positions": {row.participant.id: row.position for row in leaderboard},
-        "username_by_id": username_by_id,
-        "max_points_by_id": max_points_by_id,
         "evolution_all": _series_for_ids(pool, eligible_ids, username_by_id),
-        "utilization_rows": _utilization_rows(leaderboard, max_points_by_id, denominator),
         "hall_of_fame": _hall_of_fame(pool, eligible_ids, username_by_id, leaderboard, finished_ids),
     }
 
@@ -83,21 +75,19 @@ def _get_or_build_pool_payload(pool):
 
 
 def _normalize_payload(payload):
-    """Re-key the id-keyed maps to ints after a JSON round trip."""
-    return {
-        **payload,
-        "positions": {int(k): v for k, v in payload.get("positions", {}).items()},
-        "username_by_id": {int(k): v for k, v in payload.get("username_by_id", {}).items()},
-        "max_points_by_id": {int(k): v for k, v in payload.get("max_points_by_id", {}).items()},
-    }
+    """Sem mais mapas keyed-por-id no payload; identidade preservada."""
+    return payload
 
 
 def _overlay_participant(pool, participant, payload):
+    leaderboard = build_pool_leaderboard(pool)
+    finished_matches = _finished_matches(pool.season)
+    max_points_by_id, denominator = _utilization_inputs(pool, finished_matches)
     return {
         "progress": _progress(pool),
-        "kpis": _kpis_from_payload(payload, participant),
+        "kpis": _kpis_live(leaderboard, participant, denominator, max_points_by_id),
         "evolution": _evolution_overlay(payload, participant),
-        "utilization": _utilization_overlay(payload, participant),
+        "utilization": _utilization_live(leaderboard, participant, denominator, max_points_by_id),
         "hall_of_fame": payload["hall_of_fame"],
     }
 
@@ -179,12 +169,12 @@ def _progress(pool):
     }
 
 
-def _kpis_from_payload(payload, participant):
-    position = payload["positions"].get(participant.id)
-    leader_points = payload["leader_points"]
+def _kpis_live(leaderboard, participant, denominator, max_points_by_id):
+    positions = {row.participant.id: row.position for row in leaderboard}
+    leader_points = leaderboard[0].participant.total_points if leaderboard else 0
+    position = positions.get(participant.id)
     gap = max(leader_points - participant.total_points, 0)
-    user_pct = _utilization_pct(payload["max_points_by_id"].get(participant.id, 0), payload["denominator"])
-
+    user_pct = _utilization_pct(max_points_by_id.get(participant.id, 0), denominator)
     return {
         "position": position,
         "points": participant.total_points,
@@ -229,23 +219,18 @@ def _evolution_overlay(payload, participant):
     }
 
 
-def _utilization_rows(leaderboard, max_points_by_id, denominator):
+def _utilization_live(leaderboard, participant, denominator, max_points_by_id):
     rows = [
         {
             "participant_id": row.participant.id,
             "label": row.participant.user.username,
             "percent": _utilization_pct(max_points_by_id.get(row.participant.id, 0), denominator),
+            "is_current_user": row.participant.id == participant.id,
         }
         for row in leaderboard
     ]
     rows.sort(key=lambda item: item["percent"], reverse=True)
     return {"has_data": bool(denominator), "rows": rows[:UTILIZATION_TOP_N]}
-
-
-def _utilization_overlay(payload, participant):
-    util = payload["utilization_rows"]
-    rows = [{**row, "is_current_user": row["participant_id"] == participant.id} for row in util["rows"]]
-    return {"has_data": util["has_data"], "rows": rows}
 
 
 def _hall_of_fame(pool, eligible_ids, username_by_id, leaderboard, finished_ids):
