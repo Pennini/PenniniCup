@@ -11,7 +11,7 @@ Reuses the single sources of truth already in the codebase: `build_pool_leaderbo
 (live → next → last) and `phase_for_match` (group vs knockout).
 """
 
-from django.db.models import Count, Sum
+from django.db.models import Count, Max, Q, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 
@@ -59,16 +59,25 @@ def build_dashboard_pool_payload(*, pool):
     return {
         "evolution_all": _series_for_ids(pool, eligible_ids, username_by_id),
         "hall_of_fame": _hall_of_fame(pool, eligible_ids, username_by_id, leaderboard, finished_ids),
+        "version": _pool_version_tuple(pool),
     }
 
 
 def _get_or_build_pool_payload(pool):
     from src.rankings.models import PoolDashboardSnapshot
+    from src.rankings.services.dashboard_queue import enqueue_dashboard_snapshot
 
     snapshot = PoolDashboardSnapshot.objects.filter(pool=pool).first()
-    if snapshot is not None:
+    if snapshot is not None and "evolution_all" in snapshot.payload:
+        if snapshot.payload.get("version") == _pool_version_tuple(pool):
+            return _normalize_payload(snapshot.payload)
+        # Cache velho: dispara rebuild assíncrono e serve o cache atual desta vez.
+        # KPIs/posição/aproveitamento já são ao vivo; só hall/evolução ficam
+        # momentaneamente velhos, corrigidos no próximo load (~1s).
+        enqueue_dashboard_snapshot(pool)
         return _normalize_payload(snapshot.payload)
 
+    # Sem cache ou payload de formato antigo (pós-deploy): reconstrói agora.
     payload = build_dashboard_pool_payload(pool=pool)
     PoolDashboardSnapshot.objects.update_or_create(pool=pool, defaults={"payload": payload})
     return payload
@@ -103,6 +112,22 @@ def _finished_matches(season):
         for match in Match.objects.filter(season=season).select_related("stage")
         if match.status == Match.STATUS_FINISHED or (match.home_score is not None and match.away_score is not None)
     ]
+
+
+def _pool_version_tuple(pool):
+    """Token barato p/ detectar cache velho: (nº finalizados, nº elegíveis, maior round_index).
+    JSON guarda como lista; retornamos lista p/ comparar sem mismatch tupla/lista.
+    """
+    from src.pool.models import PoolParticipant
+
+    finished = (
+        Match.objects.filter(season=pool.season)
+        .filter(Q(status=Match.STATUS_FINISHED) | (Q(home_score__isnull=False) & Q(away_score__isnull=False)))
+        .count()
+    )
+    eligible = PoolParticipant.objects.filter(pool=pool, is_active=True).count()
+    max_round = PoolRankingHistory.objects.filter(pool=pool).aggregate(value=Max("round_index"))["value"] or 0
+    return [finished, eligible, max_round]
 
 
 def _match_max_points(match, scoring_config):

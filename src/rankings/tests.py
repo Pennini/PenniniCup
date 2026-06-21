@@ -1711,9 +1711,28 @@ class DashboardCacheTest(TestCase):
         fresh_payload = build_dashboard_pool_payload(pool=self.pool)
         self.assertEqual(cached["hall_of_fame"], fresh_payload["hall_of_fame"])
         # Após C1 o payload cacheado guarda só o pesado (version entra na Task 5).
-        self.assertEqual(set(fresh_payload), {"evolution_all", "hall_of_fame"})
+        self.assertEqual(set(fresh_payload), {"evolution_all", "hall_of_fame", "version"})
         # Fixture sem jogos finalizados -> aproveitamento sem dados (determinístico).
         self.assertFalse(cached["utilization"]["has_data"])
+
+    def test_stale_version_enqueues_rebuild_and_serves_cache(self):
+        # Prime o cache.
+        build_dashboard_data(pool=self.pool, participant=self.participant)
+        self.assertFalse(PoolDashboardSnapshotJob.objects.filter(pool=self.pool).exists())
+
+        # Novo jogo finalizado muda a versão SEM passar pelo recompute.
+        new_match = _make_match(self.season, self.stage, number=2, kickoff=timezone.now())
+        Match.objects.filter(pk=new_match.pk).update(home_score=1, away_score=0, status=Match.STATUS_FINISHED)
+
+        build_dashboard_data(pool=self.pool, participant=self.participant)
+        # Guard detectou a divergência e enfileirou o rebuild (não bloqueante).
+        self.assertTrue(PoolDashboardSnapshotJob.objects.filter(pool=self.pool).exists())
+
+    def test_version_matches_does_not_enqueue(self):
+        build_dashboard_data(pool=self.pool, participant=self.participant)
+        PoolDashboardSnapshotJob.objects.filter(pool=self.pool).delete()
+        build_dashboard_data(pool=self.pool, participant=self.participant)
+        self.assertFalse(PoolDashboardSnapshotJob.objects.filter(pool=self.pool).exists())
 
 
 class BackfillCommandTest(TestCase):
