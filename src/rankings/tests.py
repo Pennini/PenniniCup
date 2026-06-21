@@ -919,16 +919,21 @@ class SnapshotRoundForMatchTest(TestCase):
         self.assertEqual(by_pid[self.p_high.id].position, 1)
         self.assertEqual(by_pid[self.p_low.id].position, 2)
 
-        # Correção de placar: inverte para 0-1, p_low acerta. Re-snapshota.
+        # Correção de placar: inverte para 0-1; p_high erra (1-0 vs 0-1, ganhador errado).
+        # p_low não apostou. Ambos ficam com 0 pts. Empate resolvido por joined_at:
+        # p_high foi criado antes de p_low, portanto continua em 1º.
         self._finish(self.match, home=0, away=1)
         snapshot_round_for_match(self.match)
         rows = PoolRankingHistory.objects.filter(pool=self.pool, match=self.match)
         self.assertEqual(rows.count(), 2)
         by_pid = {r.participant_id: r for r in rows}
-        # Mantém round_index=1, mas posição pode mudar conforme o asof recalcula.
         self.assertTrue(all(r.round_index == 1 for r in rows))
+        # Posição após correção: determinística — ambos com 0 pts, tiebreak por joined_at.
+        self.assertEqual(by_pid[self.p_high.id].position, 1)
+        self.assertEqual(by_pid[self.p_low.id].position, 2)
 
     def test_second_match_increments_round_index(self):
+        # round_index vem de backfill_pool_history, que atribui índices monotônicos na ordem cronológica dos jogos.
         self._finish(self.match)
         snapshot_round_for_match(self.match)
         match2 = _make_match(self.season, self.stage, number=2, kickoff=timezone.now())
