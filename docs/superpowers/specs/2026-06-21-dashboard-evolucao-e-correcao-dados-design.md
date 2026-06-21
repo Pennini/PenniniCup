@@ -90,7 +90,7 @@ O diagnóstico (`diagnose_dashboard --participant`) confirma que os agregados es
 | ----------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------- |
 | Rei dos Placares        | mantém (lê `exact_score_hits`, sem drift)                                                    | só frescor (C)                                 |
 | Maior Escalada / Tobogã | "arrancada do pior até depois" — **já é** o cálculo atual de `_biggest_climb`/`_maior_queda` | só corrigir o histórico (B)                    |
-| Pé Frio                 | mantém "só apostou e zerou" (ausência não conta)                                             | só frescor (C)                                 |
+| Pé Frio                 | mantém "só apostou e zerou" (ausência não conta)                                             | **não é bug**; clarear rótulo (só finalizados) |
 | Lanterna                | último do ranking                                                                            | agora ao vivo (C1)                             |
 | Ioiô                    | mantém churn Σ\|Δpos\|                                                                       | corrigir histórico (B) + clarear texto do card |
 | **Pegando Fogo**        | **corrigir lógica** (bug real)                                                               | ver abaixo                                     |
@@ -98,11 +98,13 @@ O diagnóstico (`diagnose_dashboard --participant`) confirma que os agregados es
 
 **Pegando Fogo (`_longest_streak`) — bug real.** Hoje itera só as linhas de `PoolBetScore` existentes ordenadas por data; um jogo **sem palpite** (sem linha) fica invisível e a sequência "pula o buraco", inflando o número. Correção: percorrer a sequência cronológica dos jogos **finalizados** e quebrar a sequência tanto num jogo zerado quanto num jogo **sem palpite**. "Pontuando" = pontos > 0 (qualquer pontuação).
 
-**Dia Iluminado (`_best_day`)** — cálculo mantido (maior soma de pontos num dia Brasília; `TruncDate` já usa `TIME_ZONE`, sem off-by-one). Frontend: o card passa a exibir a data (o backend já envia `day`).
+**Pé Frio (`_pe_frio`) — não é bug.** Verificado no `Ramal`: a query é limpa (`points__lte=0`, só jogos finalizados), os dados estão limpos (0 palpites ausentes, nenhum `points` NULL, zero `stale`) e `eligible_ids == ranking completo` (33). Lazzo (19) é mesmo quem tem mais **jogos finalizados apostados e zerados**. A divergência que se vê no site vem de contar **jogos futuros/não finalizados** (apostados, ainda 0 pts) como "zerados" — o card conta só finalizados. Não é frescor (cache=18 vs fresh=19, ambos Lazzo, diferença trivial). Correção: rótulo do card explícito ("jogos finalizados sem pontuar"); sem mudança de lógica. (Confirmar com `--participant <nome>`: comparar `apostou e zerou`, que é o número que o card usa.)
+
+**Dia Iluminado (`_best_day`)** — cálculo mantido (maior soma de pontos num dia Brasília; `TruncDate` já usa `TIME_ZONE`, sem off-by-one; `match_date_brasilia` é `match_date_utc.astimezone(BRASILIA_TZ)`, mesmo instante → mesmo dia). Frontend: o card passa a exibir a data (o backend já envia `day`).
 
 **Ioiô** — número mantido (soma de todas as subidas/descidas no campeonato); melhorar o `hint`/texto do card para explicar o que ele representa.
 
-**Frontend (`dashboard.js`):** ajustar o config `HALL` — `best_day` exibe `entry.day`; `ioio` com hint mais claro.
+**Frontend (`dashboard.js`):** ajustar o config `HALL` — `best_day` exibe `entry.day`; `pe_frio` com rótulo "jogos finalizados sem pontuar"; `ioio` com hint mais claro.
 
 ### Reparo único (produção)
 
