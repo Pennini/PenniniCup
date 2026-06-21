@@ -91,7 +91,11 @@
 
         {# ---- Evolução dos participantes ---- #}
         <article class="area-evolution rounded-xl border border-neutral-800 bg-neutral-900/90 p-5 shadow-lg shadow-black/15" data-card="evolution">
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-400">Evolução dos participantes</h2>
+            <div class="flex flex-wrap items-center justify-between gap-3">
+                <h2 class="text-sm font-semibold uppercase tracking-wide text-neutral-400">Evolução do participante</h2>
+                <select data-evolution-select aria-label="Escolher participante"
+                        class="rounded-md border border-neutral-700 bg-neutral-900 px-2 py-1 text-sm text-neutral-200"></select>
+            </div>
             <div data-state="loading" class="mt-6 h-72 animate-pulse rounded-lg bg-neutral-800/60"></div>
             <p data-state="error" hidden class="mt-6 text-sm text-red-400">Não foi possível carregar.</p>
             <p data-state="empty" hidden class="mt-6 text-sm text-neutral-400">Ainda não há histórico de rodadas para exibir.</p>

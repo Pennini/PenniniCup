@@ -120,38 +120,28 @@
         el.querySelector('[data-field="utilization"]').textContent = fmtPercent(k.utilization);
     }
 
-    function renderEvolution(data) {
-        var el = card("evolution");
-        var series = (data.evolution && data.evolution.series) || [];
-        if (!series.length) {
-            setState(el, "empty");
-            return;
-        }
-        setState(el, "content");
+    var evolutionChart = null;
 
-        var paletteIndex = 0;
-        var datasets = series.map(function (s) {
-            var isUser = s.is_current_user;
-            var color = isUser ? USER_COLOR : PALETTE[paletteIndex++ % PALETTE.length];
-            return {
-                label: s.label,
-                data: s.points.map(function (point) {
-                    return { x: point.round, y: point.position, pts: point.points };
-                }),
-                borderColor: color,
-                backgroundColor: color,
-                borderWidth: isUser ? 4 : 2,
-                pointRadius: isUser ? 3 : 2,
-                pointHoverRadius: 5,
-                tension: 0.45,
-                cubicInterpolationMode: "monotone",
-                order: isUser ? 0 : 1,
-            };
-        });
-
-        drawChart("chart-evolution", {
+    function buildEvolutionConfig(serie) {
+        return {
             type: "line",
-            data: { datasets: datasets },
+            data: {
+                datasets: [
+                    {
+                        label: serie.label,
+                        data: serie.points.map(function (point) {
+                            return { x: point.round, y: point.position, pts: point.points };
+                        }),
+                        borderColor: USER_COLOR,
+                        backgroundColor: USER_COLOR,
+                        borderWidth: 4,
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                        tension: 0.45,
+                        cubicInterpolationMode: "monotone",
+                    },
+                ],
+            },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
@@ -172,7 +162,7 @@
                     },
                 },
                 plugins: {
-                    legend: { labels: { color: TICK_COLOR } },
+                    legend: { display: false },
                     tooltip: {
                         callbacks: {
                             label: function (ctx) {
@@ -183,7 +173,56 @@
                     },
                 },
             },
+        };
+    }
+
+    function renderEvolution(data) {
+        var el = card("evolution");
+        var evo = data.evolution || {};
+        var all = evo.all || [];
+        var select = el.querySelector("[data-evolution-select]");
+        if (!all.length) {
+            setState(el, "empty");
+            return;
+        }
+        setState(el, "content");
+
+        select.textContent = "";
+        all.forEach(function (serie) {
+            var opt = document.createElement("option");
+            opt.value = String(serie.participant_id);
+            opt.textContent = serie.label;
+            select.appendChild(opt);
         });
+
+        var current = evo.current_participant_id;
+        var hasCurrent = all.some(function (serie) {
+            return String(serie.participant_id) === String(current);
+        });
+        select.value = String(hasCurrent ? current : all[0].participant_id);
+
+        function draw() {
+            var serie = all.find(function (s) {
+                return String(s.participant_id) === String(select.value);
+            });
+            if (!serie || typeof window.Chart !== "function") {
+                return;
+            }
+            if (evolutionChart) {
+                evolutionChart.destroy();
+            }
+            try {
+                evolutionChart = new window.Chart(
+                    document.getElementById("chart-evolution"),
+                    buildEvolutionConfig(serie)
+                );
+            } catch (err) {
+                console.error("dashboard: chart 'chart-evolution' failed", err);
+            }
+        }
+
+        select.onchange = draw;
+        draw();
     }
 
     function renderUtilization(data) {

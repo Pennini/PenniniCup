@@ -1497,12 +1497,12 @@ class DashboardServiceTest(TestCase):
         flagged = [r for r in util["rows"] if r["is_current_user"]]
         self.assertEqual([r["label"] for r in flagged], ["dash-u1"])
 
-    def test_evolution_top5_plus_user_no_duplicates(self):
+    def test_evolution_all_contains_every_participant_with_history(self):
         evolution = build_dashboard_data(pool=self.pool, participant=self.p1)["evolution"]
-        series = evolution["series"]
-        self.assertEqual(len(series), 3)
-        self.assertTrue(all(len(s["points"]) == 2 for s in series))
-        self.assertEqual(sum(1 for s in series if s["is_current_user"]), 1)
+        ids = {s["participant_id"] for s in evolution["all"]}
+        self.assertEqual(ids, {self.p1.id, self.p2.id, self.p3.id})
+        self.assertTrue(all(len(s["points"]) == 2 for s in evolution["all"]))
+        self.assertEqual(evolution["current_participant_id"], self.p1.id)
 
     def test_hall_of_fame_highlights(self):
         hof = build_dashboard_data(pool=self.pool, participant=self.p1)["hall_of_fame"]
@@ -1565,7 +1565,7 @@ class DashboardServiceTest(TestCase):
         data = build_dashboard_data(pool=empty_pool, participant=participant)
         self.assertEqual(data["progress"]["percent"], 0.0)
         self.assertFalse(data["utilization"]["has_data"])
-        self.assertEqual(data["evolution"]["series"], [])
+        self.assertEqual(data["evolution"]["all"], [])
         self.assertIsNone(data["hall_of_fame"]["exact_scores"])
         self.assertIsNone(data["hall_of_fame"]["biggest_climb"])
         self.assertIsNone(data["hall_of_fame"]["pe_frio"])
@@ -1703,7 +1703,7 @@ class DashboardCacheTest(TestCase):
         process_next_dashboard_snapshot_job()
         snapshot = PoolDashboardSnapshot.objects.get(pool=self.pool)
         # The recomputed payload now carries the post-score evolution history.
-        self.assertTrue(snapshot.payload["evolution_series"])
+        self.assertTrue(snapshot.payload["evolution_all"])
 
     def test_overlay_matches_freshly_built_payload(self):
         # Output parity: cached path must equal a live build of the same pool.

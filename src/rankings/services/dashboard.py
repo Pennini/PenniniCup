@@ -23,7 +23,6 @@ from src.rankings.services.leaderboard import build_pool_leaderboard
 from src.rankings.services.match_guesses import resolve_default_match, stage_label
 
 # Top N caps requested by the spec.
-EVOLUTION_TOP_N = 10
 UTILIZATION_TOP_N = 10
 
 # Default per-match maximums when a pool has no custom PoolScoringConfig row.
@@ -53,13 +52,11 @@ def build_dashboard_pool_payload(*, pool):
     """
     leaderboard = build_pool_leaderboard(pool)
     username_by_id = {row.participant.id: row.participant.user.username for row in leaderboard}
-    eligible_ids = set(username_by_id)
+    eligible_ids = list(username_by_id)  # ordem do leaderboard (posição atual)
 
     finished_matches = _finished_matches(pool.season)
     finished_ids = [match.id for match in finished_matches]
     max_points_by_id, denominator = _utilization_inputs(pool, finished_matches)
-
-    selected_ids = [row.participant.id for row in leaderboard[:EVOLUTION_TOP_N]]
 
     return {
         "leader_points": leaderboard[0].participant.total_points if leaderboard else 0,
@@ -67,8 +64,7 @@ def build_dashboard_pool_payload(*, pool):
         "positions": {row.participant.id: row.position for row in leaderboard},
         "username_by_id": username_by_id,
         "max_points_by_id": max_points_by_id,
-        "selected_ids": selected_ids,
-        "evolution_series": _evolution_series(pool, selected_ids, username_by_id),
+        "evolution_all": _series_for_ids(pool, eligible_ids, username_by_id),
         "utilization_rows": _utilization_rows(leaderboard, max_points_by_id, denominator),
         "hall_of_fame": _hall_of_fame(pool, eligible_ids, username_by_id, leaderboard, finished_ids),
     }
@@ -100,7 +96,7 @@ def _overlay_participant(pool, participant, payload):
     return {
         "progress": _progress(pool),
         "kpis": _kpis_from_payload(payload, participant),
-        "evolution": _evolution_overlay(pool, payload, participant),
+        "evolution": _evolution_overlay(payload, participant),
         "utilization": _utilization_overlay(payload, participant),
         "hall_of_fame": payload["hall_of_fame"],
     }
@@ -225,23 +221,12 @@ def _series_for_ids(pool, ids, username_by_id):
     ]
 
 
-def _evolution_series(pool, selected_ids, username_by_id):
-    """Pool-wide trajectories for the top N current participants (cacheable)."""
-    return _series_for_ids(pool, selected_ids, username_by_id)
-
-
-def _evolution_overlay(pool, payload, participant):
-    """Top N cached series + the logged user's own series when outside the top N,
-    flagging which series is the current user. Mirrors the original behaviour.
-    """
-    selected_ids = payload["selected_ids"]
-    series = [
-        {**row, "is_current_user": row["participant_id"] == participant.id} for row in payload["evolution_series"]
-    ]
-    if participant.id in payload["username_by_id"] and participant.id not in selected_ids:
-        own = _series_for_ids(pool, [participant.id], payload["username_by_id"])
-        series.extend({**row, "is_current_user": True} for row in own)
-    return {"series": series}
+def _evolution_overlay(payload, participant):
+    """Séries já completas no cache; o overlay só marca a seleção padrão."""
+    return {
+        "all": payload.get("evolution_all", []),
+        "current_participant_id": participant.id,
+    }
 
 
 def _utilization_rows(leaderboard, max_points_by_id, denominator):
