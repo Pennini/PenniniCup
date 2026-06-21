@@ -54,11 +54,10 @@ def build_dashboard_pool_payload(*, pool):
     eligible_ids = list(username_by_id)  # ordem do leaderboard (posição atual)
 
     finished_matches = _finished_matches(pool.season)
-    finished_ids = [match.id for match in finished_matches]
 
     return {
         "evolution_all": _series_for_ids(pool, eligible_ids, username_by_id),
-        "hall_of_fame": _hall_of_fame(pool, eligible_ids, username_by_id, leaderboard, finished_ids),
+        "hall_of_fame": _hall_of_fame(pool, eligible_ids, username_by_id, leaderboard, finished_matches),
         "version": _pool_version_tuple(pool),
     }
 
@@ -258,11 +257,12 @@ def _utilization_live(leaderboard, participant, denominator, max_points_by_id):
     return {"has_data": bool(denominator), "rows": rows[:UTILIZATION_TOP_N]}
 
 
-def _hall_of_fame(pool, eligible_ids, username_by_id, leaderboard, finished_ids):
+def _hall_of_fame(pool, eligible_ids, username_by_id, leaderboard, finished_matches):
+    finished_ids = [match.id for match in finished_matches]
     return {
         "exact_scores": _king_of_scores(eligible_ids, username_by_id),
         "biggest_climb": _biggest_climb(pool, eligible_ids, username_by_id),
-        "longest_streak": _longest_streak(pool, eligible_ids, username_by_id),
+        "longest_streak": _longest_streak(eligible_ids, username_by_id, finished_matches),
         "best_day": _best_day(pool, eligible_ids, username_by_id),
         "pe_frio": _pe_frio(eligible_ids, username_by_id, finished_ids),
         "lanterna": _lanterna(leaderboard, username_by_id),
@@ -321,31 +321,40 @@ def _biggest_climb(pool, eligible_ids, username_by_id):
     return _entry(username_by_id.get(best_id, ""), best_climb)
 
 
-def _longest_streak(pool, eligible_ids, username_by_id):
-    """Longest run of consecutive games (chronological) where the participant
-    scored more than zero points.
+def _longest_streak(eligible_ids, username_by_id, finished_matches):
+    """Maior sequência de jogos finalizados CONSECUTIVOS com pontos > 0.
+
+    Percorre os jogos finalizados em ordem cronológica e quebra a sequência tanto
+    num jogo zerado quanto num jogo SEM palpite (sem linha de PoolBetScore) — não
+    pula buracos como a versão antiga, que só via as linhas existentes.
     """
-    rows = (
-        PoolBetScore.objects.filter(bet__participant_id__in=eligible_ids)
-        .values("bet__participant_id", "points")
-        .order_by("bet__participant_id", "bet__match__match_date_brasilia", "bet__match__match_number")
-    )
+    if not finished_matches:
+        return None
+
+    ordered = sorted(finished_matches, key=lambda match: (match.match_date_utc, match.match_number, match.id))
+    match_ids = [match.id for match in ordered]
+
+    points_by_key = {
+        (row["bet__participant_id"], row["bet__match_id"]): row["points"]
+        for row in PoolBetScore.objects.filter(
+            bet__participant_id__in=eligible_ids,
+            bet__match_id__in=match_ids,
+        ).values("bet__participant_id", "bet__match_id", "points")
+    }
+
     best_id = None
     best_streak = 0
-    current_id = None
-    current_streak = 0
-    for row in rows:
-        pid = row["bet__participant_id"]
-        if pid != current_id:
-            current_id = pid
-            current_streak = 0
-        if row["points"] and row["points"] > 0:
-            current_streak += 1
-        else:
-            current_streak = 0
-        if current_streak > best_streak:
-            best_streak = current_streak
-            best_id = pid
+    for pid in eligible_ids:  # ordem do leaderboard = desempate determinístico
+        current = 0
+        for mid in match_ids:
+            pts = points_by_key.get((pid, mid))
+            if pts and pts > 0:
+                current += 1
+                if current > best_streak:
+                    best_streak = current
+                    best_id = pid
+            else:
+                current = 0
 
     if best_id is None or best_streak <= 0:
         return None

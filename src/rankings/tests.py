@@ -1599,6 +1599,79 @@ class DashboardServiceTest(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="pool-selector"')
 
+    def test_longest_streak_breaks_on_missing_bet(self):
+        import datetime
+
+        # Bolão isolado com 3 jogos finalizados cronológicos.
+        # O único participante pontua no 1 e no 3, mas NÃO apostou no 2 (jogo do meio).
+        # A sequência real é 1 (não pode pular o buraco).
+        competition = Competition.objects.create(fifa_id=963, name="Copa Streak")
+        season = Season.objects.create(
+            fifa_id=963,
+            competition=competition,
+            name="Temporada Streak",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage = Stage.objects.create(fifa_id="ST963G", season=season, name="Group Stage", order=963)
+        pool = Pool.objects.create(
+            name="Pool Streak",
+            slug="pool-streak",
+            season=season,
+            created_by=self.owner,
+            requires_payment=False,
+        )
+        day = timezone.make_aware(datetime.datetime(2026, 6, 10, 10, 0))
+        m_a = Match.objects.create(
+            fifa_id="SK-M1",
+            season=season,
+            stage=stage,
+            match_number=1,
+            match_date_utc=day,
+            match_date_local=day,
+            match_date_brasilia=day,
+            home_score=1,
+            away_score=0,
+            status=Match.STATUS_FINISHED,
+        )
+        Match.objects.create(
+            fifa_id="SK-M2",
+            season=season,
+            stage=stage,
+            match_number=2,
+            match_date_utc=day + timedelta(hours=6),
+            match_date_local=day + timedelta(hours=6),
+            match_date_brasilia=day + timedelta(hours=6),
+            home_score=2,
+            away_score=1,
+            status=Match.STATUS_FINISHED,
+        )
+        m_c = Match.objects.create(
+            fifa_id="SK-M3",
+            season=season,
+            stage=stage,
+            match_number=3,
+            match_date_utc=day + timedelta(hours=12),
+            match_date_local=day + timedelta(hours=12),
+            match_date_brasilia=day + timedelta(hours=12),
+            home_score=0,
+            away_score=0,
+            status=Match.STATUS_FINISHED,
+        )
+        u = User.objects.create_user(username="streak-u", email="su@example.com", password="123456Aa!")
+        p = PoolParticipant.objects.create(pool=pool, user=u, is_active=True, total_points=50)
+        # Cria bet+score manualmente para m_a e m_c; m_b sem palpite (buraco).
+        bet_a = PoolBet.objects.create(participant=p, match=m_a, home_score_pred=1, away_score_pred=0, is_active=True)
+        PoolBetScore.objects.create(bet=bet_a, points=25, exact_score=True)
+        # m_b: SEM palpite — não cria bet/score.
+        bet_c = PoolBet.objects.create(participant=p, match=m_c, home_score_pred=0, away_score_pred=0, is_active=True)
+        PoolBetScore.objects.create(bet=bet_c, points=25, exact_score=True)
+
+        hof = build_dashboard_data(pool=pool, participant=p)["hall_of_fame"]
+        self.assertEqual(hof["longest_streak"]["username"], "streak-u")
+        self.assertEqual(hof["longest_streak"]["value"], 1)
+
 
 class DashboardCacheTest(TestCase):
     """The dashboard no longer recomputes the heavy pool-wide aggregate on every

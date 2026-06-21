@@ -23,11 +23,11 @@
         { key: "exact_scores", emoji: "🎯", label: "Rei dos Placares", hint: "placares exatos cravados", accent: "text-orange-400", fmt: function (v) { return v; } },
         { key: "biggest_climb", emoji: "📈", label: "Maior Escalada", hint: "posições ganhas numa arrancada", accent: "text-emerald-400", fmt: function (v) { return "+" + v; } },
         { key: "longest_streak", emoji: "🔥", label: "Pegando Fogo", hint: "jogos seguidos pontuando", accent: "text-red-400", fmt: function (v) { return v; } },
-        { key: "best_day", emoji: "☀️", label: "Dia Iluminado", hint: "pontos num só dia", accent: "text-yellow-400", fmt: function (v) { return v + " pts"; } },
-        { key: "pe_frio", emoji: "🥶", label: "Pé Frio", hint: "jogos zerados (azarão)", accent: "text-sky-400", fmt: function (v) { return v; } },
+        { key: "best_day", emoji: "☀️", label: "Dia Iluminado", hint: "maior pontuação num só dia", accent: "text-yellow-400", fmt: function (v) { return v + " pts"; }, sub: function (e) { return e && e.day ? "em " + fmtDia(e.day) : ""; } },
+        { key: "pe_frio", emoji: "🥶", label: "Pé Frio", hint: "jogos finalizados sem pontuar", accent: "text-sky-400", fmt: function (v) { return v; } },
         { key: "maior_queda", emoji: "📉", label: "Tobogã", hint: "despencou no ranking", accent: "text-purple-400", fmt: function (v) { return "-" + v; } },
         { key: "lanterna", emoji: "🔦", label: "Lanterna", hint: "segurando a tocha", accent: "text-neutral-300", fmt: function (v) { return "#" + v; } },
-        { key: "ioio", emoji: "🪀", label: "Ioiô", hint: "subiu e desceu sem parar", accent: "text-pink-400", fmt: function (v) { return v; } },
+        { key: "ioio", emoji: "🪀", label: "Ioiô", hint: "oscilou muito (soma das mudanças de posição)", accent: "text-pink-400", fmt: function (v) { return v; } },
     ];
 
     function card(name) {
@@ -76,6 +76,11 @@
 
     function fmtPercent(value) {
         return (Number(value) || 0).toFixed(1).replace(".", ",") + "%";
+    }
+
+    function fmtDia(iso) {
+        var parts = String(iso || "").split("-");
+        return parts.length === 3 ? parts[2] + "/" + parts[1] : "";
     }
 
     function renderProgress(data) {
@@ -305,6 +310,14 @@
         value.className = "rounded-full bg-neutral-800 px-2.5 py-0.5 text-sm font-bold text-neutral-100";
         value.textContent = has ? cfg.fmt(entry.value) : "—";
 
+        var subText = cfg.sub ? cfg.sub(entry) : "";
+        var sub = null;
+        if (has && subText) {
+            sub = document.createElement("p");
+            sub.className = "text-[11px] font-medium text-neutral-300";
+            sub.textContent = subText;
+        }
+
         var hint = document.createElement("p");
         hint.className = "text-[11px] text-neutral-400";
         hint.textContent = cfg.hint;
@@ -313,6 +326,9 @@
         cardEl.appendChild(label);
         cardEl.appendChild(winner);
         cardEl.appendChild(value);
+        if (sub) {
+            cardEl.appendChild(sub);
+        }
         cardEl.appendChild(hint);
         return cardEl;
     }
