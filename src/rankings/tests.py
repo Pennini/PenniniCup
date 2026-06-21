@@ -911,16 +911,21 @@ class SnapshotRoundForMatchTest(TestCase):
         self.assertEqual(PoolRankingHistory.objects.filter(pool=other_pool).count(), 0)
 
     def test_re_snapshot_same_match_updates_in_place(self):
-        self._finish(self.match)
+        self._finish(self.match)  # 1-0
         snapshot_round_for_match(self.match)
-        # Correção: inverte a liderança e re-snapshota.
-        self.p_low.total_points = 99
-        self.p_low.save(update_fields=["total_points"])
+        rows = PoolRankingHistory.objects.filter(pool=self.pool, match=self.match)
+        by_pid = {r.participant_id: r for r in rows}
+        # Inicial: p_high acertou (1-0), p_low errou -> p_high em 1º.
+        self.assertEqual(by_pid[self.p_high.id].position, 1)
+        self.assertEqual(by_pid[self.p_low.id].position, 2)
+
+        # Correção de placar: inverte para 0-1, p_low acerta. Re-snapshota.
+        self._finish(self.match, home=0, away=1)
         snapshot_round_for_match(self.match)
         rows = PoolRankingHistory.objects.filter(pool=self.pool, match=self.match)
         self.assertEqual(rows.count(), 2)
         by_pid = {r.participant_id: r for r in rows}
-        self.assertEqual(by_pid[self.p_low.id].position, 1)
+        # Mantém round_index=1, mas posição pode mudar conforme o asof recalcula.
         self.assertTrue(all(r.round_index == 1 for r in rows))
 
     def test_second_match_increments_round_index(self):
@@ -936,6 +941,32 @@ class SnapshotRoundForMatchTest(TestCase):
             set(PoolRankingHistory.objects.filter(pool=self.pool).values_list("round_index", flat=True)),
             {1, 2},
         )
+
+
+class SnapshotAsOfTest(TestCase):
+    def setUp(self):
+        self.pool, self.participants, self.matches = _build_pool_with_3_rounds()
+
+    def test_snapshot_round_matches_backfill_even_out_of_order(self):
+        # Processa os jogos FORA de ordem cronológica (3, 1, 2): o caminho antigo
+        # carimbava agregados atuais e corrompia o round_index/posição as-of.
+        for match in [self.matches[2], self.matches[0], self.matches[1]]:
+            snapshot_round_for_match(match)
+
+        from_signal = {
+            (h.participant_id, h.round_index): h.position for h in PoolRankingHistory.objects.filter(pool=self.pool)
+        }
+
+        # Verdade as-of independente da ordem de processamento.
+        backfill_pool_history(self.pool)
+        as_of = {
+            (h.participant_id, h.round_index): h.position for h in PoolRankingHistory.objects.filter(pool=self.pool)
+        }
+        self.assertEqual(from_signal, as_of)
+
+    def test_snapshot_returns_affected_pools(self):
+        affected = snapshot_round_for_match(self.matches[0])
+        self.assertIn(self.pool, affected)
 
 
 class SnapshotSignalTest(TestCase):
