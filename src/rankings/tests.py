@@ -1744,6 +1744,28 @@ def _make_admin_request():
     return request
 
 
+class RefreshDerivedDataTest(TestCase):
+    def setUp(self):
+        self.pool, self.participants, self.matches = _build_pool_with_3_rounds()
+
+    def test_recalculate_all_pools_rebuilds_history_and_enqueues_dashboard(self):
+        from src.pool.services.ranking import recalculate_all_pools
+
+        # Simula o sync: nenhum sinal, histórico/dashboard ainda vazios.
+        PoolRankingHistory.objects.filter(pool=self.pool).delete()
+        self.assertFalse(PoolDashboardSnapshotJob.objects.filter(pool=self.pool).exists())
+
+        recalculate_all_pools(season=self.pool.season)
+
+        # Histórico as-of reconstruído (3 rodadas x 3 participantes).
+        self.assertEqual(
+            PoolRankingHistory.objects.filter(pool=self.pool).count(),
+            3 * len(self.participants),
+        )
+        # Rebuild da dashboard enfileirado para o bolão.
+        self.assertTrue(PoolDashboardSnapshotJob.objects.filter(pool=self.pool).exists())
+
+
 class BackfillAdminActionTest(TestCase):
     def setUp(self):
         self.pool, self.participants, self.matches = _build_pool_with_3_rounds()

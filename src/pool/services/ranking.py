@@ -311,12 +311,15 @@ def recalculate_pool_scores(pool):
 
 
 def recalculate_all_pools(season=None):
+    from src.rankings.services.derived import refresh_pool_derived_data
+
     pools = Pool.objects.filter(is_active=True)
     if season is not None:
         pools = pools.filter(season=season)
 
     for pool in pools:
         recalculate_pool_scores(pool)
+        refresh_pool_derived_data(pool)
 
 
 def recalculate_match_scores(match):
