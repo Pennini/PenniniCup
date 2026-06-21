@@ -41,6 +41,7 @@ Impacto: KPIs (posição), aproveitamento e Hall da Fama servidos do cache velho
 - Corrigir o snapshot de histórico (as-of) e fechar o gap de gatilho do sync.
 - Tornar KPIs e aproveitamento **ao vivo** (sem cache).
 - Rede de segurança: guard de frescor na leitura do cache.
+- Corrigir o Hall da Fama (lógica do Pegando Fogo, data do Dia Iluminado, texto do Ioiô) — ver Seção D.
 - Reparo único dos dados em produção.
 
 **Fora:**
@@ -81,6 +82,28 @@ Unificar o caminho ao vivo no motor as-of já correto: para cada bolão afetado,
 
 **C3 — guard de frescor na leitura (rede de segurança).** Gravar no payload um token de versão barato (nº de jogos finalizados + nº de elegíveis + maior `round_index` do histórico). Em `_get_or_build_pool_payload`, calcular a versão ao vivo (barata); se diferir da gravada, `enqueue_dashboard_snapshot(pool)` (não bloqueante) e servir o cache atual desta vez — como KPIs/posição/aproveitamento já são ao vivo, o único dado momentaneamente velho é Hall/evolução, que se corrige no próximo load (~1s). Auto-cura também em joins, aprovação de pagamento e edições manuais — não só placares.
 
+### Seção D — Hall da Fama: correções e definições
+
+O diagnóstico (`diagnose_dashboard --participant`) confirma que os agregados estão corretos; os troféus aparecem "errados" por (a) cache velho (Seção C) e (b) histórico corrompido (Seção B). Definições escolhidas pelo dono do produto:
+
+| Troféu                  | Decisão                                                                                      | O que muda                                     |
+| ----------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Rei dos Placares        | mantém (lê `exact_score_hits`, sem drift)                                                    | só frescor (C)                                 |
+| Maior Escalada / Tobogã | "arrancada do pior até depois" — **já é** o cálculo atual de `_biggest_climb`/`_maior_queda` | só corrigir o histórico (B)                    |
+| Pé Frio                 | mantém "só apostou e zerou" (ausência não conta)                                             | só frescor (C)                                 |
+| Lanterna                | último do ranking                                                                            | agora ao vivo (C1)                             |
+| Ioiô                    | mantém churn Σ\|Δpos\|                                                                       | corrigir histórico (B) + clarear texto do card |
+| **Pegando Fogo**        | **corrigir lógica** (bug real)                                                               | ver abaixo                                     |
+| **Dia Iluminado**       | mantém cálculo                                                                               | **mostrar a data no card**                     |
+
+**Pegando Fogo (`_longest_streak`) — bug real.** Hoje itera só as linhas de `PoolBetScore` existentes ordenadas por data; um jogo **sem palpite** (sem linha) fica invisível e a sequência "pula o buraco", inflando o número. Correção: percorrer a sequência cronológica dos jogos **finalizados** e quebrar a sequência tanto num jogo zerado quanto num jogo **sem palpite**. "Pontuando" = pontos > 0 (qualquer pontuação).
+
+**Dia Iluminado (`_best_day`)** — cálculo mantido (maior soma de pontos num dia Brasília; `TruncDate` já usa `TIME_ZONE`, sem off-by-one). Frontend: o card passa a exibir a data (o backend já envia `day`).
+
+**Ioiô** — número mantido (soma de todas as subidas/descidas no campeonato); melhorar o `hint`/texto do card para explicar o que ele representa.
+
+**Frontend (`dashboard.js`):** ajustar o config `HALL` — `best_day` exibe `entry.day`; `ioio` com hint mais claro.
+
 ### Reparo único (produção)
 
 Após o deploy: `backfill_ranking_history --all` + rebuild dos `PoolDashboardSnapshot` (enfileirar/recalcular), para a produção ficar correta imediatamente, sem esperar o próximo sync.
@@ -111,7 +134,8 @@ Request da dashboard (pool_dashboard_data)
 - Chokepoint de recálculo reconstrói histórico + enfileira dashboard.
 - Guard C3 enfileira rebuild quando o token de versão diverge.
 - `evolution_all` contém todos os elegíveis com histórico; overlay marca `current_participant_id`.
-- Frontend: o seletor troca a série exibida sem novo fetch (verificação manual/representativa).
+- Pegando Fogo: a sequência quebra num jogo zerado **e** num jogo sem palpite (não pula buracos); conta só jogos finalizados.
+- Frontend: o seletor troca a série exibida sem novo fetch; Dia Iluminado mostra a data (verificação manual/representativa).
 
 ## Riscos / trade-offs
 
