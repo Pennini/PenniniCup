@@ -1858,6 +1858,25 @@ class RefreshDerivedDataTest(TestCase):
         self.assertTrue(PoolDashboardSnapshotJob.objects.filter(pool=self.pool).exists())
 
 
+class RebuildDashboardSnapshotsCommandTest(TestCase):
+    def setUp(self):
+        self.pool, self.participants, self.matches = _build_pool_with_3_rounds()
+        backfill_pool_history(self.pool)
+
+    def test_rebuild_pool_writes_snapshot(self):
+        out = StringIO()
+        self.assertFalse(PoolDashboardSnapshot.objects.filter(pool=self.pool).exists())
+        call_command("rebuild_dashboard_snapshots", pool=self.pool.slug, stdout=out)
+        snap = PoolDashboardSnapshot.objects.get(pool=self.pool)
+        self.assertIn("evolution_all", snap.payload)
+        self.assertIn("version", snap.payload)
+        self.assertIn(self.pool.slug, out.getvalue())
+
+    def test_requires_a_selector(self):
+        with self.assertRaises(CommandError):
+            call_command("rebuild_dashboard_snapshots")
+
+
 class BackfillAdminActionTest(TestCase):
     def setUp(self):
         self.pool, self.participants, self.matches = _build_pool_with_3_rounds()
