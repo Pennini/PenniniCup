@@ -1,6 +1,7 @@
 import logging
 
 from django.db import transaction
+from django.db.models import F
 from django.db.utils import NotSupportedError
 from django.utils import timezone
 
@@ -85,11 +86,32 @@ def process_next_ranking_snapshot_job():
         # Histórico já gravado: agora rearma a dashboard de cada bolão afetado.
         for pool in affected_pools:
             enqueue_dashboard_snapshot(pool)
-        PoolRankingSnapshotJob.objects.filter(id=job.id).update(
+
+        # CAS: só marca IDLE se o job ainda está em PROCESSING. Um enqueue()
+        # concorrente (ex.: correção de placar durante o cálculo) pode ter voltado
+        # o status para PENDING; nesse caso preservamos o PENDING para o próximo
+        # ciclo em vez de sobrescrever para IDLE e perder o pedido.
+        updated = PoolRankingSnapshotJob.objects.filter(
+            id=job.id,
+            status=PoolRankingSnapshotJob.STATUS_PROCESSING,
+        ).update(
             status=PoolRankingSnapshotJob.STATUS_IDLE,
             last_finished_at=timezone.now(),
             last_error="",
         )
+        if not updated:
+            # Re-enqueue concorrente venceu o CAS. O snapshot foi concluído, então
+            # devolvemos a tentativa consumida ao reivindicar o job para que
+            # correções de placar frequentes não esgotem MAX_ATTEMPTS.
+            PoolRankingSnapshotJob.objects.filter(
+                id=job.id,
+                status=PoolRankingSnapshotJob.STATUS_PENDING,
+                attempts__gt=0,
+            ).update(attempts=F("attempts") - 1)
+            logger.warning(
+                "Snapshot re-enfileirado durante processamento, tentativa devolvida: match_id=%s",
+                job.match_id,
+            )
     except Exception as exc:  # pragma: no cover
         logger.exception(
             "Erro ao snapshotar rodada: match_id=%s attempts=%s",

@@ -1,6 +1,7 @@
 from datetime import timedelta
 from io import StringIO
 from types import SimpleNamespace
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -1070,6 +1071,27 @@ class SnapshotQueueTest(TestCase):
         self.assertEqual(processed.status, PoolRankingSnapshotJob.STATUS_IDLE)
         self.assertEqual(PoolRankingHistory.objects.filter(pool=self.pool, match=self.match).count(), 1)
 
+    def test_concurrent_reenqueue_during_processing_is_not_clobbered(self):
+        # Correção de placar chegando enquanto o job está PROCESSING volta o
+        # status para PENDING. O write terminal (CAS) não pode sobrescrever para
+        # IDLE e perder esse pedido — senão o histórico fica desatualizado.
+        enqueue_ranking_snapshot(self.match)
+
+        def reenqueue_mid_flight(match):
+            enqueue_ranking_snapshot(self.match)
+            return []
+
+        with mock.patch(
+            "src.rankings.services.snapshot_queue.snapshot_round_for_match",
+            side_effect=reenqueue_mid_flight,
+        ):
+            process_next_ranking_snapshot_job()
+
+        job = PoolRankingSnapshotJob.objects.get(match=self.match)
+        self.assertEqual(job.status, PoolRankingSnapshotJob.STATUS_PENDING)
+        # Re-enqueue zerou attempts; o ramo "devolve tentativa" não desce abaixo de 0.
+        self.assertEqual(job.attempts, 0)
+
 
 class LeaderboardMovementTest(TestCase):
     def setUp(self):
@@ -1755,6 +1777,26 @@ class DashboardCacheTest(TestCase):
         self.participant.refresh_from_db()
         data = build_dashboard_data(pool=self.pool, participant=self.participant)
         self.assertEqual(data["hall_of_fame"]["exact_scores"]["value"], 7)
+
+    def test_concurrent_reenqueue_during_processing_is_not_clobbered(self):
+        # Re-enqueue (ex.: novo snapshot de ranking) chegando durante o cálculo
+        # volta o job para PENDING. O write terminal (CAS) deve preservar esse
+        # PENDING em vez de sobrescrever para IDLE e perder o recálculo.
+        enqueue_dashboard_snapshot(self.pool)
+
+        def reenqueue_mid_flight(*, pool):
+            enqueue_dashboard_snapshot(self.pool)
+            return {"evolution_all": [], "hall_of_fame": {}, "version": [0, 0, 0]}
+
+        with mock.patch(
+            "src.rankings.services.dashboard_queue.build_dashboard_pool_payload",
+            side_effect=reenqueue_mid_flight,
+        ):
+            process_next_dashboard_snapshot_job()
+
+        job = PoolDashboardSnapshotJob.objects.get(pool=self.pool)
+        self.assertEqual(job.status, PoolDashboardSnapshotJob.STATUS_PENDING)
+        self.assertEqual(job.attempts, 0)
 
     def test_match_score_signal_recomputes_dashboard_via_workers(self):
         # Prime the cache, then a fresh score must end up reflected after both
