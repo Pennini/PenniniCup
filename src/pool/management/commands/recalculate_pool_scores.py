@@ -22,6 +22,9 @@ class Command(BaseCommand):
                 self.stdout.write(f"Bolao {pool_id} nao encontrado")
                 return
             recalculate_pool_scores(pool)
+            from src.rankings.services.derived import refresh_pool_derived_data
+
+            refresh_pool_derived_data(pool)
             self.stdout.write(f"Pontuacoes recalculadas para bolao {pool_id}")
             logger.info("Pontuacoes recalculadas para bolao %s", pool_id)
             return

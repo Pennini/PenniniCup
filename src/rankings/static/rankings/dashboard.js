@@ -23,11 +23,11 @@
         { key: "exact_scores", emoji: "🎯", label: "Rei dos Placares", hint: "placares exatos cravados", accent: "text-orange-400", fmt: function (v) { return v; } },
         { key: "biggest_climb", emoji: "📈", label: "Maior Escalada", hint: "posições ganhas numa arrancada", accent: "text-emerald-400", fmt: function (v) { return "+" + v; } },
         { key: "longest_streak", emoji: "🔥", label: "Pegando Fogo", hint: "jogos seguidos pontuando", accent: "text-red-400", fmt: function (v) { return v; } },
-        { key: "best_day", emoji: "☀️", label: "Dia Iluminado", hint: "pontos num só dia", accent: "text-yellow-400", fmt: function (v) { return v + " pts"; } },
-        { key: "pe_frio", emoji: "🥶", label: "Pé Frio", hint: "jogos zerados (azarão)", accent: "text-sky-400", fmt: function (v) { return v; } },
+        { key: "best_day", emoji: "☀️", label: "Dia Iluminado", hint: "maior pontuação num só dia", accent: "text-yellow-400", fmt: function (v) { return v + " pts"; }, sub: function (e) { return e && e.day ? "em " + fmtDia(e.day) : ""; } },
+        { key: "pe_frio", emoji: "🥶", label: "Pé Frio", hint: "jogos finalizados sem pontuar", accent: "text-sky-400", fmt: function (v) { return v; } },
         { key: "maior_queda", emoji: "📉", label: "Tobogã", hint: "despencou no ranking", accent: "text-purple-400", fmt: function (v) { return "-" + v; } },
         { key: "lanterna", emoji: "🔦", label: "Lanterna", hint: "segurando a tocha", accent: "text-neutral-300", fmt: function (v) { return "#" + v; } },
-        { key: "ioio", emoji: "🪀", label: "Ioiô", hint: "subiu e desceu sem parar", accent: "text-pink-400", fmt: function (v) { return v; } },
+        { key: "ioio", emoji: "🪀", label: "Ioiô", hint: "oscilou muito (soma das mudanças de posição)", accent: "text-pink-400", fmt: function (v) { return v; } },
     ];
 
     function card(name) {
@@ -78,6 +78,11 @@
         return (Number(value) || 0).toFixed(1).replace(".", ",") + "%";
     }
 
+    function fmtDia(iso) {
+        var parts = String(iso || "").split("-");
+        return parts.length === 3 ? parts[2] + "/" + parts[1] : "";
+    }
+
     function renderProgress(data) {
         var el = card("progress");
         var p = data.progress || {};
@@ -120,38 +125,28 @@
         el.querySelector('[data-field="utilization"]').textContent = fmtPercent(k.utilization);
     }
 
-    function renderEvolution(data) {
-        var el = card("evolution");
-        var series = (data.evolution && data.evolution.series) || [];
-        if (!series.length) {
-            setState(el, "empty");
-            return;
-        }
-        setState(el, "content");
+    var evolutionChart = null;
 
-        var paletteIndex = 0;
-        var datasets = series.map(function (s) {
-            var isUser = s.is_current_user;
-            var color = isUser ? USER_COLOR : PALETTE[paletteIndex++ % PALETTE.length];
-            return {
-                label: s.label,
-                data: s.points.map(function (point) {
-                    return { x: point.round, y: point.position, pts: point.points };
-                }),
-                borderColor: color,
-                backgroundColor: color,
-                borderWidth: isUser ? 4 : 2,
-                pointRadius: isUser ? 3 : 2,
-                pointHoverRadius: 5,
-                tension: 0.45,
-                cubicInterpolationMode: "monotone",
-                order: isUser ? 0 : 1,
-            };
-        });
-
-        drawChart("chart-evolution", {
+    function buildEvolutionConfig(serie) {
+        return {
             type: "line",
-            data: { datasets: datasets },
+            data: {
+                datasets: [
+                    {
+                        label: serie.label,
+                        data: serie.points.map(function (point) {
+                            return { x: point.round, y: point.position, pts: point.points };
+                        }),
+                        borderColor: USER_COLOR,
+                        backgroundColor: USER_COLOR,
+                        borderWidth: 4,
+                        pointRadius: 3,
+                        pointHoverRadius: 5,
+                        tension: 0.45,
+                        cubicInterpolationMode: "monotone",
+                    },
+                ],
+            },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
@@ -172,18 +167,72 @@
                     },
                 },
                 plugins: {
-                    legend: { labels: { color: TICK_COLOR } },
+                    legend: { display: false },
                     tooltip: {
+                        displayColors: false,
                         callbacks: {
+                            title: function (items) {
+                                var raw = (items[0] && items[0].raw) || {};
+                                return "Rodada " + raw.x;
+                            },
                             label: function (ctx) {
                                 var raw = ctx.raw || {};
-                                return ctx.dataset.label + ": #" + raw.y + " (" + raw.pts + " pts)";
+                                return "Posição: #" + raw.y + "  (" + raw.pts + " pts)";
                             },
                         },
                     },
                 },
             },
+        };
+    }
+
+    function renderEvolution(data) {
+        var el = card("evolution");
+        var evo = data.evolution || {};
+        var all = evo.all || [];
+        var select = el.querySelector("[data-evolution-select]");
+        if (!all.length) {
+            setState(el, "empty");
+            return;
+        }
+        setState(el, "content");
+
+        select.textContent = "";
+        all.forEach(function (serie) {
+            var opt = document.createElement("option");
+            opt.value = String(serie.participant_id);
+            opt.textContent = serie.label;
+            select.appendChild(opt);
         });
+
+        var current = evo.current_participant_id;
+        var hasCurrent = all.some(function (serie) {
+            return String(serie.participant_id) === String(current);
+        });
+        select.value = String(hasCurrent ? current : all[0].participant_id);
+
+        function draw() {
+            var serie = all.find(function (s) {
+                return String(s.participant_id) === String(select.value);
+            });
+            if (!serie || typeof window.Chart !== "function") {
+                return;
+            }
+            if (evolutionChart) {
+                evolutionChart.destroy();
+            }
+            try {
+                evolutionChart = new window.Chart(
+                    document.getElementById("chart-evolution"),
+                    buildEvolutionConfig(serie)
+                );
+            } catch (err) {
+                console.error("dashboard: chart 'chart-evolution' failed", err);
+            }
+        }
+
+        select.onchange = draw;
+        draw();
     }
 
     function renderUtilization(data) {
@@ -266,6 +315,14 @@
         value.className = "rounded-full bg-neutral-800 px-2.5 py-0.5 text-sm font-bold text-neutral-100";
         value.textContent = has ? cfg.fmt(entry.value) : "—";
 
+        var subText = cfg.sub ? cfg.sub(entry) : "";
+        var sub = null;
+        if (has && subText) {
+            sub = document.createElement("p");
+            sub.className = "text-[11px] font-medium text-neutral-300";
+            sub.textContent = subText;
+        }
+
         var hint = document.createElement("p");
         hint.className = "text-[11px] text-neutral-400";
         hint.textContent = cfg.hint;
@@ -274,6 +331,9 @@
         cardEl.appendChild(label);
         cardEl.appendChild(winner);
         cardEl.appendChild(value);
+        if (sub) {
+            cardEl.appendChild(sub);
+        }
         cardEl.appendChild(hint);
         return cardEl;
     }

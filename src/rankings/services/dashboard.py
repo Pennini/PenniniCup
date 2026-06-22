@@ -11,7 +11,7 @@ Reuses the single sources of truth already in the codebase: `build_pool_leaderbo
 (live → next → last) and `phase_for_match` (group vs knockout).
 """
 
-from django.db.models import Count, Sum
+from django.db.models import Count, Max, Q, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 
@@ -23,7 +23,6 @@ from src.rankings.services.leaderboard import build_pool_leaderboard
 from src.rankings.services.match_guesses import resolve_default_match, stage_label
 
 # Top N caps requested by the spec.
-EVOLUTION_TOP_N = 10
 UTILIZATION_TOP_N = 10
 
 # Default per-match maximums when a pool has no custom PoolScoringConfig row.
@@ -47,61 +46,56 @@ def build_dashboard_pool_payload(*, pool):
     """Pool-wide (participant-independent) part of the dashboard.
 
     Everything here is identical for every participant, so it is computed once
-    and cached. Per-participant data (KPIs, current-user flags) is added later in
-    `_overlay_participant`. Maps are keyed by participant id; after a JSON round
-    trip those keys come back as strings, so `_normalize_payload` re-ints them.
+    and cached. Per-participant data (KPIs, current-user flags) is computed live
+    in `_overlay_participant` from `build_pool_leaderboard`.
     """
     leaderboard = build_pool_leaderboard(pool)
     username_by_id = {row.participant.id: row.participant.user.username for row in leaderboard}
-    eligible_ids = set(username_by_id)
+    eligible_ids = list(username_by_id)  # ordem do leaderboard (posição atual)
 
     finished_matches = _finished_matches(pool.season)
-    finished_ids = [match.id for match in finished_matches]
-    max_points_by_id, denominator = _utilization_inputs(pool, finished_matches)
-
-    selected_ids = [row.participant.id for row in leaderboard[:EVOLUTION_TOP_N]]
 
     return {
-        "leader_points": leaderboard[0].participant.total_points if leaderboard else 0,
-        "denominator": denominator,
-        "positions": {row.participant.id: row.position for row in leaderboard},
-        "username_by_id": username_by_id,
-        "max_points_by_id": max_points_by_id,
-        "selected_ids": selected_ids,
-        "evolution_series": _evolution_series(pool, selected_ids, username_by_id),
-        "utilization_rows": _utilization_rows(leaderboard, max_points_by_id, denominator),
-        "hall_of_fame": _hall_of_fame(pool, eligible_ids, username_by_id, leaderboard, finished_ids),
+        "evolution_all": _series_for_ids(pool, eligible_ids, username_by_id),
+        "hall_of_fame": _hall_of_fame(pool, eligible_ids, username_by_id, leaderboard, finished_matches),
+        "version": _pool_version_tuple(pool),
     }
 
 
 def _get_or_build_pool_payload(pool):
     from src.rankings.models import PoolDashboardSnapshot
+    from src.rankings.services.dashboard_queue import enqueue_dashboard_snapshot
 
     snapshot = PoolDashboardSnapshot.objects.filter(pool=pool).first()
-    if snapshot is not None:
+    if snapshot is not None and "evolution_all" in snapshot.payload:
+        if snapshot.payload.get("version") == _pool_version_tuple(pool):
+            return _normalize_payload(snapshot.payload)
+        # Cache velho: dispara rebuild assíncrono e serve o cache atual desta vez.
+        # KPIs/posição/aproveitamento já são ao vivo; só hall/evolução ficam
+        # momentaneamente velhos, corrigidos no próximo load (~1s).
+        enqueue_dashboard_snapshot(pool)
         return _normalize_payload(snapshot.payload)
 
+    # Sem cache ou payload de formato antigo (pós-deploy): reconstrói agora.
     payload = build_dashboard_pool_payload(pool=pool)
     PoolDashboardSnapshot.objects.update_or_create(pool=pool, defaults={"payload": payload})
     return payload
 
 
 def _normalize_payload(payload):
-    """Re-key the id-keyed maps to ints after a JSON round trip."""
-    return {
-        **payload,
-        "positions": {int(k): v for k, v in payload.get("positions", {}).items()},
-        "username_by_id": {int(k): v for k, v in payload.get("username_by_id", {}).items()},
-        "max_points_by_id": {int(k): v for k, v in payload.get("max_points_by_id", {}).items()},
-    }
+    """Sem mais mapas keyed-por-id no payload; identidade preservada."""
+    return payload
 
 
 def _overlay_participant(pool, participant, payload):
+    leaderboard = build_pool_leaderboard(pool)
+    finished_matches = _finished_matches(pool.season)
+    max_points_by_id, denominator = _utilization_inputs(pool, finished_matches)
     return {
         "progress": _progress(pool),
-        "kpis": _kpis_from_payload(payload, participant),
-        "evolution": _evolution_overlay(pool, payload, participant),
-        "utilization": _utilization_overlay(payload, participant),
+        "kpis": _kpis_live(leaderboard, participant, denominator, max_points_by_id),
+        "evolution": _evolution_overlay(payload, participant),
+        "utilization": _utilization_live(leaderboard, participant, denominator, max_points_by_id),
         "hall_of_fame": payload["hall_of_fame"],
     }
 
@@ -117,6 +111,22 @@ def _finished_matches(season):
         for match in Match.objects.filter(season=season).select_related("stage")
         if match.status == Match.STATUS_FINISHED or (match.home_score is not None and match.away_score is not None)
     ]
+
+
+def _pool_version_tuple(pool):
+    """Token barato p/ detectar cache velho: (nº finalizados, nº elegíveis, maior round_index).
+    JSON guarda como lista; retornamos lista p/ comparar sem mismatch tupla/lista.
+    """
+    from src.pool.models import PoolParticipant
+
+    finished = (
+        Match.objects.filter(season=pool.season)
+        .filter(Q(status=Match.STATUS_FINISHED) | (Q(home_score__isnull=False) & Q(away_score__isnull=False)))
+        .count()
+    )
+    eligible = PoolParticipant.objects.filter(pool=pool, is_active=True).count()
+    max_round = PoolRankingHistory.objects.filter(pool=pool).aggregate(value=Max("round_index"))["value"] or 0
+    return [finished, eligible, max_round]
 
 
 def _match_max_points(match, scoring_config):
@@ -183,12 +193,12 @@ def _progress(pool):
     }
 
 
-def _kpis_from_payload(payload, participant):
-    position = payload["positions"].get(participant.id)
-    leader_points = payload["leader_points"]
+def _kpis_live(leaderboard, participant, denominator, max_points_by_id):
+    positions = {row.participant.id: row.position for row in leaderboard}
+    leader_points = leaderboard[0].participant.total_points if leaderboard else 0
+    position = positions.get(participant.id)
     gap = max(leader_points - participant.total_points, 0)
-    user_pct = _utilization_pct(payload["max_points_by_id"].get(participant.id, 0), payload["denominator"])
-
+    user_pct = _utilization_pct(max_points_by_id.get(participant.id, 0), denominator)
     return {
         "position": position,
         "points": participant.total_points,
@@ -225,31 +235,21 @@ def _series_for_ids(pool, ids, username_by_id):
     ]
 
 
-def _evolution_series(pool, selected_ids, username_by_id):
-    """Pool-wide trajectories for the top N current participants (cacheable)."""
-    return _series_for_ids(pool, selected_ids, username_by_id)
+def _evolution_overlay(payload, participant):
+    """Séries já completas no cache; o overlay só marca a seleção padrão."""
+    return {
+        "all": payload.get("evolution_all", []),
+        "current_participant_id": participant.id,
+    }
 
 
-def _evolution_overlay(pool, payload, participant):
-    """Top N cached series + the logged user's own series when outside the top N,
-    flagging which series is the current user. Mirrors the original behaviour.
-    """
-    selected_ids = payload["selected_ids"]
-    series = [
-        {**row, "is_current_user": row["participant_id"] == participant.id} for row in payload["evolution_series"]
-    ]
-    if participant.id in payload["username_by_id"] and participant.id not in selected_ids:
-        own = _series_for_ids(pool, [participant.id], payload["username_by_id"])
-        series.extend({**row, "is_current_user": True} for row in own)
-    return {"series": series}
-
-
-def _utilization_rows(leaderboard, max_points_by_id, denominator):
+def _utilization_live(leaderboard, participant, denominator, max_points_by_id):
     rows = [
         {
             "participant_id": row.participant.id,
             "label": row.participant.user.username,
             "percent": _utilization_pct(max_points_by_id.get(row.participant.id, 0), denominator),
+            "is_current_user": row.participant.id == participant.id,
         }
         for row in leaderboard
     ]
@@ -257,17 +257,12 @@ def _utilization_rows(leaderboard, max_points_by_id, denominator):
     return {"has_data": bool(denominator), "rows": rows[:UTILIZATION_TOP_N]}
 
 
-def _utilization_overlay(payload, participant):
-    util = payload["utilization_rows"]
-    rows = [{**row, "is_current_user": row["participant_id"] == participant.id} for row in util["rows"]]
-    return {"has_data": util["has_data"], "rows": rows}
-
-
-def _hall_of_fame(pool, eligible_ids, username_by_id, leaderboard, finished_ids):
+def _hall_of_fame(pool, eligible_ids, username_by_id, leaderboard, finished_matches):
+    finished_ids = [match.id for match in finished_matches]
     return {
         "exact_scores": _king_of_scores(eligible_ids, username_by_id),
         "biggest_climb": _biggest_climb(pool, eligible_ids, username_by_id),
-        "longest_streak": _longest_streak(pool, eligible_ids, username_by_id),
+        "longest_streak": _longest_streak(eligible_ids, username_by_id, finished_matches),
         "best_day": _best_day(pool, eligible_ids, username_by_id),
         "pe_frio": _pe_frio(eligible_ids, username_by_id, finished_ids),
         "lanterna": _lanterna(leaderboard, username_by_id),
@@ -326,31 +321,40 @@ def _biggest_climb(pool, eligible_ids, username_by_id):
     return _entry(username_by_id.get(best_id, ""), best_climb)
 
 
-def _longest_streak(pool, eligible_ids, username_by_id):
-    """Longest run of consecutive games (chronological) where the participant
-    scored more than zero points.
+def _longest_streak(eligible_ids, username_by_id, finished_matches):
+    """Maior sequência de jogos finalizados CONSECUTIVOS com pontos > 0.
+
+    Percorre os jogos finalizados em ordem cronológica e quebra a sequência tanto
+    num jogo zerado quanto num jogo SEM palpite (sem linha de PoolBetScore) — não
+    pula buracos como a versão antiga, que só via as linhas existentes.
     """
-    rows = (
-        PoolBetScore.objects.filter(bet__participant_id__in=eligible_ids)
-        .values("bet__participant_id", "points")
-        .order_by("bet__participant_id", "bet__match__match_date_brasilia", "bet__match__match_number")
-    )
+    if not finished_matches:
+        return None
+
+    ordered = sorted(finished_matches, key=lambda match: (match.match_date_utc, match.match_number, match.id))
+    match_ids = [match.id for match in ordered]
+
+    points_by_key = {
+        (row["bet__participant_id"], row["bet__match_id"]): row["points"]
+        for row in PoolBetScore.objects.filter(
+            bet__participant_id__in=eligible_ids,
+            bet__match_id__in=match_ids,
+        ).values("bet__participant_id", "bet__match_id", "points")
+    }
+
     best_id = None
     best_streak = 0
-    current_id = None
-    current_streak = 0
-    for row in rows:
-        pid = row["bet__participant_id"]
-        if pid != current_id:
-            current_id = pid
-            current_streak = 0
-        if row["points"] and row["points"] > 0:
-            current_streak += 1
-        else:
-            current_streak = 0
-        if current_streak > best_streak:
-            best_streak = current_streak
-            best_id = pid
+    for pid in eligible_ids:  # ordem do leaderboard = desempate determinístico
+        current = 0
+        for mid in match_ids:
+            pts = points_by_key.get((pid, mid))
+            if pts and pts > 0:
+                current += 1
+                if current > best_streak:
+                    best_streak = current
+                    best_id = pid
+            else:
+                current = 0
 
     if best_id is None or best_streak <= 0:
         return None

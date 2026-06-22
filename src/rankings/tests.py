@@ -1,6 +1,7 @@
 from datetime import timedelta
 from io import StringIO
 from types import SimpleNamespace
+from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
@@ -911,19 +912,29 @@ class SnapshotRoundForMatchTest(TestCase):
         self.assertEqual(PoolRankingHistory.objects.filter(pool=other_pool).count(), 0)
 
     def test_re_snapshot_same_match_updates_in_place(self):
-        self._finish(self.match)
+        self._finish(self.match)  # 1-0
         snapshot_round_for_match(self.match)
-        # Correção: inverte a liderança e re-snapshota.
-        self.p_low.total_points = 99
-        self.p_low.save(update_fields=["total_points"])
+        rows = PoolRankingHistory.objects.filter(pool=self.pool, match=self.match)
+        by_pid = {r.participant_id: r for r in rows}
+        # Inicial: p_high acertou (1-0), p_low errou -> p_high em 1º.
+        self.assertEqual(by_pid[self.p_high.id].position, 1)
+        self.assertEqual(by_pid[self.p_low.id].position, 2)
+
+        # Correção de placar: inverte para 0-1; p_high erra (1-0 vs 0-1, ganhador errado).
+        # p_low não apostou. Ambos ficam com 0 pts. Empate resolvido por joined_at:
+        # p_high foi criado antes de p_low, portanto continua em 1º.
+        self._finish(self.match, home=0, away=1)
         snapshot_round_for_match(self.match)
         rows = PoolRankingHistory.objects.filter(pool=self.pool, match=self.match)
         self.assertEqual(rows.count(), 2)
         by_pid = {r.participant_id: r for r in rows}
-        self.assertEqual(by_pid[self.p_low.id].position, 1)
         self.assertTrue(all(r.round_index == 1 for r in rows))
+        # Posição após correção: determinística — ambos com 0 pts, tiebreak por joined_at.
+        self.assertEqual(by_pid[self.p_high.id].position, 1)
+        self.assertEqual(by_pid[self.p_low.id].position, 2)
 
     def test_second_match_increments_round_index(self):
+        # round_index vem de backfill_pool_history, que atribui índices monotônicos na ordem cronológica dos jogos.
         self._finish(self.match)
         snapshot_round_for_match(self.match)
         match2 = _make_match(self.season, self.stage, number=2, kickoff=timezone.now())
@@ -936,6 +947,32 @@ class SnapshotRoundForMatchTest(TestCase):
             set(PoolRankingHistory.objects.filter(pool=self.pool).values_list("round_index", flat=True)),
             {1, 2},
         )
+
+
+class SnapshotAsOfTest(TestCase):
+    def setUp(self):
+        self.pool, self.participants, self.matches = _build_pool_with_3_rounds()
+
+    def test_snapshot_round_matches_backfill_even_out_of_order(self):
+        # Processa os jogos FORA de ordem cronológica (3, 1, 2): o caminho antigo
+        # carimbava agregados atuais e corrompia o round_index/posição as-of.
+        for match in [self.matches[2], self.matches[0], self.matches[1]]:
+            snapshot_round_for_match(match)
+
+        from_signal = {
+            (h.participant_id, h.round_index): h.position for h in PoolRankingHistory.objects.filter(pool=self.pool)
+        }
+
+        # Verdade as-of independente da ordem de processamento.
+        backfill_pool_history(self.pool)
+        as_of = {
+            (h.participant_id, h.round_index): h.position for h in PoolRankingHistory.objects.filter(pool=self.pool)
+        }
+        self.assertEqual(from_signal, as_of)
+
+    def test_snapshot_returns_affected_pools(self):
+        affected = snapshot_round_for_match(self.matches[0])
+        self.assertIn(self.pool, affected)
 
 
 class SnapshotSignalTest(TestCase):
@@ -1033,6 +1070,27 @@ class SnapshotQueueTest(TestCase):
         processed.refresh_from_db()
         self.assertEqual(processed.status, PoolRankingSnapshotJob.STATUS_IDLE)
         self.assertEqual(PoolRankingHistory.objects.filter(pool=self.pool, match=self.match).count(), 1)
+
+    def test_concurrent_reenqueue_during_processing_is_not_clobbered(self):
+        # Correção de placar chegando enquanto o job está PROCESSING volta o
+        # status para PENDING. O write terminal (CAS) não pode sobrescrever para
+        # IDLE e perder esse pedido — senão o histórico fica desatualizado.
+        enqueue_ranking_snapshot(self.match)
+
+        def reenqueue_mid_flight(match):
+            enqueue_ranking_snapshot(self.match)
+            return []
+
+        with mock.patch(
+            "src.rankings.services.snapshot_queue.snapshot_round_for_match",
+            side_effect=reenqueue_mid_flight,
+        ):
+            process_next_ranking_snapshot_job()
+
+        job = PoolRankingSnapshotJob.objects.get(match=self.match)
+        self.assertEqual(job.status, PoolRankingSnapshotJob.STATUS_PENDING)
+        # Re-enqueue zerou attempts; o ramo "devolve tentativa" não desce abaixo de 0.
+        self.assertEqual(job.attempts, 0)
 
 
 class LeaderboardMovementTest(TestCase):
@@ -1461,12 +1519,12 @@ class DashboardServiceTest(TestCase):
         flagged = [r for r in util["rows"] if r["is_current_user"]]
         self.assertEqual([r["label"] for r in flagged], ["dash-u1"])
 
-    def test_evolution_top5_plus_user_no_duplicates(self):
+    def test_evolution_all_contains_every_participant_with_history(self):
         evolution = build_dashboard_data(pool=self.pool, participant=self.p1)["evolution"]
-        series = evolution["series"]
-        self.assertEqual(len(series), 3)
-        self.assertTrue(all(len(s["points"]) == 2 for s in series))
-        self.assertEqual(sum(1 for s in series if s["is_current_user"]), 1)
+        ids = {s["participant_id"] for s in evolution["all"]}
+        self.assertEqual(ids, {self.p1.id, self.p2.id, self.p3.id})
+        self.assertTrue(all(len(s["points"]) == 2 for s in evolution["all"]))
+        self.assertEqual(evolution["current_participant_id"], self.p1.id)
 
     def test_hall_of_fame_highlights(self):
         hof = build_dashboard_data(pool=self.pool, participant=self.p1)["hall_of_fame"]
@@ -1529,7 +1587,7 @@ class DashboardServiceTest(TestCase):
         data = build_dashboard_data(pool=empty_pool, participant=participant)
         self.assertEqual(data["progress"]["percent"], 0.0)
         self.assertFalse(data["utilization"]["has_data"])
-        self.assertEqual(data["evolution"]["series"], [])
+        self.assertEqual(data["evolution"]["all"], [])
         self.assertIsNone(data["hall_of_fame"]["exact_scores"])
         self.assertIsNone(data["hall_of_fame"]["biggest_climb"])
         self.assertIsNone(data["hall_of_fame"]["pe_frio"])
@@ -1562,6 +1620,79 @@ class DashboardServiceTest(TestCase):
         response = self.client.get(reverse("pool:dashboard-tab"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="pool-selector"')
+
+    def test_longest_streak_breaks_on_missing_bet(self):
+        import datetime
+
+        # Bolão isolado com 3 jogos finalizados cronológicos.
+        # O único participante pontua no 1 e no 3, mas NÃO apostou no 2 (jogo do meio).
+        # A sequência real é 1 (não pode pular o buraco).
+        competition = Competition.objects.create(fifa_id=963, name="Copa Streak")
+        season = Season.objects.create(
+            fifa_id=963,
+            competition=competition,
+            name="Temporada Streak",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage = Stage.objects.create(fifa_id="ST963G", season=season, name="Group Stage", order=963)
+        pool = Pool.objects.create(
+            name="Pool Streak",
+            slug="pool-streak",
+            season=season,
+            created_by=self.owner,
+            requires_payment=False,
+        )
+        day = timezone.make_aware(datetime.datetime(2026, 6, 10, 10, 0))
+        m_a = Match.objects.create(
+            fifa_id="SK-M1",
+            season=season,
+            stage=stage,
+            match_number=1,
+            match_date_utc=day,
+            match_date_local=day,
+            match_date_brasilia=day,
+            home_score=1,
+            away_score=0,
+            status=Match.STATUS_FINISHED,
+        )
+        Match.objects.create(
+            fifa_id="SK-M2",
+            season=season,
+            stage=stage,
+            match_number=2,
+            match_date_utc=day + timedelta(hours=6),
+            match_date_local=day + timedelta(hours=6),
+            match_date_brasilia=day + timedelta(hours=6),
+            home_score=2,
+            away_score=1,
+            status=Match.STATUS_FINISHED,
+        )
+        m_c = Match.objects.create(
+            fifa_id="SK-M3",
+            season=season,
+            stage=stage,
+            match_number=3,
+            match_date_utc=day + timedelta(hours=12),
+            match_date_local=day + timedelta(hours=12),
+            match_date_brasilia=day + timedelta(hours=12),
+            home_score=0,
+            away_score=0,
+            status=Match.STATUS_FINISHED,
+        )
+        u = User.objects.create_user(username="streak-u", email="su@example.com", password="123456Aa!")
+        p = PoolParticipant.objects.create(pool=pool, user=u, is_active=True, total_points=50)
+        # Cria bet+score manualmente para m_a e m_c; m_b sem palpite (buraco).
+        bet_a = PoolBet.objects.create(participant=p, match=m_a, home_score_pred=1, away_score_pred=0, is_active=True)
+        PoolBetScore.objects.create(bet=bet_a, points=25, exact_score=True)
+        # m_b: SEM palpite — não cria bet/score.
+        bet_c = PoolBet.objects.create(participant=p, match=m_c, home_score_pred=0, away_score_pred=0, is_active=True)
+        PoolBetScore.objects.create(bet=bet_c, points=25, exact_score=True)
+
+        hof = build_dashboard_data(pool=pool, participant=p)["hall_of_fame"]
+        self.assertEqual(hof["longest_streak"]["username"], "streak-u")
+        self.assertEqual(hof["longest_streak"]["value"], 1)
 
 
 class DashboardCacheTest(TestCase):
@@ -1647,6 +1778,26 @@ class DashboardCacheTest(TestCase):
         data = build_dashboard_data(pool=self.pool, participant=self.participant)
         self.assertEqual(data["hall_of_fame"]["exact_scores"]["value"], 7)
 
+    def test_concurrent_reenqueue_during_processing_is_not_clobbered(self):
+        # Re-enqueue (ex.: novo snapshot de ranking) chegando durante o cálculo
+        # volta o job para PENDING. O write terminal (CAS) deve preservar esse
+        # PENDING em vez de sobrescrever para IDLE e perder o recálculo.
+        enqueue_dashboard_snapshot(self.pool)
+
+        def reenqueue_mid_flight(*, pool):
+            enqueue_dashboard_snapshot(self.pool)
+            return {"evolution_all": [], "hall_of_fame": {}, "version": [0, 0, 0]}
+
+        with mock.patch(
+            "src.rankings.services.dashboard_queue.build_dashboard_pool_payload",
+            side_effect=reenqueue_mid_flight,
+        ):
+            process_next_dashboard_snapshot_job()
+
+        job = PoolDashboardSnapshotJob.objects.get(pool=self.pool)
+        self.assertEqual(job.status, PoolDashboardSnapshotJob.STATUS_PENDING)
+        self.assertEqual(job.attempts, 0)
+
     def test_match_score_signal_recomputes_dashboard_via_workers(self):
         # Prime the cache, then a fresh score must end up reflected after both
         # workers run (ranking snapshot writes history, then enqueues dashboard).
@@ -1667,17 +1818,36 @@ class DashboardCacheTest(TestCase):
         process_next_dashboard_snapshot_job()
         snapshot = PoolDashboardSnapshot.objects.get(pool=self.pool)
         # The recomputed payload now carries the post-score evolution history.
-        self.assertTrue(snapshot.payload["evolution_series"])
+        self.assertTrue(snapshot.payload["evolution_all"])
 
     def test_overlay_matches_freshly_built_payload(self):
-        # Output parity: cached path must equal a live build of the same pool.
+        # Hall/evolução vêm do cache; KPIs/aproveitamento são ao vivo.
         cached = build_dashboard_data(pool=self.pool, participant=self.participant)
-        PoolDashboardSnapshot.objects.filter(pool=self.pool).delete()
-        # Force the no-cache branch by deleting; build_dashboard_pool_payload is
-        # the same compute the worker runs.
         fresh_payload = build_dashboard_pool_payload(pool=self.pool)
         self.assertEqual(cached["hall_of_fame"], fresh_payload["hall_of_fame"])
-        self.assertEqual(cached["utilization"]["has_data"], fresh_payload["utilization_rows"]["has_data"])
+        # Após C1 o payload cacheado guarda só o pesado (version entra na Task 5).
+        self.assertEqual(set(fresh_payload), {"evolution_all", "hall_of_fame", "version"})
+        # Fixture sem jogos finalizados -> aproveitamento sem dados (determinístico).
+        self.assertFalse(cached["utilization"]["has_data"])
+
+    def test_stale_version_enqueues_rebuild_and_serves_cache(self):
+        # Prime o cache.
+        build_dashboard_data(pool=self.pool, participant=self.participant)
+        self.assertFalse(PoolDashboardSnapshotJob.objects.filter(pool=self.pool).exists())
+
+        # Novo jogo finalizado muda a versão SEM passar pelo recompute.
+        new_match = _make_match(self.season, self.stage, number=2, kickoff=timezone.now())
+        Match.objects.filter(pk=new_match.pk).update(home_score=1, away_score=0, status=Match.STATUS_FINISHED)
+
+        build_dashboard_data(pool=self.pool, participant=self.participant)
+        # Guard detectou a divergência e enfileirou o rebuild (não bloqueante).
+        self.assertTrue(PoolDashboardSnapshotJob.objects.filter(pool=self.pool).exists())
+
+    def test_version_matches_does_not_enqueue(self):
+        build_dashboard_data(pool=self.pool, participant=self.participant)
+        PoolDashboardSnapshotJob.objects.filter(pool=self.pool).delete()
+        build_dashboard_data(pool=self.pool, participant=self.participant)
+        self.assertFalse(PoolDashboardSnapshotJob.objects.filter(pool=self.pool).exists())
 
 
 class BackfillCommandTest(TestCase):
@@ -1706,6 +1876,47 @@ def _make_admin_request():
     request.session = "session"
     request._messages = FallbackStorage(request)
     return request
+
+
+class RefreshDerivedDataTest(TestCase):
+    def setUp(self):
+        self.pool, self.participants, self.matches = _build_pool_with_3_rounds()
+
+    def test_recalculate_all_pools_rebuilds_history_and_enqueues_dashboard(self):
+        from src.pool.services.ranking import recalculate_all_pools
+
+        # Simula o sync: nenhum sinal, histórico/dashboard ainda vazios.
+        PoolRankingHistory.objects.filter(pool=self.pool).delete()
+        self.assertFalse(PoolDashboardSnapshotJob.objects.filter(pool=self.pool).exists())
+
+        recalculate_all_pools(season=self.pool.season)
+
+        # Histórico as-of reconstruído (3 rodadas x 3 participantes).
+        self.assertEqual(
+            PoolRankingHistory.objects.filter(pool=self.pool).count(),
+            3 * len(self.participants),
+        )
+        # Rebuild da dashboard enfileirado para o bolão.
+        self.assertTrue(PoolDashboardSnapshotJob.objects.filter(pool=self.pool).exists())
+
+
+class RebuildDashboardSnapshotsCommandTest(TestCase):
+    def setUp(self):
+        self.pool, self.participants, self.matches = _build_pool_with_3_rounds()
+        backfill_pool_history(self.pool)
+
+    def test_rebuild_pool_writes_snapshot(self):
+        out = StringIO()
+        self.assertFalse(PoolDashboardSnapshot.objects.filter(pool=self.pool).exists())
+        call_command("rebuild_dashboard_snapshots", pool=self.pool.slug, stdout=out)
+        snap = PoolDashboardSnapshot.objects.get(pool=self.pool)
+        self.assertIn("evolution_all", snap.payload)
+        self.assertIn("version", snap.payload)
+        self.assertIn(self.pool.slug, out.getvalue())
+
+    def test_requires_a_selector(self):
+        with self.assertRaises(CommandError):
+            call_command("rebuild_dashboard_snapshots")
 
 
 class BackfillAdminActionTest(TestCase):

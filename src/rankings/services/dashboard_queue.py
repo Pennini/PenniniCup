@@ -1,6 +1,7 @@
 import logging
 
 from django.db import transaction
+from django.db.models import F
 from django.db.utils import NotSupportedError
 from django.utils import timezone
 
@@ -81,11 +82,32 @@ def process_next_dashboard_snapshot_job():
     try:
         payload = build_dashboard_pool_payload(pool=job.pool)
         PoolDashboardSnapshot.objects.update_or_create(pool=job.pool, defaults={"payload": payload})
-        PoolDashboardSnapshotJob.objects.filter(id=job.id).update(
+
+        # CAS: só marca IDLE se o job ainda está em PROCESSING. Um enqueue()
+        # concorrente (ex.: novo snapshot de ranking durante o cálculo) pode ter
+        # voltado o status para PENDING; preservamos o PENDING para o próximo ciclo
+        # em vez de sobrescrever para IDLE e perder o pedido.
+        updated = PoolDashboardSnapshotJob.objects.filter(
+            id=job.id,
+            status=PoolDashboardSnapshotJob.STATUS_PROCESSING,
+        ).update(
             status=PoolDashboardSnapshotJob.STATUS_IDLE,
             last_finished_at=timezone.now(),
             last_error="",
         )
+        if not updated:
+            # Re-enqueue concorrente venceu o CAS. A dashboard foi recalculada, então
+            # devolvemos a tentativa consumida ao reivindicar o job para que
+            # re-enfileiramentos frequentes não esgotem MAX_ATTEMPTS.
+            PoolDashboardSnapshotJob.objects.filter(
+                id=job.id,
+                status=PoolDashboardSnapshotJob.STATUS_PENDING,
+                attempts__gt=0,
+            ).update(attempts=F("attempts") - 1)
+            logger.warning(
+                "Dashboard re-enfileirada durante processamento, tentativa devolvida: pool_id=%s",
+                job.pool_id,
+            )
     except Exception as exc:  # pragma: no cover
         logger.exception(
             "Erro ao recalcular dashboard: pool_id=%s attempts=%s",
