@@ -169,10 +169,15 @@
                 plugins: {
                     legend: { display: false },
                     tooltip: {
+                        displayColors: false,
                         callbacks: {
+                            title: function (items) {
+                                var raw = (items[0] && items[0].raw) || {};
+                                return "Rodada " + raw.x;
+                            },
                             label: function (ctx) {
                                 var raw = ctx.raw || {};
-                                return ctx.dataset.label + ": #" + raw.y + " (" + raw.pts + " pts)";
+                                return "Posição: #" + raw.y + "  (" + raw.pts + " pts)";
                             },
                         },
                     },
