@@ -1,0 +1,12 @@
+{% comment %}
+Cabeçalho colorido de um card de divisão do ranking. Espera `division` (Division:
+key, label, color, position_range). Não renderiza nada para a divisão "plain".
+{% endcomment %}
+{% if division.key != "plain" %}
+<div class="flex items-center gap-2 px-4 py-3 text-[10px] font-extrabold uppercase tracking-[0.12em] division-hd-{{ division.color }}">
+    {% if division.key == "liga" %}<i data-lucide="trophy" class="h-3.5 w-3.5"></i>
+    {% elif division.key == "zona" %}<i data-lucide="alert-triangle" class="h-3.5 w-3.5"></i>{% endif %}
+    <span>{{ division.label }}</span>
+    <span class="ml-auto text-[10px] font-semibold normal-case opacity-70">{{ division.position_range }}</span>
+</div>
+{% endif %}
