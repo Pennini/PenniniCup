@@ -333,6 +333,7 @@ class MatchGuessesServiceTest(TestCase):
         context = build_match_guesses_context(pool=self.pool, request=self.factory.get("/"))
         self.assertTrue(context["guesses_locked"])
         self.assertEqual(context["guess_rows"], [])
+        self.assertEqual(context["guess_divisions"], [])
 
     def test_context_reveals_guesses_after_phase_locked(self):
         now = timezone.now()
@@ -347,6 +348,10 @@ class MatchGuessesServiceTest(TestCase):
         self.assertEqual(context["selected_match"], match)
         self.assertEqual(len(context["guess_rows"]), 1)
         self.assertEqual(context["guess_rows"][0]["bet"].home_score_pred, 2)
+        # guess_divisions é populado quando revelado (1 participante → divisão "plain")
+        self.assertEqual(len(context["guess_divisions"]), 1)
+        self.assertEqual(context["guess_divisions"][0].key, "plain")
+        self.assertEqual(len(context["guess_divisions"][0].rows), 1)
 
     def test_build_guess_rows_includes_all_eligible_with_and_without_bet(self):
         now = timezone.now()
