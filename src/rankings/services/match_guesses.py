@@ -10,6 +10,7 @@ from django.utils import timezone
 from src.football.models import Match
 from src.pool.models import PoolBet
 from src.pool.services.rules import normalize_stage_key, phase_for_match
+from src.rankings.services.divisions import build_divisions
 from src.rankings.services.leaderboard import build_pool_leaderboard
 
 # A game counts as "live" while inside this window after kickoff.
@@ -201,6 +202,7 @@ def build_match_guesses_context(*, pool, request):
         "match_finished": False,
         "guess_rows": [],
         "guess_aggregates": [],
+        "guess_divisions": [],
     }
     if selected_match is None:
         return context
@@ -216,5 +218,8 @@ def build_match_guesses_context(*, pool, request):
     if revealed:
         context["guess_rows"] = _build_guess_rows(pool, selected_match)
         context["guess_aggregates"] = build_guess_aggregates(context["guess_rows"])
+        context["guess_divisions"] = build_divisions(
+            context["guess_rows"], position_getter=lambda row: row["position"]
+        )
 
     return context

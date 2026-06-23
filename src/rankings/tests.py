@@ -57,6 +57,55 @@ def _make_match(season, stage, *, number, kickoff, status=Match.STATUS_SCHEDULED
     )
 
 
+_helper_counter = 0
+
+
+def make_pool_with_participants(n):
+    """Create a Competition → Season → Pool plus n active PoolParticipants with
+    descending total_points (participant[0] = rank #1). Uses a module-level
+    counter to avoid username/slug/fifa_id collisions across multiple calls.
+    """
+    global _helper_counter
+    _helper_counter += 1
+    ctr = _helper_counter
+
+    competition = Competition.objects.create(fifa_id=80000 + ctr, name=f"Copa Helper {ctr}")
+    season = Season.objects.create(
+        fifa_id=80000 + ctr,
+        competition=competition,
+        name=f"Temporada Helper {ctr}",
+        year=2026,
+        start_date="2026-06-01",
+        end_date="2026-07-30",
+    )
+    pool = Pool.objects.create(
+        name=f"Pool Helper {ctr}",
+        slug=f"pool-helper-{ctr}",
+        season=season,
+        created_by=User.objects.create_user(
+            username=f"helper-owner-{ctr}",
+            email=f"helper-owner-{ctr}@example.com",
+            password="123456Aa!",
+        ),
+        requires_payment=False,
+    )
+    participants = []
+    for i in range(n):
+        user = User.objects.create_user(
+            username=f"helper-{ctr}-p{i}",
+            email=f"helper-{ctr}-p{i}@example.com",
+            password="123456Aa!",
+        )
+        participant = PoolParticipant.objects.create(
+            pool=pool,
+            user=user,
+            is_active=True,
+            total_points=(n - i) * 10,
+        )
+        participants.append(participant)
+    return pool, participants
+
+
 class RankingsAccessTest(TestCase):
     def setUp(self):
         self.owner = User.objects.create_user(username="owner", email="owner@example.com", password="123456Aa!")

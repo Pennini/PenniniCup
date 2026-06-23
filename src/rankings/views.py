@@ -4,6 +4,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 
 from src.pool.models import Pool, PoolParticipant
 from src.rankings.services.dashboard import build_dashboard_data
+from src.rankings.services.divisions import build_divisions
 from src.rankings.services.leaderboard import build_pool_leaderboard
 from src.rankings.services.match_guesses import build_match_guesses_context
 
@@ -49,6 +50,7 @@ def build_ranking_dashboard_context(*, pool, participant):
     return {
         "pool": pool,
         "leaderboard_rows": leaderboard_rows,
+        "leaderboard_divisions": build_divisions(leaderboard_rows),
         "podium_cards": podium_cards,
         "current_participant": participant,
         "current_position": current_row.position if current_row else None,
