@@ -2212,6 +2212,81 @@ class ContextBuilderPureHelpersTest(SimpleTestCase):
         self.assertEqual(result[0]["position_global"], 1)
 
 
+class ResolveKnockoutAdvancingTest(TestCase):
+    def _build_tipo2_knockout_fixture(self):
+        user = User.objects.create_user(username="adv_user", email="adv@example.com", password="123456Aa!")
+        competition = Competition.objects.create(fifa_id=8001, name="Copa Adv")
+        season = Season.objects.create(
+            fifa_id=8001,
+            competition=competition,
+            name="Temp Adv",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage_r32 = Stage.objects.create(fifa_id="R32-ADV", season=season, name="R32", order=50)
+        home_team = Team.objects.create(fifa_id="ADV_HOME", name="Home Team Adv", name_norm="hometeamadv", code="HTA")
+        away_team = Team.objects.create(fifa_id="ADV_AWAY", name="Away Team Adv", name_norm="awayteamadv", code="ATA")
+        future = timezone.now() + timezone.timedelta(days=2)
+        r32_match = Match.objects.create(
+            fifa_id="ADV-R32-1",
+            season=season,
+            stage=stage_r32,
+            match_number=80,
+            match_date_utc=future,
+            match_date_local=future,
+            match_date_brasilia=future,
+            home_team=home_team,
+            away_team=away_team,
+        )
+        pool = Pool.objects.create(
+            name="Pool Adv",
+            slug="pool-adv",
+            season=season,
+            created_by=user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        participant = PoolParticipant.objects.create(pool=pool, user=user, is_active=True)
+        # home wins 2x1 → advancing = home_team
+        PoolBet.objects.create(
+            participant=participant,
+            match=r32_match,
+            home_score_pred=2,
+            away_score_pred=1,
+            winner_pred=home_team,
+            is_active=True,
+        )
+        knockout_matches = list(
+            Match.objects.filter(season=season)
+            .select_related("stage", "home_team", "away_team")
+            .order_by("match_number")
+        )
+        bets_by_match_id = {
+            b.match_id: b for b in PoolBet.objects.filter(participant=participant).select_related("winner_pred")
+        }
+        return {
+            "participant": participant,
+            "season": season,
+            "r32_match": r32_match,
+            "knockout_matches": knockout_matches,
+            "bets_by_match_id": bets_by_match_id,
+            "expected_advancing_team_id": home_team.id,
+        }
+
+    def test_advancing_map_uses_winner_pred_for_r32(self):
+        from src.pool.services.context_builder import resolve_knockout_advancing_by_match
+
+        ctx = self._build_tipo2_knockout_fixture()
+        advancing = resolve_knockout_advancing_by_match(
+            participant=ctx["participant"],
+            matches=ctx["knockout_matches"],
+            season=ctx["season"],
+            bets_by_match_id=ctx["bets_by_match_id"],
+        )
+        self.assertEqual(advancing[ctx["r32_match"].id], ctx["expected_advancing_team_id"])
+
+
 class ContextBuilderBetScoreRowTest(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="u_bs", email="u_bs@example.com", password="123456Aa!")
