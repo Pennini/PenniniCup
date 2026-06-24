@@ -1,4 +1,4 @@
-from src.pool.services.rules import PHASE_GROUP, phase_for_match
+from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_2, phase_for_match
 
 
 def _winner_from_score(home_score, away_score):
@@ -25,7 +25,37 @@ def _is_loser_goals_correct(actual_winner, guess_home, guess_away, home, away):
     return False
 
 
-def calculate_bet_points(bet, scoring_config, pool_type=None):
+def _knockout_points_by_score(scoring_config, home, away, guess_home, guess_away):
+    """Faixa de pontos do mata-mata pelo placar (posicional), assumindo classificado correto.
+
+    Retorna (points, is_exact, advancing_goals, diff_correct, eliminated_goals).
+    """
+    is_exact = guess_home == home and guess_away == away
+    if is_exact:
+        return scoring_config.knockout_exact_and_advancing, True, False, False, False
+
+    is_diff = (guess_home - guess_away) == (home - away)
+
+    if home == away:
+        # Empate real (decidido nos pênaltis): sem vencedor posicional.
+        if is_diff:
+            return scoring_config.knockout_advancing_and_diff, False, False, True, False
+        return scoring_config.knockout_advancing_only, False, False, False, False
+
+    actual_direction = _winner_from_score(home, away)
+    winner_goals = _is_winner_goals_correct(actual_direction, guess_home, guess_away, home, away)
+    loser_goals = _is_loser_goals_correct(actual_direction, guess_home, guess_away, home, away)
+
+    if winner_goals:
+        return scoring_config.knockout_advancing_and_winner_goals, False, True, False, False
+    if is_diff:
+        return scoring_config.knockout_advancing_and_diff, False, False, True, False
+    if loser_goals:
+        return scoring_config.knockout_advancing_and_loser_goals, False, False, False, True
+    return scoring_config.knockout_advancing_only, False, False, False, False
+
+
+def calculate_bet_points(bet, scoring_config, pool_type=None, predicted_advancing_id=None):
     match = bet.match
     if (
         not bet.is_active
@@ -84,6 +114,30 @@ def calculate_bet_points(bet, scoring_config, pool_type=None):
             "advancing_goals_correct": is_winner_goals,
             "diff_correct": is_diff_correct,
             "eliminated_goals_correct": is_loser_goals,
+        }
+
+    # KNOCKOUT Tipo 2: gate por classificado (identidade do time), não por posição.
+    if pool_type == POOL_TYPE_2:
+        is_advancing_correct = bool(match.winner_id) and predicted_advancing_id == match.winner_id
+        if not is_advancing_correct:
+            return {
+                "points": 0,
+                "exact_score": is_exact_score,
+                "advancing_correct": False,
+                "advancing_goals_correct": False,
+                "diff_correct": False,
+                "eliminated_goals_correct": False,
+            }
+        points, is_exact, advancing_goals, diff_correct, eliminated_goals = _knockout_points_by_score(
+            scoring_config, home, away, guess_home, guess_away
+        )
+        return {
+            "points": points,
+            "exact_score": is_exact,
+            "advancing_correct": True,
+            "advancing_goals_correct": advancing_goals,
+            "diff_correct": diff_correct,
+            "eliminated_goals_correct": eliminated_goals,
         }
 
     # KNOCKOUT phase — positional scoring for both Tipo 1 and Tipo 2.

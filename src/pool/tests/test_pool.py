@@ -1494,14 +1494,15 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
         self.assertEqual(result["points"], 0)
         self.assertFalse(result["advancing_correct"])
 
-    def test_knockout_non_draw_exact_score(self):
-        # Non-empate exact placar always implies winner correct in positional scoring.
-        # Tipo 1 and Tipo 2 behave identically; winner_pred is ignored.
+    def test_tipo2_knockout_exact_score_wrong_advancing_zero(self):
+        # Tipo 2: placar exato não salva se o classificado estiver errado.
         bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1, winner_pred_id=2)
-        result = calculate_bet_points(bet, self._make_scoring_config(), pool_type=POOL_TYPE_2)
-        self.assertEqual(result["points"], 35)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=2
+        )
+        self.assertEqual(result["points"], 0)
         self.assertTrue(result["exact_score"])
-        self.assertTrue(result["advancing_correct"])
+        self.assertFalse(result["advancing_correct"])
 
     def test_knockout_draw_exact_score_correct_advancing(self):
         # Palpite 1-1, jogo real 1-1 com HOME avancando por penaltis, winner_pred = HOME.
@@ -1567,17 +1568,104 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
         self.assertEqual(result["points"], 0)
         self.assertFalse(result["advancing_correct"])
 
-    def test_knockout_winner_pred_ignored_in_non_draw(self):
-        # Em palpite nao-empate, winner_pred eh irrelevante: so importa
-        # placar + posicao. Pool type tambem nao afeta.
+    def test_winner_pred_ignored_tipo1_but_gates_tipo2(self):
+        # Tipo 1 (posicional): winner_pred irrelevante -> 25.
         bet_t1 = self._make_knockout_bet(2, 0, 2, 1, winner_real_id=1, winner_pred_id=2)
-        bet_t2 = self._make_knockout_bet(2, 0, 2, 1, winner_real_id=1, winner_pred_id=2)
         r1 = calculate_bet_points(bet_t1, self._make_scoring_config())
-        r2 = calculate_bet_points(bet_t2, self._make_scoring_config(), pool_type=POOL_TYPE_2)
         self.assertEqual(r1["points"], 25)
-        self.assertEqual(r2["points"], 25)
         self.assertTrue(r1["advancing_correct"])
-        self.assertTrue(r2["advancing_correct"])
+        # Tipo 2: classificado projetado (2) != real (1) -> 0.
+        bet_t2 = self._make_knockout_bet(2, 0, 2, 1, winner_real_id=1, winner_pred_id=2)
+        r2 = calculate_bet_points(bet_t2, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=2)
+        self.assertEqual(r2["points"], 0)
+        self.assertFalse(r2["advancing_correct"])
+
+    # --- Tipo 2 mata-mata: gate por classificado ---
+
+    def test_tipo2_ex1_advancing_loser_goals(self):
+        # real Brasil(1) 2x1 Holanda(2), palpite 3x1, classificado certo (1).
+        bet = self._make_knockout_bet(3, 1, 2, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 17)
+        self.assertTrue(result["advancing_correct"])
+        self.assertTrue(result["eliminated_goals_correct"])
+        self.assertFalse(result["exact_score"])
+
+    def test_tipo2_ex2_wrong_advancing_zero(self):
+        # palpite 0x1 -> classificado palpitado = Holanda(2); real = Brasil(1).
+        bet = self._make_knockout_bet(0, 1, 2, 1, winner_real_id=1, winner_pred_id=2)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=2
+        )
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["advancing_correct"])
+
+    def test_tipo2_ex3_exact_score_with_different_loser(self):
+        # palpite 2x1 (eliminado projetado != real), classificado certo (1).
+        bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 35)
+        self.assertTrue(result["exact_score"])
+        self.assertTrue(result["advancing_correct"])
+
+    def test_tipo2_ex4_exact_score_wrong_advancing_zero(self):
+        # placar exato 2x1, mas classificado palpitado = Marrocos(3) != real Brasil(1).
+        bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1, winner_pred_id=3)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=3
+        )
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["advancing_correct"])
+
+    def test_tipo2_ex5_draw_pred_correct_advancing_only(self):
+        # palpite 0x0 + Brasil(1) classifica; real 2x1 Brasil. Só classificado.
+        bet = self._make_knockout_bet(0, 0, 2, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 15)
+        self.assertTrue(result["advancing_correct"])
+        self.assertFalse(result["exact_score"])
+
+    def test_tipo2_real_draw_exact(self):
+        # real 1x1 (pênaltis, Brasil avança), palpite 1x1, classificado certo.
+        bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 35)
+        self.assertTrue(result["exact_score"])
+
+    def test_tipo2_real_draw_same_diff(self):
+        # real 1x1, palpite 0x0 (mesma diferença 0), classificado certo.
+        bet = self._make_knockout_bet(0, 0, 1, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 20)
+        self.assertTrue(result["diff_correct"])
+
+    def test_tipo2_real_draw_non_draw_pred_advancing_only(self):
+        # real 1x1 (pênaltis), palpite 2x1 (não-empate), classificado certo.
+        bet = self._make_knockout_bet(2, 1, 1, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 15)
+        self.assertTrue(result["advancing_correct"])
+
+    def test_tipo2_no_winner_yet_zero(self):
+        # match.winner_id ausente (jogo não decidido) -> 0.
+        bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=None, winner_pred_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["advancing_correct"])
 
 
 class NormalizeStageKeyTest(SimpleTestCase):
