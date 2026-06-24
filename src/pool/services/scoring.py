@@ -140,7 +140,7 @@ def calculate_bet_points(bet, scoring_config, pool_type=None, predicted_advancin
             "eliminated_goals_correct": eliminated_goals,
         }
 
-    # KNOCKOUT phase — positional scoring for both Tipo 1 and Tipo 2.
+    # KNOCKOUT phase — positional scoring (Tipo 1 only; Tipo 2 handled above).
     # Palpite de empate (home == away): requer que o tempo regulamentar tambem
     # termine empatado. Placar exato (ex: 1-1 pred, 1-1 real) vale mais que
     # empate generico (ex: 0-0 pred, 1-1 real). Pênaltis contam como empate no
