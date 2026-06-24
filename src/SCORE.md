@@ -40,6 +40,20 @@ O placar que conta é **sempre o do tempo normal (90 min)**, independente de pro
 
 > **Regra especial:** placar exato com classificado errado vale apenas 10 pts. Errar quem avança anula o mérito do placar perfeito.
 
+### Mata-mata no Tipo 2 (palpite progressivo)
+
+No bolão **Tipo 2** o mata-mata é pontuado **pelo classificado**, não por posição. O classificado palpitado é a **identidade do time** que o participante projetou para aquele jogo (deduzida do bracket projetado do participante quando os times reais ainda não existem, ex.: R16+), comparada ao `match.winner` real.
+
+A pontuação é **travada pelo classificado**:
+
+- **Classificado errado → 0**, mesmo com placar exato (não há consolação de 10 pts; é o gate, não acumula).
+- Se a identidade do classificado projetado não bater com quem avançou de fato (ou o time projetado foi eliminado antes deste jogo), o palpite **não pontua** naquela rodada.
+- **Classificado certo →** aplicam-se as faixas `knockout_*` (placar exato 35 / gols do classificado 25 / diferença 21 / gols do eliminado 17 / só o classificado 14), pelos valores das configurações do bolão.
+
+Não há **bônus de classificado** (team advancement) no Tipo 2 — o acerto do classificado já é a condição de pontuar o jogo.
+
+Real empate decidido nos pênaltis (Tipo 2, classificado certo): placar exato **35** / mesma diferença (0) **21** / senão **14**.
+
 ______________________________________________________________________
 
 ## Como determinar o classificado no mata-mata
