@@ -146,7 +146,7 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
     official_result = official_result or participant.pool.get_official_results()
     pool_type = participant.pool.pool_type
 
-    bets = list(participant.bets.select_related("match", "match__stage").all())
+    bets = list(participant.bets.select_related("match", "match__stage", "winner_pred").all())
 
     # Tipo 2: resolve advancing team per knockout match to gate scoring
     advancing_map = {}
