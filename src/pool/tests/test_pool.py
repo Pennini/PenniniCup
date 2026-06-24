@@ -3364,3 +3364,200 @@ class RecalculateTipo2KnockoutTest(TestCase):
         wrong = PoolBetScore.objects.get(bet=ctx["wrong_bet"])
         self.assertEqual(wrong.points, 0)
         self.assertFalse(wrong.advancing_correct)
+
+
+class RecalculateTipo2KnockoutR16CascadeTest(TestCase):
+    """Gate Tipo 2 para R16+: classificado resolvido via cascade de palpites do R32.
+
+    Os jogos de R16 têm home_team/away_team = None (placeholders W<n>).
+    O classificado projetado pelo participante para o jogo de R16 é derivado
+    dos palpites do R32 que alimentam os slots, NÃO de um winner_pred direto
+    no jogo de R16. Isso exercita _walk_knockout_bracket → winners_map cascade.
+
+    Caso (a): participante acertou quem avança do R32 feeder → gate passa → pontos > 0.
+    Caso (b): participante errou quem avança do R32 feeder → classificado projetado
+              para o R16 é o time errado → gate bloqueia → 0 pontos.
+    """
+
+    def _build_r16_cascade_fixture(self):
+        user_a = User.objects.create_user(username="r16c_correct", email="r16c_correct@example.com", password="pass")
+        user_b = User.objects.create_user(username="r16c_wrong", email="r16c_wrong@example.com", password="pass")
+
+        competition = Competition.objects.create(fifa_id=8200, name="Copa R16 Cascade")
+        season = Season.objects.create(
+            fifa_id=8200,
+            competition=competition,
+            name="R16 Cascade Season",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage_r32 = Stage.objects.create(fifa_id="R32-R16C", season=season, name="R32", order=50)
+        stage_r16 = Stage.objects.create(fifa_id="R16-R16C", season=season, name="Round of 16", order=51)
+
+        team_a = Team.objects.create(fifa_id="R16C-A", name="R16C Alpha", name_norm="r16c-alpha", code="R6A")
+        team_b = Team.objects.create(fifa_id="R16C-B", name="R16C Beta", name_norm="r16c-beta", code="R6B")
+        team_c = Team.objects.create(fifa_id="R16C-C", name="R16C Gamma", name_norm="r16c-gamma", code="R6C")
+        team_d = Team.objects.create(fifa_id="R16C-D", name="R16C Delta", name_norm="r16c-delta", code="R6D")
+
+        past = timezone.now() - timezone.timedelta(hours=3)
+
+        # R32 match #180: team_a vs team_b — real result: team_a wins 2-1
+        r32_1 = Match.objects.create(
+            fifa_id="R16C-R32-1",
+            season=season,
+            stage=stage_r32,
+            match_number=180,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=team_a,
+            away_team=team_b,
+            home_score=2,
+            away_score=1,
+            winner=team_a,
+            status=Match.STATUS_FINISHED,
+        )
+
+        # R32 match #182: team_c vs team_d — real result: team_c wins 2-0
+        r32_2 = Match.objects.create(
+            fifa_id="R16C-R32-2",
+            season=season,
+            stage=stage_r32,
+            match_number=182,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=team_c,
+            away_team=team_d,
+            home_score=2,
+            away_score=0,
+            winner=team_c,
+            status=Match.STATUS_FINISHED,
+        )
+
+        # R16 match #190: placeholder slots W180 × W182.
+        # home_team/away_team are intentionally None — the walk must resolve them
+        # from the participant's R32 winner picks cascaded through winners_map.
+        # Real result: team_a wins 2-1 (team_a was the real R32-1 winner).
+        r16 = Match.objects.create(
+            fifa_id="R16C-R16-1",
+            season=season,
+            stage=stage_r16,
+            match_number=190,
+            match_date_utc=past - timezone.timedelta(hours=1),
+            match_date_local=past - timezone.timedelta(hours=1),
+            match_date_brasilia=past - timezone.timedelta(hours=1),
+            home_team=None,
+            away_team=None,
+            home_placeholder="W180",
+            away_placeholder="W182",
+            home_score=2,
+            away_score=1,
+            winner=team_a,
+            status=Match.STATUS_FINISHED,
+        )
+
+        pool = Pool.objects.create(
+            name="Pool R16 Cascade",
+            slug="pool-r16-cascade",
+            season=season,
+            created_by=user_a,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+
+        # --- Participant "correct": bets team_a advances from R32 #180 ---
+        # The walk will put team_a into the R16 home slot → predicted advancer = team_a.
+        # Gate: team_a == match.winner (team_a) → passes → points > 0.
+        participant_correct = PoolParticipant.objects.create(pool=pool, user=user_a, is_active=True)
+        # R32 #180: predicts team_a (home) wins 2-1
+        PoolBet.objects.create(
+            participant=participant_correct,
+            match=r32_1,
+            home_score_pred=2,
+            away_score_pred=1,
+            winner_pred=team_a,
+            is_active=True,
+        )
+        # R32 #182: predicts team_c (home) wins 2-0 — needed to resolve away slot of R16
+        PoolBet.objects.create(
+            participant=participant_correct,
+            match=r32_2,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=team_c,
+            is_active=True,
+        )
+        # R16 #190: no winner_pred — advancing team MUST come from walk cascade.
+        # Predicts home wins 2-0; walk resolved home = team_a → advancing = team_a.
+        r16_correct_bet = PoolBet.objects.create(
+            participant=participant_correct,
+            match=r16,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=None,
+            is_active=True,
+        )
+
+        # --- Participant "wrong": bets team_b advances from R32 #180 ---
+        # The walk will put team_b into the R16 home slot → predicted advancer = team_b.
+        # Gate: team_b != match.winner (team_a) → blocked → 0 points.
+        participant_wrong = PoolParticipant.objects.create(pool=pool, user=user_b, is_active=True)
+        # R32 #180: predicts team_b (away) wins 0-2
+        PoolBet.objects.create(
+            participant=participant_wrong,
+            match=r32_1,
+            home_score_pred=0,
+            away_score_pred=2,
+            winner_pred=team_b,
+            is_active=True,
+        )
+        # R32 #182: predicts team_c (home) wins 2-0
+        PoolBet.objects.create(
+            participant=participant_wrong,
+            match=r32_2,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=team_c,
+            is_active=True,
+        )
+        # R16 #190: no winner_pred. Walk resolved home = team_b → advancing = team_b ≠ team_a.
+        r16_wrong_bet = PoolBet.objects.create(
+            participant=participant_wrong,
+            match=r16,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=None,
+            is_active=True,
+        )
+
+        return {
+            "participant_correct": participant_correct,
+            "participant_wrong": participant_wrong,
+            "r16": r16,
+            "r16_correct_bet": r16_correct_bet,
+            "r16_wrong_bet": r16_wrong_bet,
+        }
+
+    def test_r16_cascade_correct_projected_advancer_scores(self):
+        """Participante cujo palpite de R32 projeta o time certo para o R16 → pontos > 0."""
+        from src.pool.models import PoolBetScore
+
+        ctx = self._build_r16_cascade_fixture()
+        recalculate_participant_scores(ctx["participant_correct"])
+
+        score = PoolBetScore.objects.get(bet=ctx["r16_correct_bet"])
+        self.assertGreater(score.points, 0, "Gate must pass when projected advancer matches real winner")
+        self.assertTrue(score.advancing_correct)
+
+    def test_r16_cascade_wrong_projected_advancer_zero(self):
+        """Participante cujo palpite de R32 projeta o time errado para o R16 → 0 pontos."""
+        from src.pool.models import PoolBetScore
+
+        ctx = self._build_r16_cascade_fixture()
+        recalculate_participant_scores(ctx["participant_wrong"])
+
+        score = PoolBetScore.objects.get(bet=ctx["r16_wrong_bet"])
+        self.assertEqual(score.points, 0, "Gate must block when projected advancer does not match real winner")
+        self.assertFalse(score.advancing_correct)
