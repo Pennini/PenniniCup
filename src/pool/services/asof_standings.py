@@ -151,6 +151,21 @@ def compute_asof_standings(pool, allowed_match_ids, scoring_config, official_res
 
     podium = _asof_podium(pool.season, allowed_match_ids, official_result)
 
+    # Mata-mata do Tipo 2 é pontuado pelo classificado; o conjunto de jogos é o
+    # mesmo para todos os participantes, então resolvemos a lista uma vez só (o
+    # walk do bracket projetado abaixo é que varia por participante).
+    knockout_matches = []
+    if pool_type == POOL_TYPE_2:
+        from src.pool.services.context_builder import resolve_knockout_advancing_by_match
+
+        knockout_matches = [
+            m
+            for m in Match.objects.filter(season=pool.season)
+            .select_related("stage", "home_team", "away_team", "winner")
+            .order_by("match_number")
+            if phase_for_match(m) != PHASE_GROUP
+        ]
+
     rows = []
     for participant in participants:
         total_points = 0
@@ -163,15 +178,6 @@ def compute_asof_standings(pool, allowed_match_ids, scoring_config, official_res
 
         advancing_map = {}
         if pool_type == POOL_TYPE_2:
-            from src.pool.services.context_builder import resolve_knockout_advancing_by_match
-
-            knockout_matches = [
-                m
-                for m in Match.objects.filter(season=pool.season)
-                .select_related("stage", "home_team", "away_team", "winner")
-                .order_by("match_number")
-                if phase_for_match(m) != PHASE_GROUP
-            ]
             bets_by_match_id = {b.match_id: b for b in bets}
             advancing_map = resolve_knockout_advancing_by_match(
                 participant=participant,
