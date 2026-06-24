@@ -3169,3 +3169,97 @@ class ComputeAsOfStandingsBonusTest(TestCase):
             rows[0].group_points,
             self.scoring_config.group_qualifier_points,
         )
+
+
+class RecalculateTipo2KnockoutTest(TestCase):
+    """recalculate_participant_scores aplica gate de classificado para pools Tipo 2."""
+
+    def _build_tipo2_decided_knockout(self):
+        user = User.objects.create_user(username="t2recalc", email="t2recalc@example.com", password="pass")
+        competition = Competition.objects.create(fifa_id=8001, name="Copa T2 Recalc")
+        season = Season.objects.create(
+            fifa_id=8001,
+            competition=competition,
+            name="T2 Recalc Season",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage_r32 = Stage.objects.create(fifa_id="R32-RC", season=season, name="R32", order=50)
+
+        team_a = Team.objects.create(fifa_id="RC-A", name="RC Alpha", name_norm="rc-alpha", code="RCA")
+        team_b = Team.objects.create(fifa_id="RC-B", name="RC Beta", name_norm="rc-beta", code="RCB")
+
+        past = timezone.now() - timezone.timedelta(hours=2)
+        match = Match.objects.create(
+            fifa_id="RC-R32-1",
+            season=season,
+            stage=stage_r32,
+            match_number=80,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=team_a,
+            away_team=team_b,
+            home_score=2,
+            away_score=1,
+            winner=team_a,
+            status=Match.STATUS_FINISHED,
+        )
+
+        pool = Pool.objects.create(
+            name="Pool T2 Recalc",
+            slug="pool-t2-recalc",
+            season=season,
+            created_by=user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        participant = PoolParticipant.objects.create(pool=pool, user=user, is_active=True)
+
+        # Correct bet: winner_pred == match.winner (team_a), score non-exact → advancing_only tier
+        correct_bet = PoolBet.objects.create(
+            participant=participant,
+            match=match,
+            home_score_pred=1,
+            away_score_pred=0,
+            winner_pred=team_a,
+            is_active=True,
+        )
+
+        # Second participant for the "wrong" bet (same pool, different user)
+        user_wrong = User.objects.create_user(
+            username="t2recalc_wrong", email="t2recalc_wrong@example.com", password="pass"
+        )
+        participant_wrong = PoolParticipant.objects.create(pool=pool, user=user_wrong, is_active=True)
+        wrong_bet = PoolBet.objects.create(
+            participant=participant_wrong,
+            match=match,
+            home_score_pred=0,
+            away_score_pred=2,
+            winner_pred=team_b,
+            is_active=True,
+        )
+
+        return {
+            "participant": participant,
+            "participant_wrong": participant_wrong,
+            "correct_bet": correct_bet,
+            "wrong_bet": wrong_bet,
+        }
+
+    def test_recalculate_uses_advancing_gate(self):
+        from src.pool.models import PoolBetScore
+
+        ctx = self._build_tipo2_decided_knockout()
+
+        recalculate_participant_scores(ctx["participant"])
+        recalculate_participant_scores(ctx["participant_wrong"])
+
+        score = PoolBetScore.objects.get(bet=ctx["correct_bet"])
+        self.assertGreater(score.points, 0)
+        self.assertTrue(score.advancing_correct)
+
+        wrong = PoolBetScore.objects.get(bet=ctx["wrong_bet"])
+        self.assertEqual(wrong.points, 0)
+        self.assertFalse(wrong.advancing_correct)

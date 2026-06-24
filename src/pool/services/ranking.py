@@ -1,7 +1,7 @@
 from django.db import transaction
 
 from src.pool.models import Pool, PoolBetScore, PoolParticipant
-from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_1, is_group_stage_finished, phase_for_match
+from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_1, POOL_TYPE_2, is_group_stage_finished, phase_for_match
 from src.pool.services.scoring import calculate_bet_points
 
 
@@ -148,6 +148,27 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
 
     bets = list(participant.bets.select_related("match", "match__stage").all())
 
+    # Tipo 2: resolve advancing team per knockout match to gate scoring
+    advancing_map = {}
+    if pool_type == POOL_TYPE_2:
+        from src.football.models import Match as FootballMatch
+        from src.pool.services.context_builder import resolve_knockout_advancing_by_match
+
+        knockout_matches = [
+            m
+            for m in FootballMatch.objects.filter(season=participant.pool.season)
+            .select_related("stage", "home_team", "away_team", "winner")
+            .order_by("match_number")
+            if phase_for_match(m) != PHASE_GROUP
+        ]
+        bets_by_match_id = {bet.match_id: bet for bet in bets}
+        advancing_map = resolve_knockout_advancing_by_match(
+            participant=participant,
+            matches=knockout_matches,
+            season=participant.pool.season,
+            bets_by_match_id=bets_by_match_id,
+        )
+
     # Tipo 1: pre-calculate team advancement bonus (needs cross-match lookup per stage)
     team_advancement = {}
     team_advancement_bonus_total = 0
@@ -169,7 +190,12 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
 
     scores_to_upsert = []
     for bet in bets:
-        score_data = calculate_bet_points(bet, scoring_config=scoring_config, pool_type=pool_type)
+        score_data = calculate_bet_points(
+            bet,
+            scoring_config=scoring_config,
+            pool_type=pool_type,
+            predicted_advancing_id=advancing_map.get(bet.match_id),
+        )
         scores_to_upsert.append(
             PoolBetScore(
                 bet=bet,
