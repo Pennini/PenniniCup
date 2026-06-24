@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from src.football.models import Match
 from src.pool.models import PoolParticipant
 from src.pool.services.ranking import _match_winner_loser, _real_qualifier_position_map
-from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_1, normalize_stage_key, phase_for_match
+from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_1, POOL_TYPE_2, normalize_stage_key, phase_for_match
 from src.pool.services.scoring import calculate_bet_points
 from src.rankings.services.leaderboard import eligible_participants
 
@@ -159,11 +159,36 @@ def compute_asof_standings(pool, allowed_match_ids, scoring_config, official_res
         exact_score_hits = 0
         advancing_hits = 0
 
-        bets = participant.bets.select_related("match", "match__stage").all()
+        bets = participant.bets.select_related("match", "match__stage", "winner_pred").all()
+
+        advancing_map = {}
+        if pool_type == POOL_TYPE_2:
+            from src.pool.services.context_builder import resolve_knockout_advancing_by_match
+
+            knockout_matches = [
+                m
+                for m in Match.objects.filter(season=pool.season)
+                .select_related("stage", "home_team", "away_team", "winner")
+                .order_by("match_number")
+                if phase_for_match(m) != PHASE_GROUP
+            ]
+            bets_by_match_id = {b.match_id: b for b in bets}
+            advancing_map = resolve_knockout_advancing_by_match(
+                participant=participant,
+                matches=knockout_matches,
+                season=pool.season,
+                bets_by_match_id=bets_by_match_id,
+            )
+
         for bet in bets:
             if bet.match_id not in allowed_match_ids:
                 continue
-            score_data = calculate_bet_points(bet, scoring_config=scoring_config, pool_type=pool_type)
+            score_data = calculate_bet_points(
+                bet,
+                scoring_config=scoring_config,
+                pool_type=pool_type,
+                predicted_advancing_id=advancing_map.get(bet.match_id),
+            )
             total_points += score_data["points"]
             if phase_for_match(bet.match) == PHASE_GROUP:
                 group_points += score_data["points"]

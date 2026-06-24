@@ -3021,6 +3021,107 @@ class ComputeAsOfStandingsBetsTest(TestCase):
         self.assertFalse(row.champion_hit)
         self.assertFalse(row.top_scorer_hit)
 
+    def _build_tipo2_decided_knockout_asof(self):
+        """Fixture: pool Tipo 2 com jogo de mata-mata decidido.
+
+        Retorna ctx com pool, allowed_match_ids, scoring_config, official_result,
+        correct_participant (acertou classificado) e wrong_participant (errou).
+        Espelha _build_tipo2_decided_knockout de RecalculateTipo2KnockoutTest,
+        mas empacota os extras que compute_asof_standings exige.
+        """
+        user_correct = User.objects.create_user(
+            username="asof_t2_correct", email="asof_t2_correct@example.com", password="pass"
+        )
+        user_wrong = User.objects.create_user(
+            username="asof_t2_wrong", email="asof_t2_wrong@example.com", password="pass"
+        )
+
+        competition = Competition.objects.create(fifa_id=8100, name="Copa AsOf T2")
+        season = Season.objects.create(
+            fifa_id=8100,
+            competition=competition,
+            name="AsOf T2 Season",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage_r32 = Stage.objects.create(fifa_id="R32-ASOF", season=season, name="R32", order=50)
+
+        team_a = Team.objects.create(fifa_id="ASOF-A", name="AsOf Alpha", name_norm="asof-alpha", code="AOA")
+        team_b = Team.objects.create(fifa_id="ASOF-B", name="AsOf Beta", name_norm="asof-beta", code="AOB")
+
+        past = timezone.now() - timezone.timedelta(hours=2)
+        match = Match.objects.create(
+            fifa_id="ASOF-R32-1",
+            season=season,
+            stage=stage_r32,
+            match_number=810,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=team_a,
+            away_team=team_b,
+            home_score=2,
+            away_score=1,
+            winner=team_a,
+            status=Match.STATUS_FINISHED,
+        )
+
+        pool = Pool.objects.create(
+            name="Pool AsOf T2",
+            slug="pool-asof-t2",
+            season=season,
+            created_by=user_correct,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        correct_participant = PoolParticipant.objects.create(pool=pool, user=user_correct, is_active=True)
+        wrong_participant = PoolParticipant.objects.create(pool=pool, user=user_wrong, is_active=True)
+
+        # Correct: winner_pred == match.winner (team_a), score non-exact → advancing_only tier
+        PoolBet.objects.create(
+            participant=correct_participant,
+            match=match,
+            home_score_pred=1,
+            away_score_pred=0,
+            winner_pred=team_a,
+            is_active=True,
+        )
+        # Wrong: winner_pred == loser (team_b) → gate blocks all knockout points
+        PoolBet.objects.create(
+            participant=wrong_participant,
+            match=match,
+            home_score_pred=0,
+            away_score_pred=2,
+            winner_pred=team_b,
+            is_active=True,
+        )
+
+        return {
+            "pool": pool,
+            "allowed_match_ids": {match.id},
+            "scoring_config": pool.get_scoring_config(),
+            "official_result": pool.get_official_results(),
+            "correct_participant": correct_participant,
+            "wrong_participant": wrong_participant,
+        }
+
+    def test_asof_tipo2_knockout_wrong_advancing_zero(self):
+        ctx = self._build_tipo2_decided_knockout_asof()
+        rows = compute_asof_standings(
+            ctx["pool"], ctx["allowed_match_ids"], ctx["scoring_config"], ctx["official_result"]
+        )
+        row = next(r for r in rows if r.participant.id == ctx["wrong_participant"].id)
+        self.assertEqual(row.knockout_points, 0)
+
+    def test_asof_tipo2_knockout_correct_advancing_scores(self):
+        ctx = self._build_tipo2_decided_knockout_asof()
+        rows = compute_asof_standings(
+            ctx["pool"], ctx["allowed_match_ids"], ctx["scoring_config"], ctx["official_result"]
+        )
+        row = next(r for r in rows if r.participant.id == ctx["correct_participant"].id)
+        self.assertGreater(row.knockout_points, 0)
+
 
 class ComputeAsOfStandingsBonusTest(TestCase):
     """Group-qualifier bonus is gated: only fires when ALL group matches are in allowed_match_ids."""
