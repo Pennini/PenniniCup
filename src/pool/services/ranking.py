@@ -359,3 +359,39 @@ def recalculate_match_scores(match):
     )
     for participant in participants:
         recalculate_participant_scores(participant)
+
+
+def recalculate_after_sync(season, changed_matches, *, podium_changed, group_stage_just_closed):
+    """Recalcula só o necessário após um sync de partidas.
+
+    - podium_changed ou group_stage_just_closed: recalc do pool inteiro (bônus de
+      pódio/classificados afetam todos os participantes), igual ao caminho antigo.
+    - caso contrário: recalc só dos participantes que apostaram nos jogos alterados.
+    - nada mudou: não faz nada.
+    """
+    from src.rankings.services.derived import refresh_pool_derived_data
+
+    if podium_changed or group_stage_just_closed:
+        for pool in Pool.objects.filter(is_active=True, season=season):
+            recalculate_pool_scores(pool)
+            refresh_pool_derived_data(pool)
+        return
+
+    if not changed_matches:
+        return
+
+    for match in changed_matches:
+        recalculate_match_scores(match)
+
+    affected_pool_ids = set(
+        PoolParticipant.objects.filter(
+            pool__season=season,
+            pool__is_active=True,
+            is_active=True,
+            bets__match__in=changed_matches,
+        )
+        .values_list("pool_id", flat=True)
+        .distinct()
+    )
+    for pool in Pool.objects.filter(id__in=affected_pool_ids):
+        refresh_pool_derived_data(pool)
