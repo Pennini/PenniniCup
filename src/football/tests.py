@@ -258,14 +258,14 @@ class MatchSyncRankingRecalculationTest(TestCase):
         )
         Stage.objects.create(fifa_id="STAGE-RANKING", season=self.season, name="Group Stage", order=1)
 
-    @patch("src.football.services.sync_matches.recalculate_all_pools")
+    @patch("src.football.services.sync_matches.recalculate_after_sync")
     @patch("src.football.services.sync_matches.enqueue_projection_recalc_for_season")
     @patch("src.football.services.sync_matches.FootballDataClient")
     def test_sync_recalculates_pool_ranking_after_bulk_match_upsert(
         self,
         client_cls,
         enqueue_mock,
-        recalculate_all_pools_mock,
+        recalculate_after_sync_mock,
     ):
         client_instance = client_cls.return_value
         client_instance.get_matches.return_value = [
@@ -282,4 +282,69 @@ class MatchSyncRankingRecalculationTest(TestCase):
         sync_matches()
 
         enqueue_mock.assert_called_once_with(season=self.season)
-        recalculate_all_pools_mock.assert_called_once_with(season=self.season)
+        recalculate_after_sync_mock.assert_called_once()
+
+
+@override_settings(FIFA_API_SEASON=1999)
+class MatchSyncIncrementalTest(TestCase):
+    def setUp(self):
+        competition = Competition.objects.create(fifa_id=1999, name="Copa Inc")
+        self.season = Season.objects.create(
+            fifa_id=1999,
+            competition=competition,
+            name="T",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="STAGE-INC", season=self.season, name="Grupos", order=1)
+        self.group = Group.objects.create(fifa_id="GRP-INC", stage=self.stage, name="A")
+        self.team_h = Team.objects.create(fifa_id="TH", name="Home Inc", name_norm="home inc", code="THM")
+        self.team_a = Team.objects.create(fifa_id="TA", name="Away Inc", name_norm="away inc", code="TAW")
+
+    def _payload(self, **over):
+        base = {
+            "IdMatch": "M-1",
+            "MatchNumber": 1,
+            "IdStage": "STAGE-INC",
+            "IdGroup": "GRP-INC",
+            "Date": "2026-06-14T16:00:00Z",
+            "LocalDate": "2026-06-14T16:00:00Z",
+            "Home": {"IdTeam": "TH"},
+            "Away": {"IdTeam": "TA"},
+            "MatchStatus": 1,
+        }
+        base.update(over)
+        return base
+
+    @patch("src.football.services.sync_matches.recalculate_after_sync")
+    @patch("src.football.services.sync_matches.enqueue_projection_recalc_for_season")
+    @patch("src.football.services.sync_matches.FootballDataClient")
+    def test_no_change_skips_recalc_and_enqueue(self, client_cls, enqueue_mock, recalc_mock):
+        client_cls.return_value.get_matches.return_value = [self._payload()]
+        sync_matches()  # cria o jogo
+        enqueue_mock.reset_mock()
+        recalc_mock.reset_mock()
+        sync_matches()  # mesmo payload, nada muda
+        recalc_mock.assert_called_once()
+        _, kwargs = recalc_mock.call_args
+        self.assertEqual(list(recalc_mock.call_args.args[1]), [])  # changed_matches vazio
+        enqueue_mock.assert_not_called()
+
+    @patch("src.football.services.sync_matches.recalculate_after_sync")
+    @patch("src.football.services.sync_matches.enqueue_projection_recalc_for_season")
+    @patch("src.football.services.sync_matches.FootballDataClient")
+    def test_score_change_recalcs_and_enqueues_group(self, client_cls, enqueue_mock, recalc_mock):
+        client_cls.return_value.get_matches.return_value = [self._payload()]
+        sync_matches()
+        enqueue_mock.reset_mock()
+        recalc_mock.reset_mock()
+        client_cls.return_value.get_matches.return_value = [
+            self._payload(HomeTeamScore=2, AwayTeamScore=1, Winner="TH", MatchStatus=0)
+        ]
+        sync_matches()
+        recalc_mock.assert_called_once()
+        changed = list(recalc_mock.call_args.args[1])
+        self.assertEqual(len(changed), 1)
+        self.assertEqual(changed[0].fifa_id, "M-1")
+        enqueue_mock.assert_called_once_with(season=self.season)  # jogo de grupo mudou
