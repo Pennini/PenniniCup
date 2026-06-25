@@ -4041,19 +4041,19 @@ class Tipo2FullBracketEndToEndTest(TestCase):
     Participants
     ────────────
     P1 — QF1: Alpha 2-1 (exact), QF2: Gamma 2-0 (exact), SF: home 1-0 (not played → 0)
-    P2 — QF1: Beta  0-2 (wrong advancer → 0), QF2: Gamma 2-0 (exact → 35), SF: not placed
-    P3 — QF1: Alpha 3-1 (advancer ok, loser-goals → 17), QF2: Delta 0-1 (wrong → 0), SF: not placed
+    P2 — QF1: Beta  0-2 (wrong advancer → 0), QF2: Gamma 2-0 (exact → 62), SF: not placed
+    P3 — QF1: Alpha 3-1 (advancer ok, loser-goals → 35), QF2: Delta 0-1 (wrong → 0), SF: not placed
 
-    Hand math
+    Hand math (uses per-phase QF tier: exact=62, loser_goals=35)
     ─────────
-    P1: QF1=35 (exact) + QF2=35 (exact) + SF=0 (no winner) = 70
-    P2: QF1=0  (gate)  + QF2=35 (exact) + SF=0 (no bet)    = 35
-    P3: QF1=17 (eliminated_goals) + QF2=0 (gate) + SF=0     = 17
+    P1: QF1=62 (exact) + QF2=62 (exact) + SF=0 (no winner) = 124
+    P2: QF1=0  (gate)  + QF2=62 (exact) + SF=0 (no bet)    = 62
+    P3: QF1=35 (eliminated_goals) + QF2=0 (gate) + SF=0     = 35
 
     QF1 detail for P3: real 2-1 HOME, guess 3-1.
       Gate passes (predicted_advancing=Alpha=winner).
       is_exact=False; is_diff=(3-1)=2 vs (2-1)=1 → False; actual_dir=HOME.
-      winner_goals: guess_home(3)==home(2)? No. loser_goals: guess_away(1)==away(1)? Yes → 17.
+      winner_goals: guess_home(3)==home(2)? No. loser_goals: guess_away(1)==away(1)? Yes → 35 (QF loser_goals tier).
     """
 
     def setUp(self):
@@ -4207,29 +4207,29 @@ class Tipo2FullBracketEndToEndTest(TestCase):
         )
 
     def test_h1_p1_per_match_and_total(self):
-        """P1: QF1=35 (exact), QF2=35 (exact), SF=0 (not played) → total=70."""
+        """P1: QF1=62 (exact), QF2=62 (exact), SF=0 (not played) → total=124."""
         from src.pool.models import PoolBetScore
 
         recalculate_participant_scores(self.p1)
         self.p1.refresh_from_db()
 
         qf1_score = PoolBetScore.objects.get(bet=self.p1_qf1_bet)
-        self.assertEqual(qf1_score.points, 35, "P1 QF1: exact score + correct advancer → 35")
+        self.assertEqual(qf1_score.points, 62, "P1 QF1: exact score + correct advancer → 62 (QF exact tier)")
         self.assertTrue(qf1_score.exact_score)
         self.assertTrue(qf1_score.advancing_correct)
 
         qf2_score = PoolBetScore.objects.get(bet=self.p1_qf2_bet)
-        self.assertEqual(qf2_score.points, 35, "P1 QF2: exact score + correct advancer → 35")
+        self.assertEqual(qf2_score.points, 62, "P1 QF2: exact score + correct advancer → 62 (QF exact tier)")
         self.assertTrue(qf2_score.exact_score)
 
         sf_score = PoolBetScore.objects.get(bet=self.p1_sf_bet)
         self.assertEqual(sf_score.points, 0, "P1 SF: match not decided yet → 0")
         self.assertFalse(sf_score.advancing_correct)
 
-        self.assertEqual(self.p1.knockout_points, 70, "P1 total knockout points: 35+35+0=70")
+        self.assertEqual(self.p1.knockout_points, 124, "P1 total knockout points: 62+62+0=124")
 
     def test_h1_p2_per_match_and_total(self):
-        """P2: QF1=0 (wrong advancer), QF2=35 (exact), no SF → total=35."""
+        """P2: QF1=0 (wrong advancer), QF2=62 (exact), no SF → total=62."""
         from src.pool.models import PoolBetScore
 
         recalculate_participant_scores(self.p2)
@@ -4240,22 +4240,22 @@ class Tipo2FullBracketEndToEndTest(TestCase):
         self.assertFalse(qf1_score.advancing_correct)
 
         qf2_score = PoolBetScore.objects.get(bet=self.p2_qf2_bet)
-        self.assertEqual(qf2_score.points, 35, "P2 QF2: exact 2-0 + correct advancer → 35")
+        self.assertEqual(qf2_score.points, 62, "P2 QF2: exact 2-0 + correct advancer → 62 (QF exact tier)")
         self.assertTrue(qf2_score.advancing_correct)
 
-        self.assertEqual(self.p2.knockout_points, 35, "P2 total knockout points: 0+35=35")
+        self.assertEqual(self.p2.knockout_points, 62, "P2 total knockout points: 0+62=62")
 
     def test_h1_p3_per_match_and_total(self):
-        """P3: QF1=17 (eliminated_goals tier), QF2=0 (wrong advancer) → total=17."""
+        """P3: QF1=35 (eliminated_goals QF tier), QF2=0 (wrong advancer) → total=35."""
         from src.pool.models import PoolBetScore
 
         recalculate_participant_scores(self.p3)
         self.p3.refresh_from_db()
 
         # QF1: gate passes (Alpha). real 2-1, guess 3-1.
-        # winner_goals: guess_home(3)!=home(2). loser_goals: guess_away(1)==away(1) → 17.
+        # winner_goals: guess_home(3)!=home(2). loser_goals: guess_away(1)==away(1) → QF loser_goals=35.
         qf1_score = PoolBetScore.objects.get(bet=self.p3_qf1_bet)
-        self.assertEqual(qf1_score.points, 17, "P3 QF1: correct advancer + loser goals → 17")
+        self.assertEqual(qf1_score.points, 35, "P3 QF1: correct advancer + loser goals → 35 (QF loser_goals tier)")
         self.assertTrue(qf1_score.advancing_correct)
         self.assertFalse(qf1_score.advancing_goals_correct)
         self.assertFalse(qf1_score.diff_correct)
@@ -4266,10 +4266,10 @@ class Tipo2FullBracketEndToEndTest(TestCase):
         self.assertEqual(qf2_score.points, 0, "P3 QF2: wrong advancer (Delta≠Gamma) → 0")
         self.assertFalse(qf2_score.advancing_correct)
 
-        self.assertEqual(self.p3.knockout_points, 17, "P3 total knockout points: 17+0=17")
+        self.assertEqual(self.p3.knockout_points, 35, "P3 total knockout points: 35+0=35")
 
     def test_h1_ranking_order(self):
-        """H1 combined: P1 (70) > P2 (35) > P3 (17) after all recalculations."""
+        """H1 combined: P1 (124) > P2 (62) > P3 (35) after all recalculations."""
         recalculate_participant_scores(self.p1)
         recalculate_participant_scores(self.p2)
         recalculate_participant_scores(self.p3)
@@ -4325,3 +4325,68 @@ class KnockoutPhaseScoringSeedTest(TestCase):
         final = rows["FINAL"]
         self.assertEqual(final.exact, 95)
         self.assertEqual(final.advancing_only, 48)
+
+
+class RecalculateTipo2PhaseTierTest(TestCase):
+    """recalculate_participant_scores usa a faixa da fase (SF) no Tipo 2."""
+
+    def _build_sf_pool(self):
+        user = User.objects.create_user(username="t2sf", email="t2sf@example.com", password="pass")
+        competition = Competition.objects.create(fifa_id=8201, name="Copa T2 SF")
+        season = Season.objects.create(
+            fifa_id=8201,
+            competition=competition,
+            name="T2 SF Season",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage_sf = Stage.objects.create(fifa_id="SF-PT", season=season, name="SF", order=80)
+        team_a = Team.objects.create(fifa_id="PT-A", name="PT Alpha", name_norm="pt-alpha", code="PTA")
+        team_b = Team.objects.create(fifa_id="PT-B", name="PT Beta", name_norm="pt-beta", code="PTB")
+
+        past = timezone.now() - timezone.timedelta(hours=2)
+        match = Match.objects.create(
+            fifa_id="PT-SF-1",
+            season=season,
+            stage=stage_sf,
+            match_number=100,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=team_a,
+            away_team=team_b,
+            home_score=2,
+            away_score=0,
+            winner=team_a,
+            status=Match.STATUS_FINISHED,
+        )
+        pool = Pool.objects.create(
+            name="Pool T2 SF",
+            slug="pool-t2-sf",
+            season=season,
+            created_by=user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        participant = PoolParticipant.objects.create(pool=pool, user=user, is_active=True)
+        # Placar exato 2x0, classificado team_a (== real winner) → SF exact = 78
+        bet = PoolBet.objects.create(
+            participant=participant,
+            match=match,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=team_a,
+            is_active=True,
+        )
+        return {"participant": participant, "bet": bet}
+
+    def test_recalculate_uses_sf_exact_tier(self):
+        from src.pool.models import PoolBetScore
+
+        ctx = self._build_sf_pool()
+        recalculate_participant_scores(ctx["participant"])
+        score = PoolBetScore.objects.get(bet=ctx["bet"])
+        self.assertEqual(score.points, 78)
+        self.assertTrue(score.exact_score)
+        self.assertTrue(score.advancing_correct)

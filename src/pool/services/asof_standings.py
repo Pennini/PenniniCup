@@ -147,6 +147,11 @@ def compute_asof_standings(pool, allowed_match_ids, scoring_config, official_res
     """
     allowed_match_ids = set(allowed_match_ids)
     pool_type = pool.pool_type
+
+    knockout_phase_scoring = None
+    if pool_type == POOL_TYPE_2:
+        knockout_phase_scoring = {row.phase_key: row for row in scoring_config.knockout_phases.all()}
+
     participants = list(eligible_participants(pool).select_related("user"))
 
     podium = _asof_podium(pool.season, allowed_match_ids, official_result)
@@ -194,6 +199,7 @@ def compute_asof_standings(pool, allowed_match_ids, scoring_config, official_res
                 scoring_config=scoring_config,
                 pool_type=pool_type,
                 predicted_advancing_id=advancing_map.get(bet.match_id),
+                knockout_phase_scoring=knockout_phase_scoring,
             )
             total_points += score_data["points"]
             if phase_for_match(bet.match) == PHASE_GROUP:

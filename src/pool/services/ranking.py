@@ -146,6 +146,10 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
     official_result = official_result or participant.pool.get_official_results()
     pool_type = participant.pool.pool_type
 
+    knockout_phase_scoring = None
+    if pool_type == POOL_TYPE_2:
+        knockout_phase_scoring = {row.phase_key: row for row in scoring_config.knockout_phases.all()}
+
     bets = list(participant.bets.select_related("match", "match__stage", "winner_pred").all())
 
     # Tipo 2: resolve advancing team per knockout match to gate scoring
@@ -195,6 +199,7 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
             scoring_config=scoring_config,
             pool_type=pool_type,
             predicted_advancing_id=advancing_map.get(bet.match_id),
+            knockout_phase_scoring=knockout_phase_scoring,
         )
         scores_to_upsert.append(
             PoolBetScore(

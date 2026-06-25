@@ -82,6 +82,7 @@ class Command(BaseCommand):
         # Tipo 2: mata-mata é pontuado pelo classificado; o recálculo fresco
         # precisa do mesmo predicted_advancing_id, senão acusa drift falso.
         knockout_matches = []
+        knockout_phase_scoring = None
         if pool.pool_type == POOL_TYPE_2:
             from src.pool.services.context_builder import resolve_knockout_advancing_by_match
 
@@ -92,6 +93,7 @@ class Command(BaseCommand):
                 .order_by("match_number")
                 if phase_for_match(m) != PHASE_GROUP
             ]
+            knockout_phase_scoring = {row.phase_key: row for row in cfg.knockout_phases.all()}
 
         for row in leaderboard:
             p = row.participant
@@ -120,6 +122,7 @@ class Command(BaseCommand):
                     scoring_config=cfg,
                     pool_type=pool.pool_type,
                     predicted_advancing_id=advancing_map.get(bet.match_id),
+                    knockout_phase_scoring=knockout_phase_scoring,
                 )
 
                 if sc:
