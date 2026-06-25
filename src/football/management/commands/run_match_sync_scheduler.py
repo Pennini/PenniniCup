@@ -34,6 +34,8 @@ class Command(BaseCommand):
             close_old_connections()
             try:
                 season = Season.objects.filter(fifa_id=settings.FIFA_API_SEASON).first()
+                if season is None:
+                    logger.warning("Season fifa_id=%s não encontrada; agendador ocioso.", settings.FIFA_API_SEASON)
                 in_window = season is not None and should_run_sync(season, timezone.now(), window_hours)
                 if in_window:
                     sync_matches()

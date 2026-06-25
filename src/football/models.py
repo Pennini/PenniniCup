@@ -21,6 +21,7 @@ class Season(models.Model):
     year = models.IntegerField()
     start_date = models.DateField()
     end_date = models.DateField()
+    group_stage_close_processed = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["-year"]

@@ -146,7 +146,6 @@ def sync_matches():
 
     fifa_ids = [r.fifa_id for r in rows]
     existing = {m.fifa_id: m for m in Match.objects.filter(season=season, fifa_id__in=fifa_ids)}
-    group_stage_finished_before = is_group_stage_finished(season)
 
     Match.objects.bulk_create(
         rows,
@@ -186,8 +185,6 @@ def sync_matches():
             group_or_structure_changed = True
             if new.home_score is not None and new.away_score is not None:
                 changed_matches.append(new)
-                if new.group_id is not None:
-                    group_or_structure_changed = True
                 if new.stage.order in (6, 7):
                     podium_changed = True
             continue
@@ -202,7 +199,7 @@ def sync_matches():
         if struct_diff:
             group_or_structure_changed = True
 
-    group_stage_just_closed = (not group_stage_finished_before) and is_group_stage_finished(season)
+    group_stage_just_closed = (not season.group_stage_close_processed) and is_group_stage_finished(season)
 
     if group_or_structure_changed:
         enqueue_projection_recalc_for_season(season=season)
@@ -213,6 +210,10 @@ def sync_matches():
         podium_changed=podium_changed,
         group_stage_just_closed=group_stage_just_closed,
     )
+
+    if group_stage_just_closed:
+        season.group_stage_close_processed = True
+        season.save(update_fields=["group_stage_close_processed"])
 
     logger.info(
         "Matches sincronizados: %s (ignorados: %s) | alterados: %s | pódio: %s | grupos fechou: %s",
