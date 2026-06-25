@@ -12,6 +12,7 @@ from src.pool.models import (
     Pool,
     PoolBet,
     PoolBetScore,
+    PoolKnockoutPhaseScoring,
     PoolLockWindow,
     PoolOfficialResult,
     PoolParticipant,
@@ -300,6 +301,12 @@ class PoolProjectionRecalcAdmin(admin.ModelAdmin):
         return redirect("..")
 
 
+class PoolKnockoutPhaseScoringInline(admin.TabularInline):
+    model = PoolKnockoutPhaseScoring
+    extra = 0
+    fields = ("phase_key", "exact", "advancing_goals", "diff", "loser_goals", "advancing_only")
+
+
 @admin.register(PoolScoringConfig)
 class PoolScoringConfigAdmin(admin.ModelAdmin):
     list_display = (
@@ -317,6 +324,7 @@ class PoolScoringConfigAdmin(admin.ModelAdmin):
         "knockout_team_advancement_bonus",
     )
     search_fields = ("pool__name", "pool__slug")
+    inlines = [PoolKnockoutPhaseScoringInline]
 
 
 @admin.register(PoolOfficialResult)

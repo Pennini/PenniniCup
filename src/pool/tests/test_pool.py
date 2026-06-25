@@ -4139,3 +4139,50 @@ class Tipo2FullBracketEndToEndTest(TestCase):
         self.p3.refresh_from_db()
         self.assertGreater(self.p1.knockout_points, self.p2.knockout_points)
         self.assertGreater(self.p2.knockout_points, self.p3.knockout_points)
+
+
+class KnockoutPhaseScoringSeedTest(TestCase):
+    """get_scoring_config garante as 6 faixas de fase com os defaults oficiais."""
+
+    def _make_minimal_pool(self):
+        from src.football.models import Competition, Season
+        from src.pool.models import POOL_TYPE_2, Pool
+
+        user = User.objects.create_user(username="kps", email="kps@example.com", password="pass")
+        competition = Competition.objects.create(fifa_id=9100, name="KPS Cup")
+        season = Season.objects.create(
+            fifa_id=9100,
+            competition=competition,
+            name="KPS Season",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        return Pool.objects.create(
+            name="KPS Pool",
+            slug="kps-pool",
+            season=season,
+            created_by=user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+
+    def test_get_scoring_config_seeds_six_phase_rows(self):
+        from src.pool.models import KNOCKOUT_PHASE_DEFAULTS
+
+        pool = self._make_minimal_pool()
+        config = pool.get_scoring_config()
+
+        rows = {row.phase_key: row for row in config.knockout_phases.all()}
+        self.assertEqual(set(rows), set(KNOCKOUT_PHASE_DEFAULTS))
+
+        sf = rows["SF"]
+        self.assertEqual(sf.exact, 78)
+        self.assertEqual(sf.advancing_goals, 59)
+        self.assertEqual(sf.diff, 50)
+        self.assertEqual(sf.loser_goals, 44)
+        self.assertEqual(sf.advancing_only, 40)
+
+        final = rows["FINAL"]
+        self.assertEqual(final.exact, 95)
+        self.assertEqual(final.advancing_only, 48)

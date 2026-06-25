@@ -19,6 +19,15 @@ from src.pool.services.rules import (
     phase_for_match,
 )
 
+KNOCKOUT_PHASE_DEFAULTS = {
+    "R32": {"exact": 40, "advancing_goals": 30, "diff": 25, "loser_goals": 22, "advancing_only": 20},
+    "R16": {"exact": 50, "advancing_goals": 38, "diff": 32, "loser_goals": 28, "advancing_only": 26},
+    "QF": {"exact": 62, "advancing_goals": 47, "diff": 40, "loser_goals": 35, "advancing_only": 32},
+    "SF": {"exact": 78, "advancing_goals": 59, "diff": 50, "loser_goals": 44, "advancing_only": 40},
+    "FINAL": {"exact": 95, "advancing_goals": 72, "diff": 60, "loser_goals": 53, "advancing_only": 48},
+    "THIRD": {"exact": 55, "advancing_goals": 41, "diff": 35, "loser_goals": 30, "advancing_only": 27},
+}
+
 
 class Pool(models.Model):
     POOL_TYPE_1 = POOL_TYPE_1
@@ -99,7 +108,9 @@ class Pool(models.Model):
         return InviteToken.use_token(token_obj.token)
 
     def get_scoring_config(self):
-        config, _ = PoolScoringConfig.objects.get_or_create(pool=self)
+        config, created = PoolScoringConfig.objects.get_or_create(pool=self)
+        if created:
+            ensure_knockout_phase_rows(config)
         return config
 
     def _validate_prize_percentage_total(self):
@@ -475,6 +486,40 @@ class PoolScoringConfig(models.Model):
 
     def __str__(self):
         return f"Pontuacao {self.pool.slug}"
+
+
+class PoolKnockoutPhaseScoring(models.Model):
+    PHASE_CHOICES = [
+        ("R32", "32 Avos"),
+        ("R16", "Oitavas"),
+        ("QF", "Quartas"),
+        ("SF", "Semifinal"),
+        ("FINAL", "Final"),
+        ("THIRD", "Disputa de 3o lugar"),
+    ]
+
+    config = models.ForeignKey(PoolScoringConfig, on_delete=models.CASCADE, related_name="knockout_phases")
+    phase_key = models.CharField(max_length=5, choices=PHASE_CHOICES)
+
+    exact = models.PositiveSmallIntegerField(default=40)
+    advancing_goals = models.PositiveSmallIntegerField(default=30)
+    diff = models.PositiveSmallIntegerField(default=25)
+    loser_goals = models.PositiveSmallIntegerField(default=22)
+    advancing_only = models.PositiveSmallIntegerField(default=20)
+
+    class Meta:
+        verbose_name = "Faixa de mata-mata por fase"
+        verbose_name_plural = "Faixas de mata-mata por fase"
+        unique_together = ("config", "phase_key")
+
+    def __str__(self):
+        return f"{self.config.pool.slug}:{self.phase_key}"
+
+
+def ensure_knockout_phase_rows(config):
+    """Garante as 6 linhas de faixa por fase para uma PoolScoringConfig."""
+    for phase_key, values in KNOCKOUT_PHASE_DEFAULTS.items():
+        PoolKnockoutPhaseScoring.objects.get_or_create(config=config, phase_key=phase_key, defaults=values)
 
 
 class PoolOfficialResult(models.Model):
