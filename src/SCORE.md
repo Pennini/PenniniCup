@@ -42,17 +42,41 @@ O placar que conta é **sempre o do tempo normal (90 min)**, independente de pro
 
 ### Mata-mata no Tipo 2 (palpite progressivo)
 
-No bolão **Tipo 2** o mata-mata é pontuado **pelo classificado**, não por posição. O classificado palpitado é a **identidade do time** que o participante projetou para aquele jogo (deduzida do bracket projetado do participante quando os times reais ainda não existem, ex.: R16+), comparada ao `match.winner` real.
+No bolão **Tipo 2** o mata-mata é pontuado **pelo classificado** (identidade do
+time que o participante projetou para o jogo vs. `match.winner` real) e a faixa
+de placar **escala por fase** — quanto mais avançado o jogo, mais vale.
 
-A pontuação é **travada pelo classificado**:
+Regra do gate (por jogo, por identidade — **sem cascata, sem olhar fases
+passadas ou futuras**):
 
-- **Classificado errado → 0**, mesmo com placar exato (não há consolação de 10 pts; é o gate, não acumula).
-- Se a identidade do classificado projetado não bater com quem avançou de fato (ou o time projetado foi eliminado antes deste jogo), o palpite **não pontua** naquela rodada.
-- **Classificado certo →** aplicam-se as faixas `knockout_*` (placar exato 35 / gols do classificado 25 / diferença 21 / gols do eliminado 17 / só o classificado 14), pelos valores das configurações do bolão.
+- **Classificado errado → 0**, mesmo com placar exato. É o gate, não acumula,
+  não há consolação.
+- O time **eliminado** do confronto é irrelevante: acertar quem avança e errar
+  o adversário pontua cheio (ex.: real Marrocos 1×2 Holanda, palpite
+  Brasil 1×2 Holanda → classificado Holanda correto, placar exato → faixa cheia
+  da fase).
+- **Classificado certo →** aplica-se a faixa da fase do jogo (tabela abaixo).
 
-Não há **bônus de classificado** (team advancement) no Tipo 2 — o acerto do classificado já é a condição de pontuar o jogo.
+Faixas de placar por fase (exato / gols do classificado / diferença / gols do
+eliminado / só o classificado):
 
-Real empate decidido nos pênaltis (Tipo 2, classificado certo): placar exato **35** / mesma diferença (0) **21** / senão **14**.
+| Fase  | exato | gols-classif | dif | gols-elim | só-classif |
+| ----- | ----- | ------------ | --- | --------- | ---------- |
+| R32   | 40    | 30           | 25  | 22        | 20         |
+| R16   | 50    | 38           | 32  | 28        | 26         |
+| QF    | 62    | 47           | 40  | 35        | 32         |
+| SF    | 78    | 59           | 50  | 44        | 40         |
+| FINAL | 95    | 72           | 60  | 53        | 48         |
+| THIRD | 55    | 41           | 35  | 30        | 27         |
+
+**Sem bônus de classificado separado** — a recompensa por acertar quem avança já
+está embutida na faixa (`só o classificado` é o piso). Acertar o classificado da
+FINAL = acertar o campeão, que dispara o **bônus de campeão** (120), mecanismo de
+torneio à parte que acumula.
+
+Real empate decidido nos pênaltis (Tipo 2, classificado certo): placar exato =
+`exato` da fase / mesma diferença (0) = `dif` da fase / senão = `só-classif` da
+fase.
 
 ______________________________________________________________________
 
