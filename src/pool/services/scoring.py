@@ -1,4 +1,6 @@
-from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_2, phase_for_match
+from types import SimpleNamespace
+
+from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_2, normalize_stage_key, phase_for_match
 
 
 def _winner_from_score(home_score, away_score):
@@ -25,37 +27,50 @@ def _is_loser_goals_correct(actual_winner, guess_home, guess_away, home, away):
     return False
 
 
-def _knockout_points_by_score(scoring_config, home, away, guess_home, guess_away):
+def _knockout_points_by_score(tier, home, away, guess_home, guess_away):
     """Faixa de pontos do mata-mata pelo placar (posicional), assumindo classificado correto.
 
+    `tier` é um objeto com os atributos exact/advancing_goals/diff/loser_goals/advancing_only.
     Retorna (points, is_exact, advancing_goals, diff_correct, eliminated_goals).
     """
     is_exact = guess_home == home and guess_away == away
     if is_exact:
-        return scoring_config.knockout_exact_and_advancing, True, False, False, False
+        return tier.exact, True, False, False, False
 
     is_diff = (guess_home - guess_away) == (home - away)
 
     if home == away:
         # Empate real (decidido nos pênaltis): sem vencedor posicional.
         if is_diff:
-            return scoring_config.knockout_advancing_and_diff, False, False, True, False
-        return scoring_config.knockout_advancing_only, False, False, False, False
+            return tier.diff, False, False, True, False
+        return tier.advancing_only, False, False, False, False
 
     actual_direction = _winner_from_score(home, away)
     winner_goals = _is_winner_goals_correct(actual_direction, guess_home, guess_away, home, away)
     loser_goals = _is_loser_goals_correct(actual_direction, guess_home, guess_away, home, away)
 
     if winner_goals:
-        return scoring_config.knockout_advancing_and_winner_goals, False, True, False, False
+        return tier.advancing_goals, False, True, False, False
     if is_diff:
-        return scoring_config.knockout_advancing_and_diff, False, False, True, False
+        return tier.diff, False, False, True, False
     if loser_goals:
-        return scoring_config.knockout_advancing_and_loser_goals, False, False, False, True
-    return scoring_config.knockout_advancing_only, False, False, False, False
+        return tier.loser_goals, False, False, False, True
+    return tier.advancing_only, False, False, False, False
 
 
-def calculate_bet_points(bet, scoring_config, pool_type=None, predicted_advancing_id=None):
+def _tier_from_flat_config(scoring_config):
+    return SimpleNamespace(
+        exact=scoring_config.knockout_exact_and_advancing,
+        advancing_goals=scoring_config.knockout_advancing_and_winner_goals,
+        diff=scoring_config.knockout_advancing_and_diff,
+        loser_goals=scoring_config.knockout_advancing_and_loser_goals,
+        advancing_only=scoring_config.knockout_advancing_only,
+    )
+
+
+def calculate_bet_points(
+    bet, scoring_config, pool_type=None, predicted_advancing_id=None, knockout_phase_scoring=None
+):
     match = bet.match
     if (
         not bet.is_active
@@ -128,8 +143,13 @@ def calculate_bet_points(bet, scoring_config, pool_type=None, predicted_advancin
                 "diff_correct": False,
                 "eliminated_goals_correct": False,
             }
+        stage_key = normalize_stage_key(match.stage)
+        tier = (knockout_phase_scoring or {}).get(stage_key)
+        if tier is None:
+            # Fallback retrocompatível: pool sem faixas por fase usa os campos flat.
+            tier = _tier_from_flat_config(scoring_config)
         points, is_exact, advancing_goals, diff_correct, eliminated_goals = _knockout_points_by_score(
-            scoring_config, home, away, guess_home, guess_away
+            tier, home, away, guess_home, guess_away
         )
         return {
             "points": points,

@@ -1667,6 +1667,145 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
         self.assertEqual(result["points"], 0)
         self.assertFalse(result["advancing_correct"])
 
+    def _make_phase_scoring(self):
+        from src.pool.models import KNOCKOUT_PHASE_DEFAULTS
+
+        return {key: SimpleNamespace(**values) for key, values in KNOCKOUT_PHASE_DEFAULTS.items()}
+
+    def _make_knockout_bet_phase(
+        self,
+        home_pred,
+        away_pred,
+        home_real,
+        away_real,
+        *,
+        stage_name,
+        winner_real_id=None,
+        winner_pred_id=None,
+        home_team_id=1,
+    ):
+        stage = SimpleNamespace(name=stage_name)
+        match = SimpleNamespace(
+            stage=stage,
+            home_score=home_real,
+            away_score=away_real,
+            winner_id=winner_real_id,
+            home_team_id=home_team_id,
+            away_team_id=2,
+        )
+        return SimpleNamespace(
+            is_active=True,
+            home_score_pred=home_pred,
+            away_score_pred=away_pred,
+            winner_pred_id=winner_pred_id,
+            match=match,
+        )
+
+    def test_tipo2_final_exact_uses_final_tier(self):
+        from src.pool.services.rules import POOL_TYPE_2
+
+        bet = self._make_knockout_bet_phase(2, 1, 2, 1, stage_name="Final", winner_real_id=1)
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=1,
+            knockout_phase_scoring=self._make_phase_scoring(),
+        )
+        self.assertEqual(result["points"], 95)
+        self.assertTrue(result["exact_score"])
+        self.assertTrue(result["advancing_correct"])
+
+    def test_tipo2_r32_exact_uses_r32_tier(self):
+        from src.pool.services.rules import POOL_TYPE_2
+
+        bet = self._make_knockout_bet_phase(2, 1, 2, 1, stage_name="R32", winner_real_id=1)
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=1,
+            knockout_phase_scoring=self._make_phase_scoring(),
+        )
+        self.assertEqual(result["points"], 40)
+
+    def test_tipo2_final_scores_more_than_r32_same_guess(self):
+        from src.pool.services.rules import POOL_TYPE_2
+
+        # Pred: home wins 2-0. Real: home wins 2-1 (same winner, winner goals match, not exact).
+        # → advancing_goals tier applies.
+        phases = self._make_phase_scoring()
+        cfg = self._make_scoring_config()
+        final_bet = self._make_knockout_bet_phase(2, 0, 2, 1, stage_name="Final", winner_real_id=1)
+        r32_bet = self._make_knockout_bet_phase(2, 0, 2, 1, stage_name="R32", winner_real_id=1)
+        final_pts = calculate_bet_points(
+            final_bet,
+            cfg,
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=1,
+            knockout_phase_scoring=phases,
+        )["points"]
+        r32_pts = calculate_bet_points(
+            r32_bet,
+            cfg,
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=1,
+            knockout_phase_scoring=phases,
+        )["points"]
+        self.assertEqual(final_pts, 72)  # FINAL advancing_goals
+        self.assertEqual(r32_pts, 30)  # R32 advancing_goals
+        self.assertGreater(final_pts, r32_pts)
+
+    def test_tipo2_wrong_classified_zero_even_in_final(self):
+        from src.pool.services.rules import POOL_TYPE_2
+
+        bet = self._make_knockout_bet_phase(2, 1, 2, 1, stage_name="Final", winner_real_id=2)
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=1,
+            knockout_phase_scoring=self._make_phase_scoring(),
+        )
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["advancing_correct"])
+
+    def test_tipo2_example_wrong_opponent_right_classified_scores_full(self):
+        # Real Marrocos(1) x Holanda(2): away advances. Palpite Brasil x Holanda 1x2.
+        # Classificado (away, id=2) == real winner (id=2) → exato da fase (QF).
+        from src.pool.services.rules import POOL_TYPE_2
+
+        bet = self._make_knockout_bet_phase(
+            1,
+            2,
+            1,
+            2,
+            stage_name="Quartas",
+            winner_real_id=2,
+        )
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=2,
+            knockout_phase_scoring=self._make_phase_scoring(),
+        )
+        self.assertEqual(result["points"], 62)  # QF exact
+        self.assertTrue(result["exact_score"])
+
+    def test_tipo2_fallback_to_flat_when_no_phase_map(self):
+        # Sem knockout_phase_scoring → usa campos flat (retrocompatível).
+        from src.pool.services.rules import POOL_TYPE_2
+
+        bet = self._make_knockout_bet_phase(2, 1, 2, 1, stage_name="Final", winner_real_id=1)
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=1,
+        )
+        self.assertEqual(result["points"], 35)  # knockout_exact_and_advancing flat
+
 
 class NormalizeStageKeyTest(SimpleTestCase):
     """Unit tests for normalize_stage_key pure function."""
