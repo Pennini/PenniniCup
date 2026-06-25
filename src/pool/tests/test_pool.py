@@ -4390,3 +4390,24 @@ class RecalculateTipo2PhaseTierTest(TestCase):
         self.assertEqual(score.points, 78)
         self.assertTrue(score.exact_score)
         self.assertTrue(score.advancing_correct)
+
+
+class MatchMaxPointsPhaseTest(SimpleTestCase):
+    def test_phase_map_overrides_flat_knockout_max(self):
+        from src.rankings.services.dashboard import _match_max_points
+
+        scoring_config = SimpleNamespace(group_exact_score=25, knockout_exact_and_advancing=35)
+        final_stage = SimpleNamespace(name="Final")
+        match = SimpleNamespace(stage=final_stage, group_id=None)
+        phase_max_map = {"FINAL": 95, "R32": 40}
+
+        self.assertEqual(_match_max_points(match, scoring_config, phase_max_map), 95)
+
+    def test_no_phase_map_uses_flat(self):
+        from src.rankings.services.dashboard import _match_max_points
+
+        scoring_config = SimpleNamespace(group_exact_score=25, knockout_exact_and_advancing=35)
+        final_stage = SimpleNamespace(name="Final")
+        match = SimpleNamespace(stage=final_stage, group_id=None)
+
+        self.assertEqual(_match_max_points(match, scoring_config), 35)

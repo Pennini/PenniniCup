@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from src.football.models import Match
 from src.pool.models import PoolBetScore
-from src.pool.services.rules import PHASE_GROUP, phase_for_match
+from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_2, normalize_stage_key, phase_for_match
 from src.rankings.models import PoolRankingHistory
 from src.rankings.services.leaderboard import build_pool_leaderboard
 from src.rankings.services.match_guesses import resolve_default_match, stage_label
@@ -129,9 +129,14 @@ def _pool_version_tuple(pool):
     return [finished, eligible, max_round]
 
 
-def _match_max_points(match, scoring_config):
+def _match_max_points(match, scoring_config, phase_max_map=None):
     if phase_for_match(match) == PHASE_GROUP:
         return scoring_config.group_exact_score if scoring_config else _DEFAULT_GROUP_MAX
+    if phase_max_map:
+        stage_key = normalize_stage_key(match.stage)
+        phase_max = phase_max_map.get(stage_key)
+        if phase_max is not None:
+            return phase_max
     return scoring_config.knockout_exact_and_advancing if scoring_config else _DEFAULT_KNOCKOUT_MAX
 
 
@@ -144,7 +149,10 @@ def _utilization_inputs(pool, finished_matches):
     qualifiers) are excluded from both sides on purpose.
     """
     scoring_config = getattr(pool, "scoring_config", None)
-    denominator = sum(_match_max_points(match, scoring_config) for match in finished_matches)
+    phase_max_map = None
+    if scoring_config is not None and getattr(pool, "pool_type", None) == POOL_TYPE_2:
+        phase_max_map = {row.phase_key: row.exact for row in scoring_config.knockout_phases.all()}
+    denominator = sum(_match_max_points(match, scoring_config, phase_max_map) for match in finished_matches)
 
     finished_ids = [match.id for match in finished_matches]
     points_by_id = {}
