@@ -244,6 +244,45 @@
                 </ol>
             </div>
 
+            {% if selected_pool.pool_type == pool_type_2 %}
+            <div class="rounded-xl border border-neutral-700 bg-neutral-950/80 p-4 space-y-3">
+                <div class="flex items-center justify-between gap-3">
+                    <h3 class="font-semibold">Mata-Mata</h3>
+                    <span class="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-xs font-semibold text-sky-200">Máximo {{ knockout_max_points }} pts</span>
+                </div>
+                <p class="text-xs text-neutral-400">A pontuação olha o <strong class="text-neutral-200">classificado</strong> (o time que você marcou para avançar naquele jogo) e o placar — e <strong class="text-neutral-200">sobe a cada fase</strong>. Errou quem se classifica? <strong class="text-sky-200">0 pts</strong>, mesmo com placar exato.</p>
+                <div class="overflow-x-auto">
+                    <table class="w-full border-collapse text-xs text-neutral-200">
+                        <thead>
+                            <tr class="text-neutral-400">
+                                <th class="px-2 py-1.5 text-left font-medium">Fase</th>
+                                <th class="px-2 py-1.5 text-center font-medium" title="Placar exato + classificado">Exato</th>
+                                <th class="px-2 py-1.5 text-center font-medium" title="Classificado + gols do classificado">Cls+gols</th>
+                                <th class="px-2 py-1.5 text-center font-medium" title="Classificado + diferença de gols">Cls+dif</th>
+                                <th class="px-2 py-1.5 text-center font-medium" title="Classificado + gols do eliminado">Cls+elim</th>
+                                <th class="px-2 py-1.5 text-center font-medium" title="Só o classificado">Só&nbsp;cls</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for item in knockout_phase_rows %}
+                            <tr class="border-t border-neutral-800">
+                                <td class="px-2 py-1.5 font-medium text-neutral-100">{{ item.label }}</td>
+                                <td class="px-2 py-1.5 text-center font-semibold text-emerald-300">{{ item.row.exact }}</td>
+                                <td class="px-2 py-1.5 text-center">{{ item.row.advancing_goals }}</td>
+                                <td class="px-2 py-1.5 text-center">{{ item.row.diff }}</td>
+                                <td class="px-2 py-1.5 text-center">{{ item.row.loser_goals }}</td>
+                                <td class="px-2 py-1.5 text-center">{{ item.row.advancing_only }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <p class="text-xs text-neutral-400">Vale só o primeiro critério que você acertar; os pontos não somam. <strong class="text-neutral-300">Classificado errado = 0</strong> em qualquer faixa.</p>
+                <div class="rounded-lg border border-sky-700/30 bg-sky-900/10 px-3 py-2 text-xs text-sky-100">
+                    <strong class="text-sky-200">Empate no tempo normal</strong> (decidido nos pênaltis): usa a faixa da <strong class="text-sky-200">própria fase</strong> — placar exato vale <em>Exato</em>, mesma diferença vale <em>Cls+dif</em>, senão <em>Só cls</em>. Você ainda precisa ter acertado quem passou nos pênaltis (o classificado), senão são 0 pts.
+                </div>
+            </div>
+            {% else %}
             <div class="rounded-xl border border-neutral-700 bg-neutral-950/80 p-4 space-y-3">
                 <div class="flex items-center justify-between gap-3">
                     <h3 class="font-semibold">Mata-Mata</h3>
@@ -280,8 +319,30 @@
                     <strong class="text-sky-200">Palpite de empate</strong> (por exemplo 1×1 ou 2×2): você ganha <strong class="text-sky-200">{{ scoring_config.knockout_draw_prediction_points }} pts</strong> fixos sempre que o jogo de verdade terminar empatado no tempo normal (qualquer placar, mesmo que depois alguém vença nos pênaltis). Se o jogo não terminar empatado, são 0 pts.
                 </div>
             </div>
+            {% endif %}
         </div>
 
+        {% if selected_pool.pool_type == pool_type_2 %}
+        <p class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-xs text-neutral-300">
+            A pontuação por placar usa sempre o placar do <strong class="text-neutral-200">tempo normal</strong> (90 min), mesmo que o jogo seja decidido na prorrogação ou nos pênaltis. O classificado é o time que avançou de verdade — contando os pênaltis.
+        </p>
+
+        <div class="rounded-xl border border-orange-700/30 bg-orange-900/10 p-4 space-y-3">
+            <div class="flex items-center gap-2">
+                <i data-lucide="shuffle" class="h-4 w-4 text-orange-300 shrink-0"></i>
+                <p class="text-sm font-semibold text-orange-200">Como funciona o classificado</p>
+            </div>
+            <p class="text-sm text-neutral-300">No mata-mata do Tipo 2 o que conta é a <strong class="text-neutral-100">identidade do time</strong> que você marcou para avançar naquele jogo — e o placar. Errar o adversário não importa: se você acertou quem passa e o placar, pontua cheio. Mas <strong class="text-neutral-100">errar o classificado zera o jogo</strong>, mesmo com placar exato. Cada jogo é avaliado sozinho — acertar ou errar um confronto não mexe nos outros.</p>
+            <div class="rounded-lg border border-neutral-700 bg-neutral-950/80 p-3 space-y-2">
+                <p class="text-xs font-semibold text-neutral-200">Exemplo (acertou o classificado, errou o adversário)</p>
+                <p class="text-xs text-neutral-300">Você palpitou <span class="text-orange-200 font-medium">Brasil × Holanda</span> com <span class="text-orange-200 font-medium">1×2</span> (Holanda avança). O jogo de verdade é <span class="text-sky-200 font-medium">Marrocos × Holanda 1×2</span>. Como a <span class="text-sky-200 font-medium">Holanda</span> avançou e o placar bateu, você leva o <strong class="text-emerald-300">Exato</strong> da fase — o Brasil nem jogou, mas o classificado e o placar valeram.</p>
+            </div>
+            <div class="rounded-lg border border-sky-700/30 bg-sky-900/10 p-3 space-y-2">
+                <p class="text-xs font-semibold text-sky-200">Sem bônus de classificado à parte</p>
+                <p class="text-xs text-neutral-300">A recompensa por acertar quem avança já está embutida nas faixas (a coluna <em>Só cls</em> é o piso, e sobe a cada fase). Acertar o classificado da final é acertar o campeão, que dá o <strong class="text-orange-200">bônus de campeão</strong> (veja em Bônus, mais acima).</p>
+            </div>
+        </div>
+        {% else %}
         <p class="rounded-xl border border-neutral-700 bg-neutral-950/70 px-4 py-3 text-xs text-neutral-300">
             Quando o jogo vai para os pênaltis, a pontuação usa o placar do tempo normal. Empate no tempo normal conta como empate para o seu palpite, mesmo que um dos times passe nos pênaltis. O time que passou de verdade (contando os pênaltis) só é usado no bônus de avanço de time (Tipo 1) e no desempate de classificados e vencedores.
         </p>
@@ -304,6 +365,7 @@
             <p class="text-xs text-neutral-400">Além disso, se o time que você apostou aparecer em <em>qualquer</em> jogo da mesma fase (mesmo do outro lado da chave), você ganha o bônus de avanço de time. Veja na seção Bônus, mais acima.</p>
             {% endif %}
         </div>
+        {% endif %}
     </article>
 
     <article class="rounded-2xl border border-neutral-800 bg-neutral-900/90 p-5 sm:p-6 shadow-lg shadow-black/15 space-y-4">

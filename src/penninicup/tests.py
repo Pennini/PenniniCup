@@ -112,6 +112,35 @@ class RulesPageTest(TestCase):
         self.assertEqual(response.status_code, 302)
         refresh_mock.assert_called_once_with(save=True)
 
+    def test_rules_page_tipo2_shows_per_phase_matrix(self):
+        from src.pool.services.rules import POOL_TYPE_2
+
+        pool_t2 = Pool.objects.create(
+            name="Pool Regras T2",
+            slug="pool-regras-t2",
+            season=self.season,
+            created_by=self.owner,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        PoolParticipant.objects.create(pool=pool_t2, user=self.owner, is_active=True)
+        pool_t2.get_scoring_config()  # seeds the 6 per-phase rows
+
+        response = self.client.get(reverse("penninicup:rules"), data={"pool": pool_t2.slug})
+        self.assertEqual(response.status_code, 200)
+        # Per-phase matrix uses FINAL exact (95) as the ceiling, and the gate copy.
+        self.assertContains(response, "Máximo 95 pts")
+        self.assertContains(response, "Como funciona o classificado")
+        self.assertContains(response, "Classificado errado = 0")
+        # Positional (Tipo 1) explanation must not appear for Tipo 2.
+        self.assertNotContains(response, "Como funciona o vencedor pela posição")
+
+    def test_rules_page_tipo1_keeps_positional_explanation(self):
+        response = self.client.get(reverse("penninicup:rules"), data={"pool": self.pool_a.slug})
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Como funciona o vencedor pela posição")
+        self.assertNotContains(response, "Como funciona o classificado")
+
 
 class HomeShortcutsTest(TestCase):
     """Homepage shortcuts must target the slugless tab views (which wire the
