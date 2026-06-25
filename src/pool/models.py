@@ -501,11 +501,14 @@ class PoolKnockoutPhaseScoring(models.Model):
     config = models.ForeignKey(PoolScoringConfig, on_delete=models.CASCADE, related_name="knockout_phases")
     phase_key = models.CharField(max_length=5, choices=PHASE_CHOICES)
 
-    exact = models.PositiveSmallIntegerField(default=40)
-    advancing_goals = models.PositiveSmallIntegerField(default=30)
-    diff = models.PositiveSmallIntegerField(default=25)
-    loser_goals = models.PositiveSmallIntegerField(default=22)
-    advancing_only = models.PositiveSmallIntegerField(default=20)
+    # Valores sempre vindos de KNOCKOUT_PHASE_DEFAULTS via ensure_knockout_phase_rows /
+    # data migration / get_or_create(defaults=...). Sem default aqui para que um
+    # create() sem valores explícitos falhe alto em vez de gravar números de R32.
+    exact = models.PositiveSmallIntegerField()
+    advancing_goals = models.PositiveSmallIntegerField()
+    diff = models.PositiveSmallIntegerField()
+    loser_goals = models.PositiveSmallIntegerField()
+    advancing_only = models.PositiveSmallIntegerField()
 
     class Meta:
         verbose_name = "Faixa de mata-mata por fase"

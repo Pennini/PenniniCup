@@ -1806,6 +1806,22 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
         )
         self.assertEqual(result["points"], 35)  # knockout_exact_and_advancing flat
 
+    def test_tipo2_third_place_exact_uses_third_tier(self):
+        # "Terceiro Lugar" → normalize_stage_key → "THIRD" (via "TERCE" + "LUGAR").
+        # THIRD é não-monotônico: exact=55, entre R16(50) e QF(62).
+        from src.pool.services.rules import POOL_TYPE_2
+
+        bet = self._make_knockout_bet_phase(2, 1, 2, 1, stage_name="Terceiro Lugar", winner_real_id=1)
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=1,
+            knockout_phase_scoring=self._make_phase_scoring(),
+        )
+        self.assertEqual(result["points"], 55)  # THIRD exact
+        self.assertTrue(result["exact_score"])
+
 
 class NormalizeStageKeyTest(SimpleTestCase):
     """Unit tests for normalize_stage_key pure function."""
