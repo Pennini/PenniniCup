@@ -1494,14 +1494,15 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
         self.assertEqual(result["points"], 0)
         self.assertFalse(result["advancing_correct"])
 
-    def test_knockout_non_draw_exact_score(self):
-        # Non-empate exact placar always implies winner correct in positional scoring.
-        # Tipo 1 and Tipo 2 behave identically; winner_pred is ignored.
+    def test_tipo2_knockout_exact_score_wrong_advancing_zero(self):
+        # Tipo 2: placar exato não salva se o classificado estiver errado.
         bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1, winner_pred_id=2)
-        result = calculate_bet_points(bet, self._make_scoring_config(), pool_type=POOL_TYPE_2)
-        self.assertEqual(result["points"], 35)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=2
+        )
+        self.assertEqual(result["points"], 0)
         self.assertTrue(result["exact_score"])
-        self.assertTrue(result["advancing_correct"])
+        self.assertFalse(result["advancing_correct"])
 
     def test_knockout_draw_exact_score_correct_advancing(self):
         # Palpite 1-1, jogo real 1-1 com HOME avancando por penaltis, winner_pred = HOME.
@@ -1567,17 +1568,259 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
         self.assertEqual(result["points"], 0)
         self.assertFalse(result["advancing_correct"])
 
-    def test_knockout_winner_pred_ignored_in_non_draw(self):
-        # Em palpite nao-empate, winner_pred eh irrelevante: so importa
-        # placar + posicao. Pool type tambem nao afeta.
+    def test_winner_pred_ignored_tipo1_but_gates_tipo2(self):
+        # Tipo 1 (posicional): winner_pred irrelevante -> 25.
         bet_t1 = self._make_knockout_bet(2, 0, 2, 1, winner_real_id=1, winner_pred_id=2)
-        bet_t2 = self._make_knockout_bet(2, 0, 2, 1, winner_real_id=1, winner_pred_id=2)
         r1 = calculate_bet_points(bet_t1, self._make_scoring_config())
-        r2 = calculate_bet_points(bet_t2, self._make_scoring_config(), pool_type=POOL_TYPE_2)
         self.assertEqual(r1["points"], 25)
-        self.assertEqual(r2["points"], 25)
         self.assertTrue(r1["advancing_correct"])
-        self.assertTrue(r2["advancing_correct"])
+        # Tipo 2: classificado projetado (2) != real (1) -> 0.
+        bet_t2 = self._make_knockout_bet(2, 0, 2, 1, winner_real_id=1, winner_pred_id=2)
+        r2 = calculate_bet_points(bet_t2, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=2)
+        self.assertEqual(r2["points"], 0)
+        self.assertFalse(r2["advancing_correct"])
+
+    # --- Tipo 2 mata-mata: gate por classificado ---
+
+    def test_tipo2_ex1_advancing_loser_goals(self):
+        # real Brasil(1) 2x1 Holanda(2), palpite 3x1, classificado certo (1).
+        bet = self._make_knockout_bet(3, 1, 2, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 17)
+        self.assertTrue(result["advancing_correct"])
+        self.assertTrue(result["eliminated_goals_correct"])
+        self.assertFalse(result["exact_score"])
+
+    def test_tipo2_ex2_wrong_advancing_zero(self):
+        # palpite 0x1 -> classificado palpitado = Holanda(2); real = Brasil(1).
+        bet = self._make_knockout_bet(0, 1, 2, 1, winner_real_id=1, winner_pred_id=2)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=2
+        )
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["advancing_correct"])
+
+    def test_tipo2_ex3_exact_score_with_different_loser(self):
+        # palpite 2x1 (eliminado projetado != real), classificado certo (1).
+        bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 35)
+        self.assertTrue(result["exact_score"])
+        self.assertTrue(result["advancing_correct"])
+
+    def test_tipo2_ex4_exact_score_wrong_advancing_zero(self):
+        # placar exato 2x1, mas classificado palpitado = Marrocos(3) != real Brasil(1).
+        bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1, winner_pred_id=3)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=3
+        )
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["advancing_correct"])
+
+    def test_tipo2_ex5_draw_pred_correct_advancing_only(self):
+        # palpite 0x0 + Brasil(1) classifica; real 2x1 Brasil. Só classificado.
+        bet = self._make_knockout_bet(0, 0, 2, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 15)
+        self.assertTrue(result["advancing_correct"])
+        self.assertFalse(result["exact_score"])
+
+    def test_tipo2_real_draw_exact(self):
+        # real 1x1 (pênaltis, Brasil avança), palpite 1x1, classificado certo.
+        bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 35)
+        self.assertTrue(result["exact_score"])
+
+    def test_tipo2_real_draw_same_diff(self):
+        # real 1x1, palpite 0x0 (mesma diferença 0), classificado certo.
+        bet = self._make_knockout_bet(0, 0, 1, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 20)
+        self.assertTrue(result["diff_correct"])
+
+    def test_tipo2_real_draw_non_draw_pred_advancing_only(self):
+        # real 1x1 (pênaltis), palpite 2x1 (não-empate), classificado certo.
+        bet = self._make_knockout_bet(2, 1, 1, 1, winner_real_id=1, winner_pred_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 15)
+        self.assertTrue(result["advancing_correct"])
+
+    def test_tipo2_no_winner_yet_zero(self):
+        # match.winner_id ausente (jogo não decidido) -> 0.
+        bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=None, winner_pred_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["advancing_correct"])
+
+    def _make_phase_scoring(self):
+        from src.pool.models import KNOCKOUT_PHASE_DEFAULTS
+
+        return {key: SimpleNamespace(**values) for key, values in KNOCKOUT_PHASE_DEFAULTS.items()}
+
+    def _make_knockout_bet_phase(
+        self,
+        home_pred,
+        away_pred,
+        home_real,
+        away_real,
+        *,
+        stage_name,
+        winner_real_id=None,
+        winner_pred_id=None,
+        home_team_id=1,
+    ):
+        stage = SimpleNamespace(name=stage_name)
+        match = SimpleNamespace(
+            stage=stage,
+            home_score=home_real,
+            away_score=away_real,
+            winner_id=winner_real_id,
+            home_team_id=home_team_id,
+            away_team_id=2,
+        )
+        return SimpleNamespace(
+            is_active=True,
+            home_score_pred=home_pred,
+            away_score_pred=away_pred,
+            winner_pred_id=winner_pred_id,
+            match=match,
+        )
+
+    def test_tipo2_final_exact_uses_final_tier(self):
+        from src.pool.services.rules import POOL_TYPE_2
+
+        bet = self._make_knockout_bet_phase(2, 1, 2, 1, stage_name="Final", winner_real_id=1)
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=1,
+            knockout_phase_scoring=self._make_phase_scoring(),
+        )
+        self.assertEqual(result["points"], 95)
+        self.assertTrue(result["exact_score"])
+        self.assertTrue(result["advancing_correct"])
+
+    def test_tipo2_r32_exact_uses_r32_tier(self):
+        from src.pool.services.rules import POOL_TYPE_2
+
+        bet = self._make_knockout_bet_phase(2, 1, 2, 1, stage_name="R32", winner_real_id=1)
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=1,
+            knockout_phase_scoring=self._make_phase_scoring(),
+        )
+        self.assertEqual(result["points"], 40)
+
+    def test_tipo2_final_scores_more_than_r32_same_guess(self):
+        from src.pool.services.rules import POOL_TYPE_2
+
+        # Pred: home wins 2-0. Real: home wins 2-1 (same winner, winner goals match, not exact).
+        # → advancing_goals tier applies.
+        phases = self._make_phase_scoring()
+        cfg = self._make_scoring_config()
+        final_bet = self._make_knockout_bet_phase(2, 0, 2, 1, stage_name="Final", winner_real_id=1)
+        r32_bet = self._make_knockout_bet_phase(2, 0, 2, 1, stage_name="R32", winner_real_id=1)
+        final_pts = calculate_bet_points(
+            final_bet,
+            cfg,
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=1,
+            knockout_phase_scoring=phases,
+        )["points"]
+        r32_pts = calculate_bet_points(
+            r32_bet,
+            cfg,
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=1,
+            knockout_phase_scoring=phases,
+        )["points"]
+        self.assertEqual(final_pts, 72)  # FINAL advancing_goals
+        self.assertEqual(r32_pts, 30)  # R32 advancing_goals
+        self.assertGreater(final_pts, r32_pts)
+
+    def test_tipo2_wrong_classified_zero_even_in_final(self):
+        from src.pool.services.rules import POOL_TYPE_2
+
+        bet = self._make_knockout_bet_phase(2, 1, 2, 1, stage_name="Final", winner_real_id=2)
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=1,
+            knockout_phase_scoring=self._make_phase_scoring(),
+        )
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["advancing_correct"])
+
+    def test_tipo2_example_wrong_opponent_right_classified_scores_full(self):
+        # Real Marrocos(1) x Holanda(2): away advances. Palpite Brasil x Holanda 1x2.
+        # Classificado (away, id=2) == real winner (id=2) → exato da fase (QF).
+        from src.pool.services.rules import POOL_TYPE_2
+
+        bet = self._make_knockout_bet_phase(
+            1,
+            2,
+            1,
+            2,
+            stage_name="Quartas",
+            winner_real_id=2,
+        )
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=2,
+            knockout_phase_scoring=self._make_phase_scoring(),
+        )
+        self.assertEqual(result["points"], 62)  # QF exact
+        self.assertTrue(result["exact_score"])
+
+    def test_tipo2_fallback_to_flat_when_no_phase_map(self):
+        # Sem knockout_phase_scoring → usa campos flat (retrocompatível).
+        from src.pool.services.rules import POOL_TYPE_2
+
+        bet = self._make_knockout_bet_phase(2, 1, 2, 1, stage_name="Final", winner_real_id=1)
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=1,
+        )
+        self.assertEqual(result["points"], 35)  # knockout_exact_and_advancing flat
+
+    def test_tipo2_third_place_exact_uses_third_tier(self):
+        # "Terceiro Lugar" → normalize_stage_key → "THIRD" (via "TERCE" + "LUGAR").
+        # THIRD é não-monotônico: exact=55, entre R16(50) e QF(62).
+        from src.pool.services.rules import POOL_TYPE_2
+
+        bet = self._make_knockout_bet_phase(2, 1, 2, 1, stage_name="Terceiro Lugar", winner_real_id=1)
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=1,
+            knockout_phase_scoring=self._make_phase_scoring(),
+        )
+        self.assertEqual(result["points"], 55)  # THIRD exact
+        self.assertTrue(result["exact_score"])
 
 
 class NormalizeStageKeyTest(SimpleTestCase):
@@ -2122,6 +2365,81 @@ class ContextBuilderPureHelpersTest(SimpleTestCase):
         self.assertIs(result[0]["line"], row)
         self.assertEqual(result[0]["score"], 5)
         self.assertEqual(result[0]["position_global"], 1)
+
+
+class ResolveKnockoutAdvancingTest(TestCase):
+    def _build_tipo2_knockout_fixture(self):
+        user = User.objects.create_user(username="adv_user", email="adv@example.com", password="123456Aa!")
+        competition = Competition.objects.create(fifa_id=8001, name="Copa Adv")
+        season = Season.objects.create(
+            fifa_id=8001,
+            competition=competition,
+            name="Temp Adv",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage_r32 = Stage.objects.create(fifa_id="R32-ADV", season=season, name="R32", order=50)
+        home_team = Team.objects.create(fifa_id="ADV_HOME", name="Home Team Adv", name_norm="hometeamadv", code="HTA")
+        away_team = Team.objects.create(fifa_id="ADV_AWAY", name="Away Team Adv", name_norm="awayteamadv", code="ATA")
+        future = timezone.now() + timezone.timedelta(days=2)
+        r32_match = Match.objects.create(
+            fifa_id="ADV-R32-1",
+            season=season,
+            stage=stage_r32,
+            match_number=80,
+            match_date_utc=future,
+            match_date_local=future,
+            match_date_brasilia=future,
+            home_team=home_team,
+            away_team=away_team,
+        )
+        pool = Pool.objects.create(
+            name="Pool Adv",
+            slug="pool-adv",
+            season=season,
+            created_by=user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        participant = PoolParticipant.objects.create(pool=pool, user=user, is_active=True)
+        # home wins 2x1 → advancing = home_team
+        PoolBet.objects.create(
+            participant=participant,
+            match=r32_match,
+            home_score_pred=2,
+            away_score_pred=1,
+            winner_pred=home_team,
+            is_active=True,
+        )
+        knockout_matches = list(
+            Match.objects.filter(season=season)
+            .select_related("stage", "home_team", "away_team")
+            .order_by("match_number")
+        )
+        bets_by_match_id = {
+            b.match_id: b for b in PoolBet.objects.filter(participant=participant).select_related("winner_pred")
+        }
+        return {
+            "participant": participant,
+            "season": season,
+            "r32_match": r32_match,
+            "knockout_matches": knockout_matches,
+            "bets_by_match_id": bets_by_match_id,
+            "expected_advancing_team_id": home_team.id,
+        }
+
+    def test_advancing_map_uses_winner_pred_for_r32(self):
+        from src.pool.services.context_builder import resolve_knockout_advancing_by_match
+
+        ctx = self._build_tipo2_knockout_fixture()
+        advancing = resolve_knockout_advancing_by_match(
+            participant=ctx["participant"],
+            matches=ctx["knockout_matches"],
+            season=ctx["season"],
+            bets_by_match_id=ctx["bets_by_match_id"],
+        )
+        self.assertEqual(advancing[ctx["r32_match"].id], ctx["expected_advancing_team_id"])
 
 
 class ContextBuilderBetScoreRowTest(TestCase):
@@ -2858,6 +3176,107 @@ class ComputeAsOfStandingsBetsTest(TestCase):
         self.assertFalse(row.champion_hit)
         self.assertFalse(row.top_scorer_hit)
 
+    def _build_tipo2_decided_knockout_asof(self):
+        """Fixture: pool Tipo 2 com jogo de mata-mata decidido.
+
+        Retorna ctx com pool, allowed_match_ids, scoring_config, official_result,
+        correct_participant (acertou classificado) e wrong_participant (errou).
+        Espelha _build_tipo2_decided_knockout de RecalculateTipo2KnockoutTest,
+        mas empacota os extras que compute_asof_standings exige.
+        """
+        user_correct = User.objects.create_user(
+            username="asof_t2_correct", email="asof_t2_correct@example.com", password="pass"
+        )
+        user_wrong = User.objects.create_user(
+            username="asof_t2_wrong", email="asof_t2_wrong@example.com", password="pass"
+        )
+
+        competition = Competition.objects.create(fifa_id=8100, name="Copa AsOf T2")
+        season = Season.objects.create(
+            fifa_id=8100,
+            competition=competition,
+            name="AsOf T2 Season",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage_r32 = Stage.objects.create(fifa_id="R32-ASOF", season=season, name="R32", order=50)
+
+        team_a = Team.objects.create(fifa_id="ASOF-A", name="AsOf Alpha", name_norm="asof-alpha", code="AOA")
+        team_b = Team.objects.create(fifa_id="ASOF-B", name="AsOf Beta", name_norm="asof-beta", code="AOB")
+
+        past = timezone.now() - timezone.timedelta(hours=2)
+        match = Match.objects.create(
+            fifa_id="ASOF-R32-1",
+            season=season,
+            stage=stage_r32,
+            match_number=810,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=team_a,
+            away_team=team_b,
+            home_score=2,
+            away_score=1,
+            winner=team_a,
+            status=Match.STATUS_FINISHED,
+        )
+
+        pool = Pool.objects.create(
+            name="Pool AsOf T2",
+            slug="pool-asof-t2",
+            season=season,
+            created_by=user_correct,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        correct_participant = PoolParticipant.objects.create(pool=pool, user=user_correct, is_active=True)
+        wrong_participant = PoolParticipant.objects.create(pool=pool, user=user_wrong, is_active=True)
+
+        # Correct: winner_pred == match.winner (team_a), score non-exact → advancing_only tier
+        PoolBet.objects.create(
+            participant=correct_participant,
+            match=match,
+            home_score_pred=1,
+            away_score_pred=0,
+            winner_pred=team_a,
+            is_active=True,
+        )
+        # Wrong: winner_pred == loser (team_b) → gate blocks all knockout points
+        PoolBet.objects.create(
+            participant=wrong_participant,
+            match=match,
+            home_score_pred=0,
+            away_score_pred=2,
+            winner_pred=team_b,
+            is_active=True,
+        )
+
+        return {
+            "pool": pool,
+            "allowed_match_ids": {match.id},
+            "scoring_config": pool.get_scoring_config(),
+            "official_result": pool.get_official_results(),
+            "correct_participant": correct_participant,
+            "wrong_participant": wrong_participant,
+        }
+
+    def test_asof_tipo2_knockout_wrong_advancing_zero(self):
+        ctx = self._build_tipo2_decided_knockout_asof()
+        rows = compute_asof_standings(
+            ctx["pool"], ctx["allowed_match_ids"], ctx["scoring_config"], ctx["official_result"]
+        )
+        row = next(r for r in rows if r.participant.id == ctx["wrong_participant"].id)
+        self.assertEqual(row.knockout_points, 0)
+
+    def test_asof_tipo2_knockout_correct_advancing_scores(self):
+        ctx = self._build_tipo2_decided_knockout_asof()
+        rows = compute_asof_standings(
+            ctx["pool"], ctx["allowed_match_ids"], ctx["scoring_config"], ctx["official_result"]
+        )
+        row = next(r for r in rows if r.participant.id == ctx["correct_participant"].id)
+        self.assertGreater(row.knockout_points, 0)
+
 
 class ComputeAsOfStandingsBonusTest(TestCase):
     """Group-qualifier bonus is gated: only fires when ALL group matches are in allowed_match_ids."""
@@ -3006,3 +3425,1005 @@ class ComputeAsOfStandingsBonusTest(TestCase):
             rows[0].group_points,
             self.scoring_config.group_qualifier_points,
         )
+
+
+class RecalculateTipo2KnockoutTest(TestCase):
+    """recalculate_participant_scores aplica gate de classificado para pools Tipo 2."""
+
+    def _build_tipo2_decided_knockout(self):
+        user = User.objects.create_user(username="t2recalc", email="t2recalc@example.com", password="pass")
+        competition = Competition.objects.create(fifa_id=8001, name="Copa T2 Recalc")
+        season = Season.objects.create(
+            fifa_id=8001,
+            competition=competition,
+            name="T2 Recalc Season",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage_r32 = Stage.objects.create(fifa_id="R32-RC", season=season, name="R32", order=50)
+
+        team_a = Team.objects.create(fifa_id="RC-A", name="RC Alpha", name_norm="rc-alpha", code="RCA")
+        team_b = Team.objects.create(fifa_id="RC-B", name="RC Beta", name_norm="rc-beta", code="RCB")
+
+        past = timezone.now() - timezone.timedelta(hours=2)
+        match = Match.objects.create(
+            fifa_id="RC-R32-1",
+            season=season,
+            stage=stage_r32,
+            match_number=80,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=team_a,
+            away_team=team_b,
+            home_score=2,
+            away_score=1,
+            winner=team_a,
+            status=Match.STATUS_FINISHED,
+        )
+
+        pool = Pool.objects.create(
+            name="Pool T2 Recalc",
+            slug="pool-t2-recalc",
+            season=season,
+            created_by=user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        participant = PoolParticipant.objects.create(pool=pool, user=user, is_active=True)
+
+        # Correct bet: winner_pred == match.winner (team_a), score non-exact → advancing_only tier
+        correct_bet = PoolBet.objects.create(
+            participant=participant,
+            match=match,
+            home_score_pred=1,
+            away_score_pred=0,
+            winner_pred=team_a,
+            is_active=True,
+        )
+
+        # Second participant for the "wrong" bet (same pool, different user)
+        user_wrong = User.objects.create_user(
+            username="t2recalc_wrong", email="t2recalc_wrong@example.com", password="pass"
+        )
+        participant_wrong = PoolParticipant.objects.create(pool=pool, user=user_wrong, is_active=True)
+        wrong_bet = PoolBet.objects.create(
+            participant=participant_wrong,
+            match=match,
+            home_score_pred=0,
+            away_score_pred=2,
+            winner_pred=team_b,
+            is_active=True,
+        )
+
+        return {
+            "participant": participant,
+            "participant_wrong": participant_wrong,
+            "correct_bet": correct_bet,
+            "wrong_bet": wrong_bet,
+        }
+
+    def test_recalculate_uses_advancing_gate(self):
+        from src.pool.models import PoolBetScore
+
+        ctx = self._build_tipo2_decided_knockout()
+
+        recalculate_participant_scores(ctx["participant"])
+        recalculate_participant_scores(ctx["participant_wrong"])
+
+        score = PoolBetScore.objects.get(bet=ctx["correct_bet"])
+        self.assertGreater(score.points, 0)
+        self.assertTrue(score.advancing_correct)
+
+        wrong = PoolBetScore.objects.get(bet=ctx["wrong_bet"])
+        self.assertEqual(wrong.points, 0)
+        self.assertFalse(wrong.advancing_correct)
+
+
+class RecalculateTipo2KnockoutR16CascadeTest(TestCase):
+    """Gate Tipo 2 para R16+: classificado resolvido via cascade de palpites do R32.
+
+    Os jogos de R16 têm home_team/away_team = None (placeholders W<n>).
+    O classificado projetado pelo participante para o jogo de R16 é derivado
+    dos palpites do R32 que alimentam os slots, NÃO de um winner_pred direto
+    no jogo de R16. Isso exercita _walk_knockout_bracket → winners_map cascade.
+
+    Caso (a): participante acertou quem avança do R32 feeder → gate passa → pontos > 0.
+    Caso (b): participante errou quem avança do R32 feeder → classificado projetado
+              para o R16 é o time errado → gate bloqueia → 0 pontos.
+    """
+
+    def _build_r16_cascade_fixture(self):
+        user_a = User.objects.create_user(username="r16c_correct", email="r16c_correct@example.com", password="pass")
+        user_b = User.objects.create_user(username="r16c_wrong", email="r16c_wrong@example.com", password="pass")
+
+        competition = Competition.objects.create(fifa_id=8200, name="Copa R16 Cascade")
+        season = Season.objects.create(
+            fifa_id=8200,
+            competition=competition,
+            name="R16 Cascade Season",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage_r32 = Stage.objects.create(fifa_id="R32-R16C", season=season, name="R32", order=50)
+        stage_r16 = Stage.objects.create(fifa_id="R16-R16C", season=season, name="Round of 16", order=51)
+
+        team_a = Team.objects.create(fifa_id="R16C-A", name="R16C Alpha", name_norm="r16c-alpha", code="R6A")
+        team_b = Team.objects.create(fifa_id="R16C-B", name="R16C Beta", name_norm="r16c-beta", code="R6B")
+        team_c = Team.objects.create(fifa_id="R16C-C", name="R16C Gamma", name_norm="r16c-gamma", code="R6C")
+        team_d = Team.objects.create(fifa_id="R16C-D", name="R16C Delta", name_norm="r16c-delta", code="R6D")
+
+        past = timezone.now() - timezone.timedelta(hours=3)
+
+        # R32 match #180: team_a vs team_b — real result: team_a wins 2-1
+        r32_1 = Match.objects.create(
+            fifa_id="R16C-R32-1",
+            season=season,
+            stage=stage_r32,
+            match_number=180,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=team_a,
+            away_team=team_b,
+            home_score=2,
+            away_score=1,
+            winner=team_a,
+            status=Match.STATUS_FINISHED,
+        )
+
+        # R32 match #182: team_c vs team_d — real result: team_c wins 2-0
+        r32_2 = Match.objects.create(
+            fifa_id="R16C-R32-2",
+            season=season,
+            stage=stage_r32,
+            match_number=182,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=team_c,
+            away_team=team_d,
+            home_score=2,
+            away_score=0,
+            winner=team_c,
+            status=Match.STATUS_FINISHED,
+        )
+
+        # R16 match #190: placeholder slots W180 × W182.
+        # home_team/away_team are intentionally None — the walk must resolve them
+        # from the participant's R32 winner picks cascaded through winners_map.
+        # Real result: team_a wins 2-1 (team_a was the real R32-1 winner).
+        r16 = Match.objects.create(
+            fifa_id="R16C-R16-1",
+            season=season,
+            stage=stage_r16,
+            match_number=190,
+            match_date_utc=past - timezone.timedelta(hours=1),
+            match_date_local=past - timezone.timedelta(hours=1),
+            match_date_brasilia=past - timezone.timedelta(hours=1),
+            home_team=None,
+            away_team=None,
+            home_placeholder="W180",
+            away_placeholder="W182",
+            home_score=2,
+            away_score=1,
+            winner=team_a,
+            status=Match.STATUS_FINISHED,
+        )
+
+        pool = Pool.objects.create(
+            name="Pool R16 Cascade",
+            slug="pool-r16-cascade",
+            season=season,
+            created_by=user_a,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+
+        # --- Participant "correct": bets team_a advances from R32 #180 ---
+        # The walk will put team_a into the R16 home slot → predicted advancer = team_a.
+        # Gate: team_a == match.winner (team_a) → passes → points > 0.
+        participant_correct = PoolParticipant.objects.create(pool=pool, user=user_a, is_active=True)
+        # R32 #180: predicts team_a (home) wins 2-1
+        PoolBet.objects.create(
+            participant=participant_correct,
+            match=r32_1,
+            home_score_pred=2,
+            away_score_pred=1,
+            winner_pred=team_a,
+            is_active=True,
+        )
+        # R32 #182: predicts team_c (home) wins 2-0 — needed to resolve away slot of R16
+        PoolBet.objects.create(
+            participant=participant_correct,
+            match=r32_2,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=team_c,
+            is_active=True,
+        )
+        # R16 #190: no winner_pred — advancing team MUST come from walk cascade.
+        # Predicts home wins 2-0; walk resolved home = team_a → advancing = team_a.
+        r16_correct_bet = PoolBet.objects.create(
+            participant=participant_correct,
+            match=r16,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=None,
+            is_active=True,
+        )
+
+        # --- Participant "wrong": bets team_b advances from R32 #180 ---
+        # The walk will put team_b into the R16 home slot → predicted advancer = team_b.
+        # Gate: team_b != match.winner (team_a) → blocked → 0 points.
+        participant_wrong = PoolParticipant.objects.create(pool=pool, user=user_b, is_active=True)
+        # R32 #180: predicts team_b (away) wins 0-2
+        PoolBet.objects.create(
+            participant=participant_wrong,
+            match=r32_1,
+            home_score_pred=0,
+            away_score_pred=2,
+            winner_pred=team_b,
+            is_active=True,
+        )
+        # R32 #182: predicts team_c (home) wins 2-0
+        PoolBet.objects.create(
+            participant=participant_wrong,
+            match=r32_2,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=team_c,
+            is_active=True,
+        )
+        # R16 #190: no winner_pred. Walk resolved home = team_b → advancing = team_b ≠ team_a.
+        r16_wrong_bet = PoolBet.objects.create(
+            participant=participant_wrong,
+            match=r16,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=None,
+            is_active=True,
+        )
+
+        return {
+            "participant_correct": participant_correct,
+            "participant_wrong": participant_wrong,
+            "r16": r16,
+            "r16_correct_bet": r16_correct_bet,
+            "r16_wrong_bet": r16_wrong_bet,
+        }
+
+    def test_r16_cascade_correct_projected_advancer_scores(self):
+        """Participante cujo palpite de R32 projeta o time certo para o R16 → pontos > 0."""
+        from src.pool.models import PoolBetScore
+
+        ctx = self._build_r16_cascade_fixture()
+        recalculate_participant_scores(ctx["participant_correct"])
+
+        score = PoolBetScore.objects.get(bet=ctx["r16_correct_bet"])
+        self.assertGreater(score.points, 0, "Gate must pass when projected advancer matches real winner")
+        self.assertTrue(score.advancing_correct)
+
+    def test_r16_cascade_wrong_projected_advancer_zero(self):
+        """Participante cujo palpite de R32 projeta o time errado para o R16 → 0 pontos."""
+        from src.pool.models import PoolBetScore
+
+        ctx = self._build_r16_cascade_fixture()
+        recalculate_participant_scores(ctx["participant_wrong"])
+
+        score = PoolBetScore.objects.get(bet=ctx["r16_wrong_bet"])
+        self.assertEqual(score.points, 0, "Gate must block when projected advancer does not match real winner")
+        self.assertFalse(score.advancing_correct)
+
+
+# ---------------------------------------------------------------------------
+# New unit tests — added to ScoringCalculateBetPointsTest via a separate block
+# to avoid editing the existing class definition above. These methods are
+# logically identical to adding them inside the class; they live here as a
+# distinct batch with a clear heading.
+# ---------------------------------------------------------------------------
+
+
+class ScoringTipo2ExhaustiveUnitTest(SimpleTestCase):
+    """Exhaustive coverage of Tipo 2 mata-mata scoring edge-cases (unit, no DB)."""
+
+    def _make_scoring_config(self, **overrides):
+        defaults = dict(
+            group_exact_score=25,
+            group_winner_and_winner_goals=18,
+            group_winner_and_diff=15,
+            group_winner_and_loser_goals=12,
+            group_winner_only=10,
+            knockout_exact_and_advancing=35,
+            knockout_advancing_and_winner_goals=25,
+            knockout_advancing_and_diff=20,
+            knockout_advancing_and_loser_goals=17,
+            knockout_advancing_only=15,
+            knockout_exact_wrong_advancing=10,
+            knockout_draw_prediction_points=20,
+        )
+        defaults.update(overrides)
+        return SimpleNamespace(**defaults)
+
+    def _make_knockout_bet(
+        self,
+        home_pred,
+        away_pred,
+        home_real,
+        away_real,
+        winner_real_id=None,
+        winner_pred_id=None,
+        is_active=True,
+        home_team_id=1,
+    ):
+        stage = SimpleNamespace(name="Semi-Final")
+        match = SimpleNamespace(
+            stage=stage,
+            home_score=home_real,
+            away_score=away_real,
+            winner_id=winner_real_id,
+            home_team_id=home_team_id,
+            away_team_id=2,
+        )
+        return SimpleNamespace(
+            is_active=is_active,
+            home_score_pred=home_pred,
+            away_score_pred=away_pred,
+            winner_pred_id=winner_pred_id,
+            match=match,
+        )
+
+    def _make_group_bet(self, home_pred, away_pred, home_real, away_real, is_active=True):
+        stage = SimpleNamespace(name="Group Stage")
+        match = SimpleNamespace(
+            stage=stage,
+            home_score=home_real,
+            away_score=away_real,
+            winner_id=None,
+        )
+        return SimpleNamespace(
+            is_active=is_active,
+            home_score_pred=home_pred,
+            away_score_pred=away_pred,
+            winner_pred_id=None,
+            match=match,
+        )
+
+    # B5: real 1×1 penalties, winner=team1, predicted team2 → gate fails on draw branch.
+    def test_tipo2_real_draw_wrong_advancing_zero(self):
+        """B5: draw-decided game, wrong projected advancer → 0 points, advancing_correct False."""
+        bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=2
+        )
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["advancing_correct"])
+
+    # QUIRK / option (a): draw guess 2×2, real 2×0 HOME wins.
+    # Gate passes (predicted_advancing=1=winner). _knockout_points_by_score:
+    # home=2, away=0, guess_home=2, guess_away=2.
+    # is_exact=False; actual_direction=HOME; winner_goals: guess_home==home → 2==2 True
+    # → knockout_advancing_and_winner_goals = 25.
+    # A draw-guess STILL climbs the tier ladder if the winner's goals coincide — intended.
+    def test_tipo2_draw_pred_matches_advancing_goals_scores_25(self):
+        """QUIRK option (a): draw guess 2×2 vs real 2×0 HOME; home goals coincide → 25 (gols do classificado)."""
+        # draw guess climbs to gols-do-classificado tier when home goals coincide — intended.
+        bet = self._make_knockout_bet(2, 2, 2, 0, winner_real_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 25)
+        self.assertTrue(result["advancing_correct"])
+        self.assertTrue(result["advancing_goals_correct"])
+
+    # C4: inactive bet → always 0 regardless of pool_type.
+    def test_tipo2_knockout_inactive_bet_zero(self):
+        """C4: inactive bet in Tipo 2 knockout → 0 points."""
+        bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1, is_active=False)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 0)
+
+    # C5: home_score_pred=None → early-exit 0.
+    def test_tipo2_knockout_missing_pred_zero(self):
+        """C5: None home prediction in Tipo 2 → 0 points."""
+        bet = self._make_knockout_bet(None, 1, 2, 1, winner_real_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 0)
+
+    # C6: match not played yet (home_score=None) → early-exit 0.
+    def test_tipo2_knockout_match_not_played_zero(self):
+        """C6: match not yet played (None home_score) in Tipo 2 → 0 points."""
+        bet = self._make_knockout_bet(2, 1, None, 1, winner_real_id=1)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
+        )
+        self.assertEqual(result["points"], 0)
+
+    # D2: group stage in a Tipo 2 pool is unaffected by Tipo 2 gate.
+    # Bet 2×0 vs real 2×1: correct winner (HOME), winner goals (home 2==2) → 18.
+    def test_group_bet_unaffected_by_pool_type_2(self):
+        """D2: group bet scored with pool_type=POOL_TYPE_2 returns same result as default (18)."""
+        bet = self._make_group_bet(2, 0, 2, 1)
+        result = calculate_bet_points(bet, self._make_scoring_config(), pool_type=POOL_TYPE_2)
+        self.assertEqual(result["points"], 18)
+        self.assertTrue(result["advancing_correct"])
+
+    # D3: knockout_exact_wrong_advancing config field is dead in Tipo 2 —
+    # wrong advancer always yields 0 even with an exact placar.
+    def test_tipo2_knockout_exact_wrong_advancing_field_ignored(self):
+        """D3: exact score 2×1 but wrong projected advancer → 0 in Tipo 2 (field is dead)."""
+        # Config has knockout_exact_wrong_advancing=10, but Tipo 2 ignores it.
+        bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1)
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(knockout_exact_wrong_advancing=10),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=2,
+        )
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["advancing_correct"])
+
+
+# ---------------------------------------------------------------------------
+# Integration tests — Tipo 2 scoring coverage (require DB)
+# ---------------------------------------------------------------------------
+
+
+class Tipo2IntegrationExtraTest(TestCase):
+    """E4 / E5: extra integration scenarios reusing RecalculateTipo2KnockoutTest fixture pattern."""
+
+    def _build_fixture(self, *, fifa_id_base=8300, slug_suffix="e4"):
+        """Build a minimal Tipo 2 pool with one decided knockout match and one group match.
+
+        Returns a dict of all created objects for further use.
+        """
+        user = User.objects.create_user(
+            username=f"t2extra_{slug_suffix}",
+            email=f"t2extra_{slug_suffix}@example.com",
+            password="pass",
+        )
+        competition = Competition.objects.create(fifa_id=fifa_id_base, name=f"Copa T2 Extra {slug_suffix}")
+        season = Season.objects.create(
+            fifa_id=fifa_id_base,
+            competition=competition,
+            name=f"T2 Extra {slug_suffix}",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        group_stage = Stage.objects.create(fifa_id=f"GRP-{slug_suffix}", season=season, name="Group Stage", order=10)
+        ko_stage = Stage.objects.create(fifa_id=f"SF-{slug_suffix}", season=season, name="Semi-Final", order=50)
+
+        code_a = f"A{slug_suffix[:3].upper()}"
+        code_b = f"B{slug_suffix[:3].upper()}"
+        team_a = Team.objects.create(
+            fifa_id=f"{slug_suffix}-A", name=f"{slug_suffix} Alpha", name_norm=f"{slug_suffix}-alpha", code=code_a
+        )
+        team_b = Team.objects.create(
+            fifa_id=f"{slug_suffix}-B", name=f"{slug_suffix} Beta", name_norm=f"{slug_suffix}-beta", code=code_b
+        )
+
+        past = timezone.now() - timezone.timedelta(hours=2)
+
+        group_match = Match.objects.create(
+            fifa_id=f"{slug_suffix}-GM1",
+            season=season,
+            stage=group_stage,
+            match_number=fifa_id_base + 1,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=team_a,
+            away_team=team_b,
+            home_score=2,
+            away_score=1,
+            status=Match.STATUS_FINISHED,
+        )
+        ko_match = Match.objects.create(
+            fifa_id=f"{slug_suffix}-KO1",
+            season=season,
+            stage=ko_stage,
+            match_number=fifa_id_base + 2,
+            match_date_utc=past - timezone.timedelta(hours=1),
+            match_date_local=past - timezone.timedelta(hours=1),
+            match_date_brasilia=past - timezone.timedelta(hours=1),
+            home_team=team_a,
+            away_team=team_b,
+            home_score=2,
+            away_score=1,
+            winner=team_a,
+            status=Match.STATUS_FINISHED,
+        )
+
+        pool = Pool.objects.create(
+            name=f"Pool T2 Extra {slug_suffix}",
+            slug=f"pool-t2-extra-{slug_suffix}",
+            season=season,
+            created_by=user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+
+        return {
+            "user": user,
+            "season": season,
+            "pool": pool,
+            "team_a": team_a,
+            "team_b": team_b,
+            "group_match": group_match,
+            "ko_match": ko_match,
+        }
+
+    def test_tipo2_no_team_advancement_bonus(self):
+        """E4: Tipo 2 never sets team_advancement_bonus — that field is Tipo 1 only."""
+        from src.pool.models import PoolBetScore
+
+        ctx = self._build_fixture(fifa_id_base=8300, slug_suffix="e4")
+        participant = PoolParticipant.objects.create(pool=ctx["pool"], user=ctx["user"], is_active=True)
+
+        # Correct-advancer knockout bet (team_a wins → winner_pred=team_a)
+        ko_bet = PoolBet.objects.create(
+            participant=participant,
+            match=ctx["ko_match"],
+            home_score_pred=1,
+            away_score_pred=0,
+            winner_pred=ctx["team_a"],
+            is_active=True,
+        )
+
+        recalculate_participant_scores(participant)
+
+        score = PoolBetScore.objects.get(bet=ko_bet)
+        self.assertGreater(score.points, 0, "Correct advancer should score > 0 (gate passed)")
+        self.assertTrue(score.advancing_correct)
+        self.assertFalse(score.team_advancement_bonus, "Tipo 2 must never award team_advancement_bonus")
+
+    def test_tipo2_mixed_group_and_knockout(self):
+        """E5: mixed group + knockout; group bet scores by tier, knockout gated by Tipo 2 identity."""
+        from src.pool.models import PoolBetScore
+
+        ctx = self._build_fixture(fifa_id_base=8400, slug_suffix="e5")
+        pool = ctx["pool"]
+        team_a = ctx["team_a"]
+        team_b = ctx["team_b"]
+
+        # Participant with correct advancer
+        user_ok = User.objects.create_user(username="t2e5_ok", email="t2e5_ok@example.com", password="pass")
+        participant_ok = PoolParticipant.objects.create(pool=pool, user=user_ok, is_active=True)
+
+        # Group bet: guess 2×0, real 2×1 → winner correct + winner goals (home 2==2) → 18
+        group_bet = PoolBet.objects.create(
+            participant=participant_ok,
+            match=ctx["group_match"],
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=None,
+            is_active=True,
+        )
+        # Knockout bet: correct advancer (team_a), guess 1×0 vs real 2×1 → advancing_only → 15
+        ko_bet_ok = PoolBet.objects.create(
+            participant=participant_ok,
+            match=ctx["ko_match"],
+            home_score_pred=1,
+            away_score_pred=0,
+            winner_pred=team_a,
+            is_active=True,
+        )
+
+        # Participant with wrong advancer
+        user_ko = User.objects.create_user(username="t2e5_ko", email="t2e5_ko@example.com", password="pass")
+        participant_ko = PoolParticipant.objects.create(pool=pool, user=user_ko, is_active=True)
+        ko_bet_ko = PoolBet.objects.create(
+            participant=participant_ko,
+            match=ctx["ko_match"],
+            home_score_pred=2,
+            away_score_pred=1,
+            winner_pred=team_b,
+            is_active=True,
+        )
+
+        recalculate_participant_scores(participant_ok)
+        recalculate_participant_scores(participant_ko)
+
+        group_score = PoolBetScore.objects.get(bet=group_bet)
+        self.assertEqual(group_score.points, 18, "Group bet: winner + winner goals → 18")
+        self.assertTrue(group_score.advancing_correct)
+
+        ko_score_ok = PoolBetScore.objects.get(bet=ko_bet_ok)
+        self.assertGreater(ko_score_ok.points, 0, "Correct-advancer knockout bet must score > 0")
+        self.assertTrue(ko_score_ok.advancing_correct)
+
+        ko_score_ko = PoolBetScore.objects.get(bet=ko_bet_ko)
+        self.assertEqual(ko_score_ko.points, 0, "Wrong-advancer knockout bet must score 0")
+        self.assertFalse(ko_score_ko.advancing_correct)
+
+
+class Tipo2FullBracketEndToEndTest(TestCase):
+    """H1: multi-round Tipo 2 bracket (QF → SF), 3 participants, per-match + aggregate assertions.
+
+    Bracket layout
+    ──────────────
+    QF1 (#8501): Alpha(home) vs Beta(away)  — real 2-1, winner=Alpha
+    QF2 (#8502): Gamma(home) vs Delta(away) — real 2-0, winner=Gamma
+    SF  (#8503): W(QF1) vs W(QF2)           — NOT yet played (no score, winner=None)
+    All QF/SF matches share one season/pool (Tipo 2).
+
+    Participants
+    ────────────
+    P1 — QF1: Alpha 2-1 (exact), QF2: Gamma 2-0 (exact), SF: home 1-0 (not played → 0)
+    P2 — QF1: Beta  0-2 (wrong advancer → 0), QF2: Gamma 2-0 (exact → 62), SF: not placed
+    P3 — QF1: Alpha 3-1 (advancer ok, loser-goals → 35), QF2: Delta 0-1 (wrong → 0), SF: not placed
+
+    Hand math (uses per-phase QF tier: exact=62, loser_goals=35)
+    ─────────
+    P1: QF1=62 (exact) + QF2=62 (exact) + SF=0 (no winner) = 124
+    P2: QF1=0  (gate)  + QF2=62 (exact) + SF=0 (no bet)    = 62
+    P3: QF1=35 (eliminated_goals) + QF2=0 (gate) + SF=0     = 35
+
+    QF1 detail for P3: real 2-1 HOME, guess 3-1.
+      Gate passes (predicted_advancing=Alpha=winner).
+      is_exact=False; is_diff=(3-1)=2 vs (2-1)=1 → False; actual_dir=HOME.
+      winner_goals: guess_home(3)==home(2)? No. loser_goals: guess_away(1)==away(1)? Yes → 35 (QF loser_goals tier).
+    """
+
+    def setUp(self):
+        self.user_owner = User.objects.create_user(username="h1_owner", email="h1_owner@example.com", password="pass")
+        self.user_p1 = User.objects.create_user(username="h1_p1", email="h1_p1@example.com", password="pass")
+        self.user_p2 = User.objects.create_user(username="h1_p2", email="h1_p2@example.com", password="pass")
+        self.user_p3 = User.objects.create_user(username="h1_p3", email="h1_p3@example.com", password="pass")
+
+        competition = Competition.objects.create(fifa_id=8500, name="Copa H1 Bracket")
+        self.season = Season.objects.create(
+            fifa_id=8500,
+            competition=competition,
+            name="H1 Season",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage_qf = Stage.objects.create(fifa_id="QF-H1", season=self.season, name="Quarter-Final", order=50)
+        stage_sf = Stage.objects.create(fifa_id="SF-H1", season=self.season, name="Semi-Final", order=51)
+
+        self.alpha = Team.objects.create(fifa_id="H1-A", name="H1 Alpha", name_norm="h1-alpha", code="H1A")
+        self.beta = Team.objects.create(fifa_id="H1-B", name="H1 Beta", name_norm="h1-beta", code="H1B")
+        self.gamma = Team.objects.create(fifa_id="H1-C", name="H1 Gamma", name_norm="h1-gamma", code="H1C")
+        self.delta = Team.objects.create(fifa_id="H1-D", name="H1 Delta", name_norm="h1-delta", code="H1D")
+
+        past = timezone.now() - timezone.timedelta(hours=3)
+        future = timezone.now() + timezone.timedelta(days=2)
+
+        # QF1: Alpha 2-1 Beta → winner=Alpha (decided)
+        self.qf1 = Match.objects.create(
+            fifa_id="H1-QF1",
+            season=self.season,
+            stage=stage_qf,
+            match_number=8501,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=self.alpha,
+            away_team=self.beta,
+            home_score=2,
+            away_score=1,
+            winner=self.alpha,
+            status=Match.STATUS_FINISHED,
+        )
+        # QF2: Gamma 2-0 Delta → winner=Gamma (decided)
+        self.qf2 = Match.objects.create(
+            fifa_id="H1-QF2",
+            season=self.season,
+            stage=stage_qf,
+            match_number=8502,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=self.gamma,
+            away_team=self.delta,
+            home_score=2,
+            away_score=0,
+            winner=self.gamma,
+            status=Match.STATUS_FINISHED,
+        )
+        # SF: placeholder W8501 vs W8502 — NOT yet played
+        self.sf = Match.objects.create(
+            fifa_id="H1-SF1",
+            season=self.season,
+            stage=stage_sf,
+            match_number=8503,
+            match_date_utc=future,
+            match_date_local=future,
+            match_date_brasilia=future,
+            home_team=None,
+            away_team=None,
+            home_placeholder="W8501",
+            away_placeholder="W8502",
+        )
+
+        self.pool = Pool.objects.create(
+            name="Pool H1",
+            slug="pool-h1-bracket",
+            season=self.season,
+            created_by=self.user_owner,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+
+        # --- P1: exact on both QFs, SF not played ---
+        self.p1 = PoolParticipant.objects.create(pool=self.pool, user=self.user_p1, is_active=True)
+        self.p1_qf1_bet = PoolBet.objects.create(
+            participant=self.p1,
+            match=self.qf1,
+            home_score_pred=2,
+            away_score_pred=1,
+            winner_pred=self.alpha,
+            is_active=True,
+        )
+        self.p1_qf2_bet = PoolBet.objects.create(
+            participant=self.p1,
+            match=self.qf2,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=self.gamma,
+            is_active=True,
+        )
+        # SF: predicts home wins 1-0; walk resolves home=Alpha (from QF1 winner_pred).
+        # winner_pred=None forces the walk; projected advancer = Alpha.
+        # SF not played → gate fails (winner_id=None) → 0.
+        self.p1_sf_bet = PoolBet.objects.create(
+            participant=self.p1,
+            match=self.sf,
+            home_score_pred=1,
+            away_score_pred=0,
+            winner_pred=None,
+            is_active=True,
+        )
+
+        # --- P2: wrong on QF1, exact on QF2, no SF bet ---
+        self.p2 = PoolParticipant.objects.create(pool=self.pool, user=self.user_p2, is_active=True)
+        self.p2_qf1_bet = PoolBet.objects.create(
+            participant=self.p2,
+            match=self.qf1,
+            home_score_pred=0,
+            away_score_pred=2,
+            winner_pred=self.beta,
+            is_active=True,
+        )
+        self.p2_qf2_bet = PoolBet.objects.create(
+            participant=self.p2,
+            match=self.qf2,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=self.gamma,
+            is_active=True,
+        )
+
+        # --- P3: correct advancer QF1 (eliminated_goals tier), wrong advancer QF2 ---
+        self.p3 = PoolParticipant.objects.create(pool=self.pool, user=self.user_p3, is_active=True)
+        self.p3_qf1_bet = PoolBet.objects.create(
+            participant=self.p3,
+            match=self.qf1,
+            home_score_pred=3,
+            away_score_pred=1,
+            winner_pred=self.alpha,
+            is_active=True,
+        )
+        self.p3_qf2_bet = PoolBet.objects.create(
+            participant=self.p3,
+            match=self.qf2,
+            home_score_pred=0,
+            away_score_pred=1,
+            winner_pred=self.delta,
+            is_active=True,
+        )
+
+    def test_h1_p1_per_match_and_total(self):
+        """P1: QF1=62 (exact), QF2=62 (exact), SF=0 (not played) → total=124."""
+        from src.pool.models import PoolBetScore
+
+        recalculate_participant_scores(self.p1)
+        self.p1.refresh_from_db()
+
+        qf1_score = PoolBetScore.objects.get(bet=self.p1_qf1_bet)
+        self.assertEqual(qf1_score.points, 62, "P1 QF1: exact score + correct advancer → 62 (QF exact tier)")
+        self.assertTrue(qf1_score.exact_score)
+        self.assertTrue(qf1_score.advancing_correct)
+
+        qf2_score = PoolBetScore.objects.get(bet=self.p1_qf2_bet)
+        self.assertEqual(qf2_score.points, 62, "P1 QF2: exact score + correct advancer → 62 (QF exact tier)")
+        self.assertTrue(qf2_score.exact_score)
+
+        sf_score = PoolBetScore.objects.get(bet=self.p1_sf_bet)
+        self.assertEqual(sf_score.points, 0, "P1 SF: match not decided yet → 0")
+        self.assertFalse(sf_score.advancing_correct)
+
+        self.assertEqual(self.p1.knockout_points, 124, "P1 total knockout points: 62+62+0=124")
+
+    def test_h1_p2_per_match_and_total(self):
+        """P2: QF1=0 (wrong advancer), QF2=62 (exact), no SF → total=62."""
+        from src.pool.models import PoolBetScore
+
+        recalculate_participant_scores(self.p2)
+        self.p2.refresh_from_db()
+
+        qf1_score = PoolBetScore.objects.get(bet=self.p2_qf1_bet)
+        self.assertEqual(qf1_score.points, 0, "P2 QF1: wrong advancer (Beta≠Alpha) → 0")
+        self.assertFalse(qf1_score.advancing_correct)
+
+        qf2_score = PoolBetScore.objects.get(bet=self.p2_qf2_bet)
+        self.assertEqual(qf2_score.points, 62, "P2 QF2: exact 2-0 + correct advancer → 62 (QF exact tier)")
+        self.assertTrue(qf2_score.advancing_correct)
+
+        self.assertEqual(self.p2.knockout_points, 62, "P2 total knockout points: 0+62=62")
+
+    def test_h1_p3_per_match_and_total(self):
+        """P3: QF1=35 (eliminated_goals QF tier), QF2=0 (wrong advancer) → total=35."""
+        from src.pool.models import PoolBetScore
+
+        recalculate_participant_scores(self.p3)
+        self.p3.refresh_from_db()
+
+        # QF1: gate passes (Alpha). real 2-1, guess 3-1.
+        # winner_goals: guess_home(3)!=home(2). loser_goals: guess_away(1)==away(1) → QF loser_goals=35.
+        qf1_score = PoolBetScore.objects.get(bet=self.p3_qf1_bet)
+        self.assertEqual(qf1_score.points, 35, "P3 QF1: correct advancer + loser goals → 35 (QF loser_goals tier)")
+        self.assertTrue(qf1_score.advancing_correct)
+        self.assertFalse(qf1_score.advancing_goals_correct)
+        self.assertFalse(qf1_score.diff_correct)
+        self.assertTrue(qf1_score.eliminated_goals_correct)
+
+        # QF2: gate fails (Delta≠Gamma).
+        qf2_score = PoolBetScore.objects.get(bet=self.p3_qf2_bet)
+        self.assertEqual(qf2_score.points, 0, "P3 QF2: wrong advancer (Delta≠Gamma) → 0")
+        self.assertFalse(qf2_score.advancing_correct)
+
+        self.assertEqual(self.p3.knockout_points, 35, "P3 total knockout points: 35+0=35")
+
+    def test_h1_ranking_order(self):
+        """H1 combined: P1 (124) > P2 (62) > P3 (35) after all recalculations."""
+        recalculate_participant_scores(self.p1)
+        recalculate_participant_scores(self.p2)
+        recalculate_participant_scores(self.p3)
+        self.p1.refresh_from_db()
+        self.p2.refresh_from_db()
+        self.p3.refresh_from_db()
+        self.assertGreater(self.p1.knockout_points, self.p2.knockout_points)
+        self.assertGreater(self.p2.knockout_points, self.p3.knockout_points)
+
+
+class KnockoutPhaseScoringSeedTest(TestCase):
+    """get_scoring_config garante as 6 faixas de fase com os defaults oficiais."""
+
+    def _make_minimal_pool(self):
+        from src.football.models import Competition, Season
+        from src.pool.models import POOL_TYPE_2, Pool
+
+        user = User.objects.create_user(username="kps", email="kps@example.com", password="pass")
+        competition = Competition.objects.create(fifa_id=9100, name="KPS Cup")
+        season = Season.objects.create(
+            fifa_id=9100,
+            competition=competition,
+            name="KPS Season",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        return Pool.objects.create(
+            name="KPS Pool",
+            slug="kps-pool",
+            season=season,
+            created_by=user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+
+    def test_get_scoring_config_seeds_six_phase_rows(self):
+        from src.pool.models import KNOCKOUT_PHASE_DEFAULTS
+
+        pool = self._make_minimal_pool()
+        config = pool.get_scoring_config()
+
+        rows = {row.phase_key: row for row in config.knockout_phases.all()}
+        self.assertEqual(set(rows), set(KNOCKOUT_PHASE_DEFAULTS))
+
+        sf = rows["SF"]
+        self.assertEqual(sf.exact, 78)
+        self.assertEqual(sf.advancing_goals, 59)
+        self.assertEqual(sf.diff, 50)
+        self.assertEqual(sf.loser_goals, 44)
+        self.assertEqual(sf.advancing_only, 40)
+
+        final = rows["FINAL"]
+        self.assertEqual(final.exact, 95)
+        self.assertEqual(final.advancing_only, 48)
+
+
+class RecalculateTipo2PhaseTierTest(TestCase):
+    """recalculate_participant_scores usa a faixa da fase (SF) no Tipo 2."""
+
+    def _build_sf_pool(self):
+        user = User.objects.create_user(username="t2sf", email="t2sf@example.com", password="pass")
+        competition = Competition.objects.create(fifa_id=8201, name="Copa T2 SF")
+        season = Season.objects.create(
+            fifa_id=8201,
+            competition=competition,
+            name="T2 SF Season",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage_sf = Stage.objects.create(fifa_id="SF-PT", season=season, name="SF", order=80)
+        team_a = Team.objects.create(fifa_id="PT-A", name="PT Alpha", name_norm="pt-alpha", code="PTA")
+        team_b = Team.objects.create(fifa_id="PT-B", name="PT Beta", name_norm="pt-beta", code="PTB")
+
+        past = timezone.now() - timezone.timedelta(hours=2)
+        match = Match.objects.create(
+            fifa_id="PT-SF-1",
+            season=season,
+            stage=stage_sf,
+            match_number=100,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=team_a,
+            away_team=team_b,
+            home_score=2,
+            away_score=0,
+            winner=team_a,
+            status=Match.STATUS_FINISHED,
+        )
+        pool = Pool.objects.create(
+            name="Pool T2 SF",
+            slug="pool-t2-sf",
+            season=season,
+            created_by=user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        participant = PoolParticipant.objects.create(pool=pool, user=user, is_active=True)
+        # Placar exato 2x0, classificado team_a (== real winner) → SF exact = 78
+        bet = PoolBet.objects.create(
+            participant=participant,
+            match=match,
+            home_score_pred=2,
+            away_score_pred=0,
+            winner_pred=team_a,
+            is_active=True,
+        )
+        return {"participant": participant, "bet": bet}
+
+    def test_recalculate_uses_sf_exact_tier(self):
+        from src.pool.models import PoolBetScore
+
+        ctx = self._build_sf_pool()
+        recalculate_participant_scores(ctx["participant"])
+        score = PoolBetScore.objects.get(bet=ctx["bet"])
+        self.assertEqual(score.points, 78)
+        self.assertTrue(score.exact_score)
+        self.assertTrue(score.advancing_correct)
+
+
+class MatchMaxPointsPhaseTest(SimpleTestCase):
+    def test_phase_map_overrides_flat_knockout_max(self):
+        from src.rankings.services.dashboard import _match_max_points
+
+        scoring_config = SimpleNamespace(group_exact_score=25, knockout_exact_and_advancing=35)
+        final_stage = SimpleNamespace(name="Final")
+        match = SimpleNamespace(stage=final_stage, group_id=None)
+        phase_max_map = {"FINAL": 95, "R32": 40}
+
+        self.assertEqual(_match_max_points(match, scoring_config, phase_max_map), 95)
+
+    def test_no_phase_map_uses_flat(self):
+        from src.rankings.services.dashboard import _match_max_points
+
+        scoring_config = SimpleNamespace(group_exact_score=25, knockout_exact_and_advancing=35)
+        final_stage = SimpleNamespace(name="Final")
+        match = SimpleNamespace(stage=final_stage, group_id=None)
+
+        self.assertEqual(_match_max_points(match, scoring_config), 35)

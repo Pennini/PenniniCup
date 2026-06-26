@@ -402,6 +402,23 @@
                         {% endif %}
                     </div>
                     {% endif %}
+                    {% if row.bet and row.bet.is_active and row.bet.winner_pred %}
+                    <div class="w-full border-t border-neutral-800 pt-2 mt-1">
+                        <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Classificado palpitado</span>
+                        {% with wp=row.bet.winner_pred decided=row.match.winner %}
+                        <span class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium
+                            {% if not decided %}border-orange-500/20 bg-orange-500/5 text-orange-300
+                            {% elif decided.id == wp.id %}border-green-500/30 bg-green-500/10 text-green-300
+                            {% else %}border-red-500/30 bg-red-500/10 text-red-300{% endif %}">
+                            {% if wp.flag_image_url %}<span class="inline-flex h-3.5 w-3.5 overflow-hidden rounded-full ring-1 ring-neutral-600 bg-neutral-800 shrink-0"><img src="{{ wp.flag_image_url }}" alt="" class="h-full w-full object-cover" loading="lazy" /></span>{% endif %}
+                            {{ wp.name }}
+                            {% if decided %}
+                                {% if decided.id == wp.id %}<i data-lucide="check" class="h-3 w-3 shrink-0"></i>{% else %}<i data-lucide="x" class="h-3 w-3 shrink-0"></i>{% endif %}
+                            {% endif %}
+                        </span>
+                        {% endwith %}
+                    </div>
+                    {% endif %}
                     {% if row.match.home_score is not None and row.match.home_team %}
                     <div class="w-full border-t border-neutral-800 pt-2 mt-1">
                         <span class="text-[10px] uppercase tracking-wide text-neutral-500 block mb-0.5">Times reais do jogo</span>

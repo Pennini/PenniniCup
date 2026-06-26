@@ -424,12 +424,13 @@ def _build_third_rows_from_rows(projected_third_places):
     ]
 
 
-def resolve_knockout_match_teams(*, participant, matches, season, bets_by_match_id=None):
-    """
-    Returns {match_id: (home_team, away_team)} for all knockout matches, resolving
-    teams via the participant's own bet projections when official team IDs are absent.
-    Matches must be ordered by match_number so winners cascade into later rounds.
-    Pass bets_by_match_id (with winner_pred select_related) to avoid an extra DB query.
+def _walk_knockout_bracket(*, participant, matches, season, bets_by_match_id=None):
+    """Walk único do chaveamento: resolve times por slot e classificado por partida.
+
+    Retorna (teams_by_match, advancing_by_match):
+    - teams_by_match: {match_id: (home_team, away_team)}
+    - advancing_by_match: {match_id: advancing_team_id}
+    Matches devem vir ordenados por match_number para a cascata de vencedores.
     """
     projected_standings = list(
         participant.projected_standings.select_related("group", "team").order_by(
@@ -453,7 +454,8 @@ def resolve_knockout_match_teams(*, participant, matches, season, bets_by_match_
     winners_map = {}
     losers_map = {}
 
-    result = {}
+    teams_by_match = {}
+    advancing_by_match = {}
     for match in matches:
         if phase_for_match(match) != PHASE_KNOCKOUT:
             continue
@@ -478,17 +480,39 @@ def resolve_knockout_match_teams(*, participant, matches, season, bets_by_match_
                 losers_map=losers_map,
             )
 
-        result[match.id] = (home_team, away_team)
+        teams_by_match[match.id] = (home_team, away_team)
 
         bet = bets_by_match_id.get(match.id)
         advancing = _infer_advancing_team(match=match, bet=bet, home_team=home_team, away_team=away_team)
         if advancing is not None:
+            advancing_by_match[match.id] = advancing.id
             winners_map[match.match_number] = advancing
             losing = _infer_losing_team(winner_team=advancing, home_team=home_team, away_team=away_team)
             if losing is not None:
                 losers_map[match.match_number] = losing
 
-    return result
+    return teams_by_match, advancing_by_match
+
+
+def resolve_knockout_match_teams(*, participant, matches, season, bets_by_match_id=None):
+    """
+    Returns {match_id: (home_team, away_team)} for all knockout matches, resolving
+    teams via the participant's own bet projections when official team IDs are absent.
+    Matches must be ordered by match_number so winners cascade into later rounds.
+    Pass bets_by_match_id (with winner_pred select_related) to avoid an extra DB query.
+    """
+    teams_by_match, _ = _walk_knockout_bracket(
+        participant=participant, matches=matches, season=season, bets_by_match_id=bets_by_match_id
+    )
+    return teams_by_match
+
+
+def resolve_knockout_advancing_by_match(*, participant, matches, season, bets_by_match_id=None):
+    """{match_id: team_id} do classificado projetado pelo participante em cada partida."""
+    _, advancing_by_match = _walk_knockout_bracket(
+        participant=participant, matches=matches, season=season, bets_by_match_id=bets_by_match_id
+    )
+    return advancing_by_match
 
 
 def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):

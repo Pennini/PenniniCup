@@ -508,6 +508,26 @@ def rules(request):
     group_lock_at = selected_pool.get_phase_lock_time(PHASE_GROUP) if selected_pool else None
     knockout_lock_at = selected_pool.get_phase_lock_time(PHASE_KNOCKOUT) if selected_pool else None
 
+    # No Tipo 2 o mata-mata escala por fase (PoolKnockoutPhaseScoring); montamos a
+    # tabela na ordem das fases e o teto vira o placar exato da fase mais alta.
+    knockout_phase_rows = []
+    knockout_max_points = scoring_config.knockout_exact_and_advancing if scoring_config else 0
+    if scoring_config and selected_pool and selected_pool.pool_type == POOL_TYPE_2:
+        rows_by_key = {row.phase_key: row for row in scoring_config.knockout_phases.all()}
+        phase_labels = [
+            ("R32", "32 avos"),
+            ("R16", "Oitavas"),
+            ("QF", "Quartas"),
+            ("SF", "Semifinal"),
+            ("FINAL", "Final"),
+            ("THIRD", "3º lugar"),
+        ]
+        knockout_phase_rows = [
+            {"key": key, "label": label, "row": rows_by_key[key]} for key, label in phase_labels if key in rows_by_key
+        ]
+        if knockout_phase_rows:
+            knockout_max_points = max(item["row"].exact for item in knockout_phase_rows)
+
     context = {
         "participations": participations,
         "selected_pool": selected_pool,
@@ -517,7 +537,8 @@ def rules(request):
         "pool_type_1": POOL_TYPE_1,
         "pool_type_2": POOL_TYPE_2,
         "group_max_points": (scoring_config.group_exact_score if scoring_config else 0),
-        "knockout_max_points": (scoring_config.knockout_exact_and_advancing if scoring_config else 0),
+        "knockout_max_points": knockout_max_points,
+        "knockout_phase_rows": knockout_phase_rows,
         "bonus_total_points": (
             scoring_config.bonus_champion_points
             + scoring_config.bonus_runner_up_points

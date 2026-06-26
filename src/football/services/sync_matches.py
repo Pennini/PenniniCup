@@ -8,7 +8,8 @@ from django.utils.dateparse import parse_datetime
 from src.football.api.client import FootballDataClient
 from src.football.models import Group, Match, Season, Stadium, Stage, Team
 from src.pool.services.projection_queue import enqueue_projection_recalc_for_season
-from src.pool.services.ranking import recalculate_all_pools
+from src.pool.services.ranking import recalculate_after_sync
+from src.pool.services.rules import is_group_stage_finished
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +133,20 @@ def sync_matches():
         logger.info("Nenhuma partida elegível para sincronizar.")
         return
 
+    SCORE_FIELDS = ("home_score", "away_score", "home_penalty_score", "away_penalty_score", "winner_id", "status")
+    STRUCTURE_FIELDS = (
+        "home_team_id",
+        "away_team_id",
+        "group_id",
+        "stage_id",
+        "match_number",
+        "home_placeholder",
+        "away_placeholder",
+    )
+
+    fifa_ids = [r.fifa_id for r in rows]
+    existing = {m.fifa_id: m for m in Match.objects.filter(season=season, fifa_id__in=fifa_ids)}
+
     Match.objects.bulk_create(
         rows,
         update_conflicts=True,
@@ -157,11 +172,54 @@ def sync_matches():
             "status",
         ],
     )
-    queued = enqueue_projection_recalc_for_season(season=season)
-    recalculate_all_pools(season=season)
+
+    written = {m.fifa_id: m for m in Match.objects.filter(season=season, fifa_id__in=fifa_ids).select_related("stage")}
+
+    changed_matches = []
+    podium_changed = False
+    group_or_structure_changed = False
+    for fifa_id, new in written.items():
+        old = existing.get(fifa_id)
+        if old is None:
+            # partida nova: trata como mudança estrutural (placeholders/sorteio)
+            group_or_structure_changed = True
+            if new.home_score is not None and new.away_score is not None:
+                changed_matches.append(new)
+                if new.stage.order in (6, 7):
+                    podium_changed = True
+            continue
+        score_diff = any(getattr(old, f) != getattr(new, f) for f in SCORE_FIELDS)
+        struct_diff = any(getattr(old, f) != getattr(new, f) for f in STRUCTURE_FIELDS)
+        if score_diff:
+            changed_matches.append(new)
+            if new.group_id is not None:
+                group_or_structure_changed = True
+            if new.stage.order in (6, 7):
+                podium_changed = True
+        if struct_diff:
+            group_or_structure_changed = True
+
+    group_stage_just_closed = (not season.group_stage_close_processed) and is_group_stage_finished(season)
+
+    if group_or_structure_changed:
+        enqueue_projection_recalc_for_season(season=season)
+
+    recalculate_after_sync(
+        season,
+        changed_matches,
+        podium_changed=podium_changed,
+        group_stage_just_closed=group_stage_just_closed,
+    )
+
+    if group_stage_just_closed:
+        season.group_stage_close_processed = True
+        season.save(update_fields=["group_stage_close_processed"])
+
     logger.info(
-        "Matches sincronizados: %s (ignorados: %s) | projeções enfileiradas: %s | ranking recalculado",
+        "Matches sincronizados: %s (ignorados: %s) | alterados: %s | pódio: %s | grupos fechou: %s",
         len(rows),
         skipped,
-        queued,
+        len(changed_matches),
+        podium_changed,
+        group_stage_just_closed,
     )

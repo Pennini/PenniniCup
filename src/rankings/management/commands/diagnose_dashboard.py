@@ -17,7 +17,7 @@ from django.utils import timezone
 
 from src.football.models import Match
 from src.pool.models import Pool
-from src.pool.services.rules import PHASE_GROUP, phase_for_match
+from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_2, phase_for_match
 from src.pool.services.scoring import calculate_bet_points
 from src.rankings.models import PoolDashboardSnapshot, PoolDashboardSnapshotJob, PoolRankingHistory
 from src.rankings.services.dashboard import (
@@ -79,9 +79,34 @@ class Command(BaseCommand):
         )
         w("-" * 90)
 
+        # Tipo 2: mata-mata é pontuado pelo classificado; o recálculo fresco
+        # precisa do mesmo predicted_advancing_id, senão acusa drift falso.
+        knockout_matches = []
+        knockout_phase_scoring = None
+        if pool.pool_type == POOL_TYPE_2:
+            from src.pool.services.context_builder import resolve_knockout_advancing_by_match
+
+            knockout_matches = [
+                m
+                for m in Match.objects.filter(season=pool.season)
+                .select_related("stage", "home_team", "away_team", "winner")
+                .order_by("match_number")
+                if phase_for_match(m) != PHASE_GROUP
+            ]
+            knockout_phase_scoring = {row.phase_key: row for row in cfg.knockout_phases.all()}
+
         for row in leaderboard:
             p = row.participant
-            bets = list(p.bets.select_related("match", "match__stage", "score").all())
+            bets = list(p.bets.select_related("match", "match__stage", "score", "winner_pred").all())
+
+            advancing_map = {}
+            if pool.pool_type == POOL_TYPE_2:
+                advancing_map = resolve_knockout_advancing_by_match(
+                    participant=p,
+                    matches=knockout_matches,
+                    season=pool.season,
+                    bets_by_match_id={b.match_id: b for b in bets},
+                )
 
             bet_sum_stored = bet_sum_fresh = 0
             exact_fresh = adv_fresh = 0
@@ -92,7 +117,13 @@ class Command(BaseCommand):
             for bet in bets:
                 sc = getattr(bet, "score", None)
                 stored_pts = sc.points if sc else 0
-                fresh = calculate_bet_points(bet, scoring_config=cfg, pool_type=pool.pool_type)
+                fresh = calculate_bet_points(
+                    bet,
+                    scoring_config=cfg,
+                    pool_type=pool.pool_type,
+                    predicted_advancing_id=advancing_map.get(bet.match_id),
+                    knockout_phase_scoring=knockout_phase_scoring,
+                )
 
                 if sc:
                     bet_sum_stored += stored_pts

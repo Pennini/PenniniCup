@@ -1,7 +1,7 @@
 from django.db import transaction
 
 from src.pool.models import Pool, PoolBetScore, PoolParticipant
-from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_1, is_group_stage_finished, phase_for_match
+from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_1, POOL_TYPE_2, is_group_stage_finished, phase_for_match
 from src.pool.services.scoring import calculate_bet_points
 
 
@@ -146,7 +146,32 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
     official_result = official_result or participant.pool.get_official_results()
     pool_type = participant.pool.pool_type
 
-    bets = list(participant.bets.select_related("match", "match__stage").all())
+    knockout_phase_scoring = None
+    if pool_type == POOL_TYPE_2:
+        knockout_phase_scoring = {row.phase_key: row for row in scoring_config.knockout_phases.all()}
+
+    bets = list(participant.bets.select_related("match", "match__stage", "winner_pred").all())
+
+    # Tipo 2: resolve advancing team per knockout match to gate scoring
+    advancing_map = {}
+    if pool_type == POOL_TYPE_2:
+        from src.football.models import Match as FootballMatch
+        from src.pool.services.context_builder import resolve_knockout_advancing_by_match
+
+        knockout_matches = [
+            m
+            for m in FootballMatch.objects.filter(season=participant.pool.season)
+            .select_related("stage", "home_team", "away_team", "winner")
+            .order_by("match_number")
+            if phase_for_match(m) != PHASE_GROUP
+        ]
+        bets_by_match_id = {bet.match_id: bet for bet in bets}
+        advancing_map = resolve_knockout_advancing_by_match(
+            participant=participant,
+            matches=knockout_matches,
+            season=participant.pool.season,
+            bets_by_match_id=bets_by_match_id,
+        )
 
     # Tipo 1: pre-calculate team advancement bonus (needs cross-match lookup per stage)
     team_advancement = {}
@@ -169,7 +194,13 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
 
     scores_to_upsert = []
     for bet in bets:
-        score_data = calculate_bet_points(bet, scoring_config=scoring_config, pool_type=pool_type)
+        score_data = calculate_bet_points(
+            bet,
+            scoring_config=scoring_config,
+            pool_type=pool_type,
+            predicted_advancing_id=advancing_map.get(bet.match_id),
+            knockout_phase_scoring=knockout_phase_scoring,
+        )
         scores_to_upsert.append(
             PoolBetScore(
                 bet=bet,
@@ -328,3 +359,39 @@ def recalculate_match_scores(match):
     )
     for participant in participants:
         recalculate_participant_scores(participant)
+
+
+def recalculate_after_sync(season, changed_matches, *, podium_changed, group_stage_just_closed):
+    """Recalcula só o necessário após um sync de partidas.
+
+    - podium_changed ou group_stage_just_closed: recalc do pool inteiro (bônus de
+      pódio/classificados afetam todos os participantes), igual ao caminho antigo.
+    - caso contrário: recalc só dos participantes que apostaram nos jogos alterados.
+    - nada mudou: não faz nada.
+    """
+    from src.rankings.services.derived import refresh_pool_derived_data
+
+    if podium_changed or group_stage_just_closed:
+        for pool in Pool.objects.filter(is_active=True, season=season):
+            recalculate_pool_scores(pool)
+            refresh_pool_derived_data(pool)
+        return
+
+    if not changed_matches:
+        return
+
+    for match in changed_matches:
+        recalculate_match_scores(match)
+
+    affected_pool_ids = set(
+        PoolParticipant.objects.filter(
+            pool__season=season,
+            pool__is_active=True,
+            is_active=True,
+            bets__match__in=changed_matches,
+        )
+        .values_list("pool_id", flat=True)
+        .distinct()
+    )
+    for pool in Pool.objects.filter(id__in=affected_pool_ids):
+        refresh_pool_derived_data(pool)

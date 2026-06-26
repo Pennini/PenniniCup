@@ -40,6 +40,44 @@ O placar que conta é **sempre o do tempo normal (90 min)**, independente de pro
 
 > **Regra especial:** placar exato com classificado errado vale apenas 10 pts. Errar quem avança anula o mérito do placar perfeito.
 
+### Mata-mata no Tipo 2 (palpite progressivo)
+
+No bolão **Tipo 2** o mata-mata é pontuado **pelo classificado** (identidade do
+time que o participante projetou para o jogo vs. `match.winner` real) e a faixa
+de placar **escala por fase** — quanto mais avançado o jogo, mais vale.
+
+Regra do gate (por jogo, por identidade — **sem cascata, sem olhar fases
+passadas ou futuras**):
+
+- **Classificado errado → 0**, mesmo com placar exato. É o gate, não acumula,
+  não há consolação.
+- O time **eliminado** do confronto é irrelevante: acertar quem avança e errar
+  o adversário pontua cheio (ex.: real Marrocos 1×2 Holanda, palpite
+  Brasil 1×2 Holanda → classificado Holanda correto, placar exato → faixa cheia
+  da fase).
+- **Classificado certo →** aplica-se a faixa da fase do jogo (tabela abaixo).
+
+Faixas de placar por fase (exato / gols do classificado / diferença / gols do
+eliminado / só o classificado):
+
+| Fase  | exato | gols-classif | dif | gols-elim | só-classif |
+| ----- | ----- | ------------ | --- | --------- | ---------- |
+| R32   | 40    | 30           | 25  | 22        | 20         |
+| R16   | 50    | 38           | 32  | 28        | 26         |
+| QF    | 62    | 47           | 40  | 35        | 32         |
+| SF    | 78    | 59           | 50  | 44        | 40         |
+| FINAL | 95    | 72           | 60  | 53        | 48         |
+| THIRD | 55    | 41           | 35  | 30        | 27         |
+
+**Sem bônus de classificado separado** — a recompensa por acertar quem avança já
+está embutida na faixa (`só o classificado` é o piso). Acertar o classificado da
+FINAL = acertar o campeão, que dispara o **bônus de campeão** (120), mecanismo de
+torneio à parte que acumula.
+
+Real empate decidido nos pênaltis (Tipo 2, classificado certo): placar exato =
+`exato` da fase / mesma diferença (0) = `dif` da fase / senão = `só-classif` da
+fase.
+
 ______________________________________________________________________
 
 ## Como determinar o classificado no mata-mata
