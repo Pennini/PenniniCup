@@ -1631,6 +1631,32 @@ class ScoringCalculateBetPointsTest(SimpleTestCase):
         self.assertTrue(result["advancing_correct"])
         self.assertFalse(result["exact_score"])
 
+    def test_tipo2_draw_pred_real_non_draw_winner_goals_coincide_only_classified(self):
+        # Real África(1) 0 x 1 Canadá(2): away vence. Palpite 1x1 (EMPATE),
+        # classificado Canadá(2) certo. O gol do visitante coincide (1 == 1),
+        # mas o palpite foi empate e o jogo não foi empate -> errou o placar.
+        # Deve pagar só classificado (advancing_only=15), nunca gols do vencedor.
+        bet = self._make_knockout_bet(1, 1, 0, 1, winner_real_id=2, winner_pred_id=2)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=2
+        )
+        self.assertEqual(result["points"], 15)
+        self.assertTrue(result["advancing_correct"])
+        self.assertFalse(result["advancing_goals_correct"])
+        self.assertFalse(result["exact_score"])
+
+    def test_tipo2_wrong_winner_pred_real_non_draw_only_classified(self):
+        # Real 0 x 1 (away vence), palpite 2x1 (palpitou MANDANTE vencendo),
+        # classificado (away, id=2) certo. Direção do palpite errada, mas gol do
+        # visitante coincide (1 == 1). Deve pagar só classificado (15).
+        bet = self._make_knockout_bet(2, 1, 0, 1, winner_real_id=2, winner_pred_id=2)
+        result = calculate_bet_points(
+            bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=2
+        )
+        self.assertEqual(result["points"], 15)
+        self.assertTrue(result["advancing_correct"])
+        self.assertFalse(result["advancing_goals_correct"])
+
     def test_tipo2_real_draw_exact(self):
         # real 1x1 (pênaltis, Brasil avança), palpite 1x1, classificado certo.
         bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1, winner_pred_id=1)
@@ -3801,22 +3827,20 @@ class ScoringTipo2ExhaustiveUnitTest(SimpleTestCase):
         self.assertEqual(result["points"], 0)
         self.assertFalse(result["advancing_correct"])
 
-    # QUIRK / option (a): draw guess 2×2, real 2×0 HOME wins.
-    # Gate passes (predicted_advancing=1=winner). _knockout_points_by_score:
-    # home=2, away=0, guess_home=2, guess_away=2.
-    # is_exact=False; actual_direction=HOME; winner_goals: guess_home==home → 2==2 True
-    # → knockout_advancing_and_winner_goals = 25.
-    # A draw-guess STILL climbs the tier ladder if the winner's goals coincide — intended.
-    def test_tipo2_draw_pred_matches_advancing_goals_scores_25(self):
-        """QUIRK option (a): draw guess 2×2 vs real 2×0 HOME; home goals coincide → 25 (gols do classificado)."""
-        # draw guess climbs to gols-do-classificado tier when home goals coincide — intended.
+    # Regra: draw guess 2×2, real 2×0 HOME wins, classificado certo.
+    # gate passa (predicted_advancing=1=winner). _knockout_points_by_score:
+    # home=2, away=0, guess_home=2, guess_away=2. O palpite é EMPATE e o jogo não
+    # foi empate → resultado errado. Mesmo com o gol do mandante coincidindo
+    # (2==2), NÃO ganha gols do vencedor: paga só classificado (advancing_only=15).
+    def test_tipo2_draw_pred_real_non_draw_only_classified(self):
+        """Draw guess 2×2 vs real 2×0 HOME: errou o resultado → só classificado (15)."""
         bet = self._make_knockout_bet(2, 2, 2, 0, winner_real_id=1)
         result = calculate_bet_points(
             bet, self._make_scoring_config(), pool_type=POOL_TYPE_2, predicted_advancing_id=1
         )
-        self.assertEqual(result["points"], 25)
+        self.assertEqual(result["points"], 15)
         self.assertTrue(result["advancing_correct"])
-        self.assertTrue(result["advancing_goals_correct"])
+        self.assertFalse(result["advancing_goals_correct"])
 
     # C4: inactive bet → always 0 regardless of pool_type.
     def test_tipo2_knockout_inactive_bet_zero(self):

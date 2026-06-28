@@ -46,8 +46,13 @@ def _knockout_points_by_score(tier, home, away, guess_home, guess_away):
         return tier.advancing_only, False, False, False, False
 
     actual_direction = _winner_from_score(home, away)
-    winner_goals = _is_winner_goals_correct(actual_direction, guess_home, guess_away, home, away)
-    loser_goals = _is_loser_goals_correct(actual_direction, guess_home, guess_away, home, away)
+    # Gate por direção: gols do vencedor/perdedor só contam se o palpite cravou o
+    # mesmo resultado (mandante/visitante/empate) do tempo regulamentar. Sem isso,
+    # um palpite de empate (ou do vencedor errado) ganharia "gols do vencedor" só
+    # porque o número de um dos lados coincidiu. Errou o resultado -> só classificado.
+    direction_correct = _winner_from_score(guess_home, guess_away) == actual_direction
+    winner_goals = direction_correct and _is_winner_goals_correct(actual_direction, guess_home, guess_away, home, away)
+    loser_goals = direction_correct and _is_loser_goals_correct(actual_direction, guess_home, guess_away, home, away)
 
     if winner_goals:
         return tier.advancing_goals, False, True, False, False
