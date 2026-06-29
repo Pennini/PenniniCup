@@ -993,6 +993,27 @@ class ProjectionQueueRetryLimitTest(TestCase):
         self.assertEqual(job.status, PoolProjectionRecalc.STATUS_FAILED)
         self.assertIn("Max retries reached", job.last_error)
 
+    def test_successful_recalc_resets_attempts(self):
+        """Recalc bem-sucedido deve zerar attempts. Sem isso, recalcs repetidos
+        disparados pelo sync de fundo (que não zera attempts) acumulam tentativas
+        ao longo de execuções que SEMPRE deram certo, e o job saudável vira FAILED
+        ao bater MAX_ATTEMPTS na limpeza."""
+        job = PoolProjectionRecalc.objects.create(
+            participant=self.participant,
+            status=PoolProjectionRecalc.STATUS_PENDING,
+            attempts=MAX_ATTEMPTS - 1,
+        )
+
+        with (
+            patch("src.pool.services.projection_queue.sync_persisted_group_standings", return_value={}),
+            patch("src.pool.services.projection_queue.sync_persisted_third_places"),
+        ):
+            process_next_projection_recalc_job()
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, PoolProjectionRecalc.STATUS_IDLE)
+        self.assertEqual(job.attempts, 0, "sucesso deve refazer o orçamento de tentativas")
+
 
 class SaveBetAjaxErrorMessageTest(TestCase):
     def setUp(self):

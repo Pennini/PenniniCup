@@ -54,10 +54,13 @@ class FootballDataClient:
         )
         logger.debug(f"[FIFA API] Session criada com UA: {user_agent}")
 
-    def _request(self, url: str, params: dict | None = None) -> dict:
+    def _request(self, url: str, params: dict | None = None, headers: dict | None = None) -> dict:
         """
         Faz um GET com retry e backoff exponencial.
         Espera automaticamente em caso de rate limit (HTTP 429).
+
+        ``headers`` adiciona/sobrepõe headers da sessão só nesta chamada
+        (ex.: Origin/Referer próprios de um endpoint).
         """
 
         for attempt in range(1, self.max_retries + 1):
@@ -69,13 +72,17 @@ class FootballDataClient:
                         params=params,
                         timeout=self.timeout,
                         impersonate=self.impersonate_profile,
+                        headers=headers,
                     )
                 else:
+                    merged_headers = dict(self.session.headers)
+                    if headers:
+                        merged_headers.update(headers)
                     response = requests.get(
                         url,
                         params=params,
                         timeout=self.timeout,
-                        headers=self.session.headers,
+                        headers=merged_headers,
                     )
 
                 if response.status_code == 429:
@@ -124,6 +131,19 @@ class FootballDataClient:
         url, params = endpoints.standings_url(competition_id, season_id, stage_id)
 
         data = self._request(url, params)
+        return data.get("Results", [])
+
+    def get_world_rankings(self) -> list[dict]:
+        """Busca o ranking mundial masculino ao vivo (lista em ``Results``)."""
+        url, params = endpoints.rankings_url()
+
+        # O endpoint de ranking exige Origin/Referer de inside.fifa.com.
+        headers = {
+            "Origin": "https://inside.fifa.com",
+            "Referer": "https://inside.fifa.com/",
+        }
+
+        data = self._request(url, params, headers=headers)
         return data.get("Results", [])
 
     def get_players(self, team_id: int, competition_id: int, season_id: int) -> tuple[list[dict], list[dict]]:

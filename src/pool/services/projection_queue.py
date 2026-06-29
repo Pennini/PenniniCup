@@ -182,6 +182,12 @@ def process_next_projection_recalc_job():
                 status=PoolProjectionRecalc.STATUS_IDLE,
                 last_finished_at=timezone.now(),
                 last_error="",
+                # Sucesso refaz o orçamento de tentativas. attempts é incrementado a
+                # cada claim mas só era zerado no enqueue individual — o sync de fundo
+                # (enqueue_for_season) reenfileira sem zerar, então recalcs repetidos
+                # que SEMPRE deram certo acumulavam attempts até MAX e a limpeza
+                # marcava o job saudável como FAILED.
+                attempts=0,
             )
 
         if not updated:
