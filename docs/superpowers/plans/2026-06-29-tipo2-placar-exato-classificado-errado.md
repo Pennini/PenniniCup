@@ -2,46 +2,175 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** No mata-mata Tipo 2, quando o classificado palpitado está errado MAS os dois times do palpite são exatamente os dois times reais do jogo e o placar é exato, pontuar `exact − advancing_only` (piso `advancing_only`) em vez de zerar.
+**Goal:** No mata-mata Tipo 2, quando o classificado palpitado está errado MAS os dois times do palpite são exatamente os dois times reais do jogo e o placar é exato, pontuar com um valor configurável por fase (`exact_wrong_advancing`) em vez de zerar.
 
-**Architecture:** Mudança em três camadas. (1) `scoring.py`: novo param opcional `predicted_team_ids` e ramo de exceção no bloco `POOL_TYPE_2`. (2) `context_builder.py`: novo resolver que devolve times projetados + classificado num único walk. (3) callers (`ranking.py`, `asof_standings.py`) passam `predicted_team_ids`. Lógica pura de pontuação — sem migração de banco.
+**Architecture:** Quatro camadas. (1) `models.py`: novo campo por fase `exact_wrong_advancing` em `PoolKnockoutPhaseScoring` + defaults + migração; o campo flat morto `knockout_exact_wrong_advancing` passa a alimentar o fallback. (2) `scoring.py`: novo param `predicted_team_ids` e ramo de exceção que paga `tier.exact_wrong_advancing`. (3) `context_builder.py`: resolver que devolve times projetados + classificado num walk. (4) callers (`ranking.py`, `asof_standings.py`) passam `predicted_team_ids`.
 
 **Tech Stack:** Python 3.12, Django 6, testes `unittest` (Django test runner).
 
 ## Global Constraints
 
 - Rodar testes com profile `test`. Bash: `PENNINICUP_SETTINGS_PROFILE=test poetry run python -m src.manage test <dotted.path> -v 2`. PowerShell: `$env:PENNINICUP_SETTINGS_PROFILE='test'; poetry run python -m src.manage test <dotted.path> -v 2`.
-- Não usar `DJANGO_SETTINGS_PROFILE` (o CLAUDE.md está errado nesse ponto; o correto é `PENNINICUP_SETTINGS_PROFILE`).
-- Fórmula exata da exceção: `points = max(tier.exact - tier.advancing_only, tier.advancing_only)`.
-- `exact` e `advancing_only` saem da MESMA `tier` da fase (`knockout_phase_scoring[stage]`, fallback `_tier_from_flat_config`).
+- Não usar `DJANGO_SETTINGS_PROFILE` (CLAUDE.md errado nesse ponto; correto é `PENNINICUP_SETTINGS_PROFILE`).
+- A exceção paga um valor CONFIGURÁVEL por fase: `points = tier.exact_wrong_advancing`. Sem subtração, sem piso.
+- `tier` vem da fase (`knockout_phase_scoring[stage]`, linha `PoolKnockoutPhaseScoring`), com fallback `_tier_from_flat_config` (usa o campo flat `knockout_exact_wrong_advancing`).
 - `predicted_team_ids` default `None` → exceção NÃO dispara (retrocompat).
-- Não tocar Tipo 1, fase de grupos, nem o campo morto `knockout_exact_wrong_advancing` (a exceção usa fórmula computada, não esse campo).
-- Lint: ruff, linha máx. 119 (`make lint` ou pre-commit no commit).
+- Defaults out-of-box de `exact_wrong_advancing` por fase = `exact − advancing_only` (admin configura à vontade).
+- Não tocar Tipo 1 nem fase de grupos. Não editar migrações históricas (0017/0018/0019).
+- Lint: ruff, linha máx. 119 (`make lint`); ruff format pode quebrar dicts longos — aceitar.
 
 ______________________________________________________________________
 
-### Task 1: Exceção de pontuação em `scoring.py`
+### Task 1: Campo por fase `exact_wrong_advancing` (model + defaults + admin + migração)
 
 **Files:**
 
-- Modify: `src/pool/services/scoring.py` (assinatura de `calculate_bet_points` em `:76-78`; bloco `POOL_TYPE_2` em `:139-166`)
-- Test: `src/pool/tests/test_pool.py` (classe `ScoringTipo2ExhaustiveUnitTest`, `SimpleTestCase`, sem DB)
+- Modify: `src/pool/models.py` (`KNOCKOUT_PHASE_DEFAULTS` em `:22-29`; `PoolKnockoutPhaseScoring` em `:491-519`)
+- Create: `src/pool/migrations/0020_poolknockoutphasescoring_exact_wrong_advancing.py`
+- Modify: `src/pool/admin.py` (`PoolKnockoutPhaseScoringInline.fields` em `:307`)
+- Test: `src/pool/tests/test_pool.py` (estender `test_get_scoring_config_seeds_six_phase_rows`, `:4370`)
 
 **Interfaces:**
 
-- Consumes: nada de tasks anteriores.
-- Produces: `calculate_bet_points(bet, scoring_config, pool_type=None, predicted_advancing_id=None, knockout_phase_scoring=None, predicted_team_ids=None)`. `predicted_team_ids` é uma tupla `(home_team_id, away_team_id)` ou `None`. Comportamento: Tipo 2, classificado errado, `is_exact_score` e `set(predicted_team_ids) == {match.home_team_id, match.away_team_id}` (sem `None`) → `points = max(tier.exact - tier.advancing_only, tier.advancing_only)`, flags `exact_score=True`/`advancing_correct=False`.
+- Produces: `PoolKnockoutPhaseScoring.exact_wrong_advancing` (PositiveSmallIntegerField, sem default no model). `KNOCKOUT_PHASE_DEFAULTS[phase]["exact_wrong_advancing"]`. As linhas (objetos `PoolKnockoutPhaseScoring`) usadas como `tier` em `scoring.py` passam a expor `.exact_wrong_advancing`.
 
-O helper `_make_knockout_bet` (já existente em `ScoringTipo2ExhaustiveUnitTest`, `test_pool.py:3797`) cria `match` com `home_team_id=1`, `away_team_id=2`, `stage.name="Semi-Final"` (→ `normalize_stage_key` = `"SF"`). O helper `_make_scoring_config` (`test_pool.py:3779`) tem `knockout_exact_and_advancing=35`, `knockout_advancing_only=15`.
+- [ ] **Step 1: Estender o teste de seed (falha)**
+
+Em `src/pool/tests/test_pool.py`, dentro de `test_get_scoring_config_seeds_six_phase_rows` (`:4378-4388`), adicionar asserts do novo campo:
+
+```
+        sf = rows["SF"]
+        self.assertEqual(sf.exact, 78)
+        self.assertEqual(sf.advancing_goals, 59)
+        self.assertEqual(sf.diff, 50)
+        self.assertEqual(sf.loser_goals, 44)
+        self.assertEqual(sf.advancing_only, 40)
+        self.assertEqual(sf.exact_wrong_advancing, 38)
+
+        final = rows["FINAL"]
+        self.assertEqual(final.exact, 95)
+        self.assertEqual(final.advancing_only, 48)
+        self.assertEqual(final.exact_wrong_advancing, 47)
+```
+
+- [ ] **Step 2: Rodar e confirmar que falha**
+
+Run: `PENNINICUP_SETTINGS_PROFILE=test poetry run python -m src.manage test src.pool.tests.test_pool.PoolScoringConfigSeedTest.test_get_scoring_config_seeds_six_phase_rows -v 2`
+(Se o nome da classe diferir, rodar o módulo: `... test src.pool.tests.test_pool -v 2` e localizar o teste.)
+Expected: FAIL com `AttributeError: 'PoolKnockoutPhaseScoring' object has no attribute 'exact_wrong_advancing'` (ou erro de migração faltante).
+
+- [ ] **Step 3: Adicionar o campo ao model**
+
+Em `src/pool/models.py`, na classe `PoolKnockoutPhaseScoring`, após `advancing_only = models.PositiveSmallIntegerField()` (`:511`):
+
+```
+    advancing_only = models.PositiveSmallIntegerField()
+    exact_wrong_advancing = models.PositiveSmallIntegerField()
+```
+
+- [ ] **Step 4: Adicionar o default por fase**
+
+Em `src/pool/models.py`, trocar `KNOCKOUT_PHASE_DEFAULTS` (`:22-29`) por (default = exact − advancing_only por fase):
+
+```
+KNOCKOUT_PHASE_DEFAULTS = {
+    "R32": {"exact": 40, "advancing_goals": 30, "diff": 25, "loser_goals": 22, "advancing_only": 20, "exact_wrong_advancing": 20},
+    "R16": {"exact": 50, "advancing_goals": 38, "diff": 32, "loser_goals": 28, "advancing_only": 26, "exact_wrong_advancing": 24},
+    "QF": {"exact": 62, "advancing_goals": 47, "diff": 40, "loser_goals": 35, "advancing_only": 32, "exact_wrong_advancing": 30},
+    "SF": {"exact": 78, "advancing_goals": 59, "diff": 50, "loser_goals": 44, "advancing_only": 40, "exact_wrong_advancing": 38},
+    "FINAL": {"exact": 95, "advancing_goals": 72, "diff": 60, "loser_goals": 53, "advancing_only": 48, "exact_wrong_advancing": 47},
+    "THIRD": {"exact": 55, "advancing_goals": 41, "diff": 35, "loser_goals": 30, "advancing_only": 27, "exact_wrong_advancing": 28},
+}
+```
+
+(Linhas >119 chars: rodar `poetry run ruff format src/pool/models.py` e aceitar a quebra automática.)
+
+- [ ] **Step 5: Adicionar ao admin inline**
+
+Em `src/pool/admin.py`, trocar (`:307`):
+
+```
+    fields = ("phase_key", "exact", "advancing_goals", "diff", "loser_goals", "advancing_only")
+```
+
+por:
+
+```
+    fields = ("phase_key", "exact", "advancing_goals", "diff", "loser_goals", "advancing_only", "exact_wrong_advancing")
+```
+
+- [ ] **Step 6: Criar a migração**
+
+Criar `src/pool/migrations/0020_poolknockoutphasescoring_exact_wrong_advancing.py`:
+
+```
+from django.db import migrations, models
+
+
+def populate_exact_wrong_advancing(apps, schema_editor):
+    PoolKnockoutPhaseScoring = apps.get_model("pool", "PoolKnockoutPhaseScoring")
+    for row in PoolKnockoutPhaseScoring.objects.all():
+        row.exact_wrong_advancing = max(row.exact - row.advancing_only, 0)
+        row.save(update_fields=["exact_wrong_advancing"])
+
+
+class Migration(migrations.Migration):
+    dependencies = [
+        ("pool", "0019_alter_poolknockoutphasescoring_advancing_goals_and_more"),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name="poolknockoutphasescoring",
+            name="exact_wrong_advancing",
+            field=models.PositiveSmallIntegerField(default=0),
+            preserve_default=False,
+        ),
+        migrations.RunPython(populate_exact_wrong_advancing, migrations.RunPython.noop),
+    ]
+```
+
+- [ ] **Step 7: Confirmar que não há migração pendente faltando**
+
+Run: `PENNINICUP_SETTINGS_PROFILE=test poetry run python -m src.manage makemigrations pool --check --dry-run`
+Expected: "No changes detected" (o model bate com a migração escrita à mão).
+
+- [ ] **Step 8: Rodar o teste e confirmar que passa**
+
+Run: `PENNINICUP_SETTINGS_PROFILE=test poetry run python -m src.manage test src.pool.tests.test_pool -v 2 2>&1 | tail -20`
+Expected: o teste de seed passa (DB de teste construído da migração nova).
+
+- [ ] **Step 9: Commit**
+
+```
+git add src/pool/models.py src/pool/admin.py src/pool/migrations/0020_poolknockoutphasescoring_exact_wrong_advancing.py src/pool/tests/test_pool.py
+git commit -m "feat(pool): campo exact_wrong_advancing por fase no mata-mata tipo 2"
+```
+
+______________________________________________________________________
+
+### Task 2: Exceção de pontuação em `scoring.py`
+
+**Files:**
+
+- Modify: `src/pool/services/scoring.py` (`_tier_from_flat_config` em `:66-73`; assinatura em `:76-78`; bloco `POOL_TYPE_2` em `:139-166`)
+- Test: `src/pool/tests/test_pool.py` (classe `ScoringTipo2ExhaustiveUnitTest`, `SimpleTestCase`)
+
+**Interfaces:**
+
+- Consumes: `tier.exact_wrong_advancing` (Task 1); `scoring_config.knockout_exact_wrong_advancing` (campo flat já existente, default 10).
+- Produces: `calculate_bet_points(bet, scoring_config, pool_type=None, predicted_advancing_id=None, knockout_phase_scoring=None, predicted_team_ids=None)`. Tipo 2, classificado errado, `is_exact_score` e `set(predicted_team_ids) == {match.home_team_id, match.away_team_id}` (sem `None`) → `points = tier.exact_wrong_advancing`, flags `exact_score=True`/`advancing_correct=False`.
+
+O helper `_make_scoring_config` (`test_pool.py:3779`) tem `knockout_exact_wrong_advancing=10` e `knockout_exact_and_advancing=35`. `_make_knockout_bet` cria `match` com `home_team_id=1`, `away_team_id=2`, `stage.name="Semi-Final"` (→ `"SF"`).
 
 - [ ] **Step 1: Escrever os testes que falham**
 
-Adicionar estes métodos dentro da classe `ScoringTipo2ExhaustiveUnitTest` (logo após `test_tipo2_knockout_exact_wrong_advancing_field_ignored`, `test_pool.py:3915`):
+Adicionar dentro de `ScoringTipo2ExhaustiveUnitTest` (após `test_tipo2_knockout_exact_wrong_advancing_field_ignored`, `:3915`):
 
 ```
-    # Exceção: placar exato + os dois times do palpite == os dois times reais,
-    # classificado errado → exact - advancing_only. Config flat: 35 - 15 = 20.
-    def test_tipo2_exact_wrong_advancing_both_teams_real_flat(self):
+    # Exceção via fallback flat: classificado errado + placar exato + os dois
+    # times do palpite são os reais → paga knockout_exact_wrong_advancing (10).
+    def test_tipo2_exact_wrong_advancing_flat(self):
         bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1)
         result = calculate_bet_points(
             bet,
@@ -50,14 +179,16 @@ Adicionar estes métodos dentro da classe `ScoringTipo2ExhaustiveUnitTest` (logo
             predicted_advancing_id=2,
             predicted_team_ids=(1, 2),
         )
-        self.assertEqual(result["points"], 20)
+        self.assertEqual(result["points"], 10)
         self.assertTrue(result["exact_score"])
         self.assertFalse(result["advancing_correct"])
 
-    # Exemplo do usuário: faixa por fase exact=38, advancing_only=15 → 23.
-    def test_tipo2_exact_wrong_advancing_per_phase_23(self):
+    # Exceção via faixa por fase: paga tier.exact_wrong_advancing (23), provando
+    # que lê o campo configurado (exact=99, advancing_only=15 não influenciam).
+    def test_tipo2_exact_wrong_advancing_per_phase(self):
         tier = SimpleNamespace(
-            exact=38, advancing_goals=30, diff=25, loser_goals=22, advancing_only=15
+            exact=99, advancing_goals=70, diff=60, loser_goals=50,
+            advancing_only=15, exact_wrong_advancing=23,
         )
         bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1)
         result = calculate_bet_points(
@@ -85,20 +216,6 @@ Adicionar estes métodos dentro da classe `ScoringTipo2ExhaustiveUnitTest` (logo
         self.assertEqual(result["points"], 0)
         self.assertFalse(result["advancing_correct"])
 
-    # Piso negativo: exact=10 < advancing_only=15 → max(10-15, 15) = 15.
-    def test_tipo2_exact_wrong_advancing_negative_floor(self):
-        bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1)
-        result = calculate_bet_points(
-            bet,
-            self._make_scoring_config(
-                knockout_exact_and_advancing=10, knockout_advancing_only=15
-            ),
-            pool_type=POOL_TYPE_2,
-            predicted_advancing_id=2,
-            predicted_team_ids=(1, 2),
-        )
-        self.assertEqual(result["points"], 15)
-
     # Retrocompat: sem predicted_team_ids → exceção não dispara → 0.
     def test_tipo2_exact_wrong_advancing_no_team_ids(self):
         bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1)
@@ -111,14 +228,41 @@ Adicionar estes métodos dentro da classe `ScoringTipo2ExhaustiveUnitTest` (logo
         self.assertEqual(result["points"], 0)
 ```
 
-- [ ] **Step 2: Rodar os testes e confirmar que falham**
+Atualizar também o comentário do teste pré-existente `test_tipo2_knockout_exact_wrong_advancing_field_ignored` (`:3902-3906`): o campo deixou de ser morto; o teste agora cobre o caminho sem `predicted_team_ids` (→ 0). Trocar a docstring/comentário por:
+
+```
+    # Sem predicted_team_ids a exceção não dispara: classificado errado → 0,
+    # mesmo com placar exato (placar decisivo 2x1).
+    def test_tipo2_knockout_exact_wrong_advancing_field_ignored(self):
+        """Sem info dos times projetados, classificado errado → 0 (sem exceção)."""
+```
+
+(O corpo e os asserts do teste permanecem iguais — ele não passa `predicted_team_ids`.)
+
+- [ ] **Step 2: Rodar e confirmar que falha**
 
 Run: `PENNINICUP_SETTINGS_PROFILE=test poetry run python -m src.manage test src.pool.tests.test_pool.ScoringTipo2ExhaustiveUnitTest -v 2`
-Expected: FAIL (ex.: `test_tipo2_exact_wrong_advancing_both_teams_real_flat` espera 20, recebe 0; `..._no_team_ids` passa). Os que esperam 0 já passam; os de crédito parcial falham.
+Expected: FAIL (`test_tipo2_exact_wrong_advancing_flat` espera 10, recebe 0; idem per_phase espera 23).
 
-- [ ] **Step 3: Alterar a assinatura de `calculate_bet_points`**
+- [ ] **Step 3: Mapear o campo flat no fallback**
 
-Em `src/pool/services/scoring.py`, trocar:
+Em `src/pool/services/scoring.py`, em `_tier_from_flat_config` (`:66-73`), adicionar a chave:
+
+```
+def _tier_from_flat_config(scoring_config):
+    return SimpleNamespace(
+        exact=scoring_config.knockout_exact_and_advancing,
+        advancing_goals=scoring_config.knockout_advancing_and_winner_goals,
+        diff=scoring_config.knockout_advancing_and_diff,
+        loser_goals=scoring_config.knockout_advancing_and_loser_goals,
+        advancing_only=scoring_config.knockout_advancing_only,
+        exact_wrong_advancing=scoring_config.knockout_exact_wrong_advancing,
+    )
+```
+
+- [ ] **Step 4: Alterar a assinatura de `calculate_bet_points`**
+
+Trocar (`:76-78`):
 
 ```
 def calculate_bet_points(
@@ -139,9 +283,9 @@ def calculate_bet_points(
 ):
 ```
 
-- [ ] **Step 4: Substituir o bloco `POOL_TYPE_2`**
+- [ ] **Step 5: Substituir o bloco `POOL_TYPE_2`**
 
-Trocar o bloco atual (`scoring.py:139-166`):
+Trocar o bloco (`:139-166`):
 
 ```
     # KNOCKOUT Tipo 2: gate por classificado (identidade do time), não por posição.
@@ -188,10 +332,10 @@ por:
         is_advancing_correct = bool(match.winner_id) and predicted_advancing_id == match.winner_id
         if not is_advancing_correct:
             # Exceção: placar EXATO + os dois times do palpite são exatamente os
-            # dois times reais do jogo, mas o classificado está errado. Ganha
-            # exact - advancing_only (piso advancing_only). Só ocorre em jogos
-            # decididos nos pênaltis (empate no tempo regulamentar): num placar
-            # decisivo, clean() força winner_pred ao vencedor do placar.
+            # dois times reais do jogo, mas o classificado está errado. Paga o
+            # valor configurável da fase (tier.exact_wrong_advancing). Só ocorre
+            # em jogos decididos nos pênaltis: num placar decisivo, clean() força
+            # winner_pred ao vencedor do placar.
             real_pair = {match.home_team_id, match.away_team_id}
             teams_match_real = (
                 None not in real_pair
@@ -199,9 +343,8 @@ por:
                 and set(predicted_team_ids) == real_pair
             )
             if is_exact_score and teams_match_real:
-                points = max(tier.exact - tier.advancing_only, tier.advancing_only)
                 return {
-                    "points": points,
+                    "points": tier.exact_wrong_advancing,
                     "exact_score": True,
                     "advancing_correct": False,
                     "advancing_goals_correct": False,
@@ -229,21 +372,21 @@ por:
         }
 ```
 
-- [ ] **Step 5: Rodar os testes e confirmar que passam**
+- [ ] **Step 6: Rodar e confirmar que passa**
 
 Run: `PENNINICUP_SETTINGS_PROFILE=test poetry run python -m src.manage test src.pool.tests.test_pool.ScoringTipo2ExhaustiveUnitTest -v 2`
-Expected: PASS (todos, inclusive os pré-existentes B5/D3 que continuam retornando 0 por não passarem `predicted_team_ids`).
+Expected: PASS (todos).
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
-```bash
+```
 git add src/pool/services/scoring.py src/pool/tests/test_pool.py
-git commit -m "feat(scoring): tipo 2 credita placar exato com classificado errado"
+git commit -m "feat(scoring): tipo 2 paga exact_wrong_advancing quando time real e classificado errado"
 ```
 
 ______________________________________________________________________
 
-### Task 2: Resolver combinado em `context_builder.py`
+### Task 3: Resolver combinado em `context_builder.py`
 
 **Files:**
 
@@ -252,7 +395,7 @@ ______________________________________________________________________
 
 **Interfaces:**
 
-- Consumes: `_walk_knockout_bracket(*, participant, matches, season, bets_by_match_id=None) -> (teams_by_match, advancing_by_match)` (já existe, `context_builder.py:427`).
+- Consumes: `_walk_knockout_bracket(...) -> (teams_by_match, advancing_by_match)` (já existe, `:427`).
 
 - Produces: `resolve_knockout_teams_and_advancing(*, participant, matches, season, bets_by_match_id=None) -> (teams_by_match, advancing_by_match)`. `teams_by_match`: `{match_id: (home_team, away_team)}` (objetos `Team` ou `None`). `advancing_by_match`: `{match_id: team_id}`.
 
@@ -301,14 +444,14 @@ class ResolveKnockoutTeamsAndAdvancingTest(TestCase):
         self.assertEqual(advancing_by_match[ko_match.id], team_b.id)
 ```
 
-- [ ] **Step 2: Rodar o teste e confirmar que falha**
+- [ ] **Step 2: Rodar e confirmar que falha**
 
 Run: `PENNINICUP_SETTINGS_PROFILE=test poetry run python -m src.manage test src.pool.tests.test_pool.ResolveKnockoutTeamsAndAdvancingTest -v 2`
 Expected: FAIL com `ImportError: cannot import name 'resolve_knockout_teams_and_advancing'`.
 
 - [ ] **Step 3: Adicionar a função**
 
-Em `src/pool/services/context_builder.py`, logo após `resolve_knockout_advancing_by_match` (`:515`):
+Em `src/pool/services/context_builder.py`, após `resolve_knockout_advancing_by_match` (`:515`):
 
 ```
 def resolve_knockout_teams_and_advancing(*, participant, matches, season, bets_by_match_id=None):
@@ -323,42 +466,42 @@ def resolve_knockout_teams_and_advancing(*, participant, matches, season, bets_b
     )
 ```
 
-- [ ] **Step 4: Rodar o teste e confirmar que passa**
+- [ ] **Step 4: Rodar e confirmar que passa**
 
 Run: `PENNINICUP_SETTINGS_PROFILE=test poetry run python -m src.manage test src.pool.tests.test_pool.ResolveKnockoutTeamsAndAdvancingTest -v 2`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
-```bash
+```
 git add src/pool/services/context_builder.py src/pool/tests/test_pool.py
 git commit -m "feat(pool): resolver de times+classificado num walk do bracket"
 ```
 
 ______________________________________________________________________
 
-### Task 3: Wiring dos callers + teste de integração
+### Task 4: Wiring dos callers + teste de integração
 
 **Files:**
 
 - Modify: `src/pool/services/ranking.py` (`:165-212`)
 - Modify: `src/pool/services/asof_standings.py` (`:169-209`)
-- Test: `src/pool/tests/test_pool.py` (adicionar método em `Tipo2IntegrationExtraTest`, `:3923`)
+- Test: `src/pool/tests/test_pool.py` (método novo em `Tipo2IntegrationExtraTest`, `:3923`)
 
 **Interfaces:**
 
-- Consumes: `resolve_knockout_teams_and_advancing(...)` (Task 2); `calculate_bet_points(..., predicted_team_ids=...)` (Task 1).
+- Consumes: `resolve_knockout_teams_and_advancing(...)` (Task 3); `calculate_bet_points(..., predicted_team_ids=...)` (Task 2); `tier.exact_wrong_advancing` por fase (Task 1).
 
 - Produces: scores persistidos com a exceção aplicada end-to-end via `recalculate_participant_scores`.
 
 - [ ] **Step 1: Escrever o teste de integração que falha**
 
-Adicionar dentro de `Tipo2IntegrationExtraTest` (após `test_tipo2_mixed_group_and_knockout`). Reaproveita `_build_fixture`, mas sobrescreve o jogo de mata-mata para empate decidido nos pênaltis com classificado errado no palpite:
+Adicionar dentro de `Tipo2IntegrationExtraTest` (após `test_tipo2_mixed_group_and_knockout`):
 
 ```
     def test_tipo2_exact_wrong_advancing_partial_credit(self):
         """Empate 1x1 (pênaltis → team_a), palpite 1x1 com team_b classificando,
-        ambos os times reais → crédito parcial (exact - advancing_only), > 0."""
+        ambos os times reais → paga exact_wrong_advancing da fase SF."""
         from src.pool.models import PoolBetScore
 
         ctx = self._build_fixture(fifa_id_base=8600, slug_suffix="exwa")
@@ -380,27 +523,23 @@ Adicionar dentro de `Tipo2IntegrationExtraTest` (após `test_tipo2_mixed_group_a
 
         recalculate_participant_scores(participant)
 
+        sf_row = ctx["pool"].get_scoring_config().knockout_phases.get(phase_key="SF")
         score = PoolBetScore.objects.get(bet=ko_bet)
-        config = ctx["pool"].get_scoring_config()
-        expected = max(
-            config.knockout_exact_and_advancing - config.knockout_advancing_only,
-            config.knockout_advancing_only,
-        )
-        self.assertEqual(score.points, expected)
+        self.assertEqual(score.points, sf_row.exact_wrong_advancing)
         self.assertTrue(score.exact_score)
         self.assertFalse(score.advancing_correct)
 ```
 
-Nota: `_build_fixture` usa `Semi-Final` como stage do mata-mata; sem linhas `PoolKnockoutPhaseScoring`, a `tier` cai no fallback flat, então `expected` usa os campos flat do `scoring_config` (correto).
+Nota: `_build_fixture` usa stage `Semi-Final` (→ `SF`); `get_scoring_config()` semeia as linhas por fase, então `sf_row.exact_wrong_advancing` = 38 (default), e o caminho usa a faixa da fase.
 
-- [ ] **Step 2: Rodar o teste e confirmar que falha**
+- [ ] **Step 2: Rodar e confirmar que falha**
 
 Run: `PENNINICUP_SETTINGS_PROFILE=test poetry run python -m src.manage test src.pool.tests.test_pool.Tipo2IntegrationExtraTest.test_tipo2_exact_wrong_advancing_partial_credit -v 2`
-Expected: FAIL (`score.points == 0`, pois o wiring ainda não passa `predicted_team_ids`).
+Expected: FAIL (`score.points == 0`; wiring ainda não passa `predicted_team_ids`).
 
 - [ ] **Step 3: Wire `ranking.py`**
 
-Em `src/pool/services/ranking.py`, trocar o bloco `:165-183`:
+Trocar o bloco `:165-183`:
 
 ```
     advancing_map = {}
@@ -480,7 +619,7 @@ por:
 
 - [ ] **Step 4: Wire `asof_standings.py`**
 
-Em `src/pool/services/asof_standings.py`, trocar o import local (`:171`):
+Trocar o import local (`:171`):
 
 ```
         from src.pool.services.context_builder import resolve_knockout_advancing_by_match
@@ -553,14 +692,14 @@ por:
 Run: `PENNINICUP_SETTINGS_PROFILE=test poetry run python -m src.manage test src.pool.tests.test_pool.Tipo2IntegrationExtraTest.test_tipo2_exact_wrong_advancing_partial_credit -v 2`
 Expected: PASS.
 
-- [ ] **Step 6: Rodar a suíte do app `pool` (regressão dos callers)**
+- [ ] **Step 6: Rodar a suíte do app `pool` (regressão)**
 
 Run: `PENNINICUP_SETTINGS_PROFILE=test poetry run python -m src.manage test src.pool -v 2`
-Expected: PASS (sem regressões em ranking/asof/integração Tipo 2).
+Expected: PASS (sem regressões em ranking/asof/seed/integração Tipo 2).
 
 - [ ] **Step 7: Commit**
 
-```bash
+```
 git add src/pool/services/ranking.py src/pool/services/asof_standings.py src/pool/tests/test_pool.py
 git commit -m "feat(scoring): wiring de predicted_team_ids no recalculo tipo 2"
 ```
@@ -571,14 +710,15 @@ ______________________________________________________________________
 
 **Cobertura do spec:**
 
-- Exceção `exact - advancing_only` + piso → Task 1 (Steps 4) + testes `..._flat`, `..._per_phase_23`, `..._negative_floor`.
-- Condição "dois times == reais" + R16+ projetado difere → Task 1 teste `..._projected_teams_differ`.
-- Retrocompat `predicted_team_ids=None` → Task 1 teste `..._no_team_ids`.
-- Resolver combinado (um walk) → Task 2.
-- Wiring callers → Task 3 (ranking + asof) + integração end-to-end.
-- Impacto em exibição (nenhum) → sem task (flags consistentes; views derivam `advancing_correct` por conta própria).
-- Sem migração → confirmado (lógica pura).
+- Campo configurável por fase `exact_wrong_advancing` (model + defaults + migração + admin) → Task 1.
+- Exceção paga `tier.exact_wrong_advancing` → Task 2 (Steps 5) + testes flat(10)/per_phase(23)/differ(0)/no_team_ids(0).
+- Fallback flat via `knockout_exact_wrong_advancing` → Task 2 Step 3 + teste flat.
+- Condição "dois times == reais" + R16+ projetado difere → Task 2 teste `..._projected_teams_differ`.
+- Retrocompat `predicted_team_ids=None` → Task 2 teste `..._no_team_ids` (+ teste pré-existente atualizado).
+- Resolver combinado (um walk) → Task 3.
+- Wiring callers + integração end-to-end → Task 4.
+- Sem impacto em exibição (views derivam `advancing_correct` à parte).
 
 **Placeholder scan:** sem TBD/TODO; todo passo tem código/comando concreto.
 
-**Consistência de tipos:** `predicted_team_ids` = `(id, id)`/`None` em Task 1, 3; `resolve_knockout_teams_and_advancing` retorna `(teams_by_match, advancing_by_match)` consistente entre Task 2 e os dois callers; `tier.exact`/`tier.advancing_only` batem com `_tier_from_flat_config` e com o `SimpleNamespace` do teste por-fase.
+**Consistência de tipos:** `exact_wrong_advancing` é `PositiveSmallIntegerField` no model (Task 1), chave no `_tier_from_flat_config` SimpleNamespace e no `tier` por fase (Task 2), e atributo lido em `tier.exact_wrong_advancing` (Task 2 Step 5). `predicted_team_ids` = `(id, id)`/`None` (Task 2, 4). `resolve_knockout_teams_and_advancing` retorna `(teams_by_match, advancing_by_match)` consistente entre Task 3 e os dois callers.

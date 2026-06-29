@@ -26,16 +26,18 @@ Adicionar uma exceção ao gate do Tipo 2:
 
 > Se o usuário acerta o **placar EXATO**, **os dois times do jogo palpitado são
 > exatamente os dois times reais** do jogo real, **mas erra o classificado**,
-> então ele ganha `exact − advancing_only` pontos.
+> então ele ganha um valor **configurável por fase** (`exact_wrong_advancing`).
 
 Exemplo (32 avos): real Brasil 1×1 Japão (pênaltis → Brasil classifica). Usuário
 palpitou Brasil 1×1 Japão com Japão classificando. Placar exato ✓, os dois times
-são os reais ✓, classificado errado (Japão ≠ Brasil). Pontuação:
-`exact (38) − advancing_only (15) = 23`.
+são os reais ✓, classificado errado (Japão ≠ Brasil). Pontuação: o valor de
+`exact_wrong_advancing` da fase R32 (ex.: 23, se assim configurado).
 
-Observação: como `exact` e `advancing_only` são da mesma faixa por fase
-(`knockout_phase_scoring[stage]`, com fallback flat), a subtração usa sempre a
-faixa daquela fase.
+Observação: `exact_wrong_advancing` é um novo campo por fase em
+`PoolKnockoutPhaseScoring` (mesma estrutura de `exact`/`advancing_only`), com
+fallback para o campo flat `PoolScoringConfig.knockout_exact_wrong_advancing` (que
+até hoje existia mas estava morto). O admin configura cada fase à vontade; o valor
+default out-of-box é `exact − advancing_only` da fase.
 
 ### Quando a exceção dispara na prática
 
@@ -45,18 +47,20 @@ classificado palpitado coincidiria com o real e o caso normal já se aplicaria. 
 implementação não precisa checar "empate" explicitamente — a condição
 `placar exato + classificado errado` já restringe a isso.
 
-### Borda: subtração negativa
+### Valor pago
 
-Se uma fase estiver mal configurada com `advancing_only > exact` (subtração
-negativa), o piso é `advancing_only`:
-
-```
-points = max(tier.exact - tier.advancing_only, tier.advancing_only)
-```
-
-No caso normal (`exact=38`, `advancing_only=15`): `max(23, 15) = 23`. ✓
+A exceção paga diretamente `tier.exact_wrong_advancing` — valor configurável por
+fase. Sem subtração e sem piso (é um número configurado, não computado).
 
 ## Arquitetura
+
+### Novo campo por fase
+
+Adicionar `exact_wrong_advancing` (PositiveSmallIntegerField, sem default no model)
+em `PoolKnockoutPhaseScoring`, incluí-lo em `KNOCKOUT_PHASE_DEFAULTS` (default =
+`exact − advancing_only` por fase), expor no admin inline e popular via migração
+(`0020`, RunPython preenchendo linhas existentes com `max(exact − advancing_only, 0)`). `_tier_from_flat_config` passa a mapear
+`exact_wrong_advancing=scoring_config.knockout_exact_wrong_advancing`.
 
 ### Mudança de interface
 
@@ -91,9 +95,8 @@ if pool_type == POOL_TYPE_2:
             None not in real_pair and predicted_team_ids is not None and set(predicted_team_ids) == real_pair
         )
         if is_exact_score and teams_match_real:
-            points = max(tier.exact - tier.advancing_only, tier.advancing_only)
             return {
-                "points": points,
+                "points": tier.exact_wrong_advancing,
                 "exact_score": True,
                 "advancing_correct": False,
                 "advancing_goals_correct": False,
@@ -173,10 +176,9 @@ Onde `advancing_map` for usado também para o bônus Tipo 1, manter o mesmo dict
 - `predicted_team_ids is None` → exceção não dispara (retorna 0 como hoje).
 - Algum id real `None` (jogo sem times resolvidos) → `None in real_pair` →
   exceção não dispara.
-- Subtração negativa → piso `advancing_only` via `max(...)`.
 - Caminho flat (sem `knockout_phase_scoring`) → `tier` cai no
-  `_tier_from_flat_config`; exceção funciona igual se `predicted_team_ids` vier
-  preenchido.
+  `_tier_from_flat_config`; a exceção paga `knockout_exact_wrong_advancing` (flat)
+  se `predicted_team_ids` vier preenchido.
 
 ## Impacto em exibição
 
@@ -187,17 +189,19 @@ com o caso e não exigem novo flag (YAGNI).
 
 ## Testes (`src/pool/tests/test_pool.py`)
 
-1. **Exemplo dos 23 pts**: R32, real 1×1 (winner=Brasil via pênaltis), palpite 1×1
-   com winner_pred=Japão, ambos os times reais → `exact − advancing_only`.
+1. **Seed do campo por fase**: `get_scoring_config` semeia `exact_wrong_advancing`
+   (SF=38, FINAL=47, etc.).
+1. **Exceção via faixa por fase**: paga `tier.exact_wrong_advancing` (ex.: 23),
+   provando que lê o campo configurado.
+1. **Exceção via fallback flat**: sem faixa por fase → paga
+   `knockout_exact_wrong_advancing` (10).
 1. **R16+ times projetados ≠ reais**: placar exato, classificado errado, mas o par
    projetado difere do par real → 0 (exceção não dispara).
-1. **Classificado correto inalterado**: regressão do caminho de acerto.
-1. **Piso negativo**: faixa com `advancing_only > exact` → resultado = `advancing_only`.
 1. **Retrocompat**: `predicted_team_ids=None` com classificado errado → 0.
+1. **Integração end-to-end**: `recalculate_participant_scores` aplica a faixa SF.
 
 ## Não-objetivos (YAGNI)
 
 - Nenhum novo flag de score para exibição.
 - Nenhuma mudança no Tipo 1 nem na fase de grupos.
 - Nenhuma mudança no caminho posicional do mata-mata Tipo 1.
-- Sem migração de banco (lógica pura de pontuação).
