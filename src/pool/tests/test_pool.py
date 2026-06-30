@@ -4895,3 +4895,73 @@ class ResolveKnockoutTeamsAndAdvancingTest(TestCase):
         # R32: confronto projetado == times reais classificados da fase de grupos.
         self.assertEqual(projected_teams_by_match[ko_match.id], (team_a, team_b))
         self.assertEqual(advancing_by_match[ko_match.id], team_b.id)
+
+
+class RecalculateTipo2R32SegundasDeFinalReproTest(TestCase):
+    """Repro do bug de produção: R32 nomeado 'Segundas de Final' (nome FIFA pt-BR).
+
+    Marrocos 1x1 Holanda (Marrocos passa nos pênaltis). Usuário palpitou
+    Marrocos 1x1 Holanda com Holanda passando → placar exato + os dois times
+    reais + classificado errado → deve pagar exact_wrong_advancing da fase R32.
+    """
+
+    def test_r32_segundas_de_final_exact_wrong_advancing(self):
+        from src.pool.models import PoolBetScore
+
+        user = User.objects.create_user(username="r32repro", email="r32repro@example.com", password="pass")
+        competition = Competition.objects.create(fifa_id=8700, name="Copa R32 Repro")
+        season = Season.objects.create(
+            fifa_id=8700,
+            competition=competition,
+            name="R32 Repro",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        # Nome real vindo da API FIFA para a fase de 32 avos.
+        stage_r32 = Stage.objects.create(fifa_id="R32-REPRO", season=season, name="Segundas de Final", order=2)
+        marrocos = Team.objects.create(fifa_id="REP-MAR", name="Marrocos", name_norm="marrocos", code="MAR")
+        holanda = Team.objects.create(fifa_id="REP-HOL", name="Holanda", name_norm="holanda", code="HOL")
+
+        past = timezone.now() - timezone.timedelta(hours=2)
+        ko = Match.objects.create(
+            fifa_id="REP-KO",
+            season=season,
+            stage=stage_r32,
+            match_number=8701,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=marrocos,
+            away_team=holanda,
+            home_score=1,
+            away_score=1,
+            winner=marrocos,
+            status=Match.STATUS_FINISHED,
+        )
+
+        pool = Pool.objects.create(
+            name="Pool R32 Repro",
+            slug="pool-r32-repro",
+            season=season,
+            created_by=user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        participant = PoolParticipant.objects.create(pool=pool, user=user, is_active=True)
+        bet = PoolBet.objects.create(
+            participant=participant,
+            match=ko,
+            home_score_pred=1,
+            away_score_pred=1,
+            winner_pred=holanda,
+            is_active=True,
+        )
+
+        recalculate_participant_scores(participant)
+
+        r32_row = pool.get_scoring_config().knockout_phases.get(phase_key="R32")
+        score = PoolBetScore.objects.get(bet=bet)
+        self.assertEqual(score.points, r32_row.exact_wrong_advancing)
+        self.assertTrue(score.exact_score)
+        self.assertFalse(score.advancing_correct)
