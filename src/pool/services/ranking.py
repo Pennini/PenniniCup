@@ -163,9 +163,10 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
     # (fica None em palpites decisivos de jogos projetados), então resolvemos pelo
     # bracket projetado com fallback por placar.
     advancing_map = {}
+    teams_by_match = {}
     if pool_type in (POOL_TYPE_1, POOL_TYPE_2):
         from src.football.models import Match as FootballMatch
-        from src.pool.services.context_builder import resolve_knockout_advancing_by_match
+        from src.pool.services.context_builder import resolve_knockout_teams_and_advancing
 
         knockout_matches = [
             m
@@ -175,7 +176,7 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
             if phase_for_match(m) != PHASE_GROUP
         ]
         bets_by_match_id = {bet.match_id: bet for bet in bets}
-        advancing_map = resolve_knockout_advancing_by_match(
+        teams_by_match, advancing_map = resolve_knockout_teams_and_advancing(
             participant=participant,
             matches=knockout_matches,
             season=participant.pool.season,
@@ -203,12 +204,15 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
 
     scores_to_upsert = []
     for bet in bets:
+        home_t, away_t = teams_by_match.get(bet.match_id, (None, None))
+        predicted_team_ids = (home_t.id, away_t.id) if home_t is not None and away_t is not None else None
         score_data = calculate_bet_points(
             bet,
             scoring_config=scoring_config,
             pool_type=pool_type,
             predicted_advancing_id=advancing_map.get(bet.match_id),
             knockout_phase_scoring=knockout_phase_scoring,
+            predicted_team_ids=predicted_team_ids,
         )
         scores_to_upsert.append(
             PoolBetScore(

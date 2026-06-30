@@ -4148,8 +4148,41 @@ class Tipo2IntegrationExtraTest(TestCase):
         self.assertTrue(ko_score_ok.advancing_correct)
 
         ko_score_ko = PoolBetScore.objects.get(bet=ko_bet_ko)
-        self.assertEqual(ko_score_ko.points, 0, "Wrong-advancer knockout bet must score 0")
+        # ko_bet_ko has exact score (2-1 == 2-1) + wrong advancer + real teams
+        # → triggers exact_wrong_advancing exception (partial credit)
+        sf_row_e5 = ctx["pool"].get_scoring_config().knockout_phases.get(phase_key="SF")
+        self.assertEqual(ko_score_ko.points, sf_row_e5.exact_wrong_advancing)
         self.assertFalse(ko_score_ko.advancing_correct)
+
+    def test_tipo2_exact_wrong_advancing_partial_credit(self):
+        """Empate 1x1 (pênaltis → team_a), palpite 1x1 com team_b classificando,
+        ambos os times reais → paga exact_wrong_advancing da fase SF."""
+        from src.pool.models import PoolBetScore
+
+        ctx = self._build_fixture(fifa_id_base=8600, slug_suffix="exwa")
+        ko = ctx["ko_match"]
+        ko.home_score = 1
+        ko.away_score = 1
+        ko.winner = ctx["team_a"]
+        ko.save(update_fields=["home_score", "away_score", "winner"])
+
+        participant = PoolParticipant.objects.create(pool=ctx["pool"], user=ctx["user"], is_active=True)
+        ko_bet = PoolBet.objects.create(
+            participant=participant,
+            match=ko,
+            home_score_pred=1,
+            away_score_pred=1,
+            winner_pred=ctx["team_b"],
+            is_active=True,
+        )
+
+        recalculate_participant_scores(participant)
+
+        sf_row = ctx["pool"].get_scoring_config().knockout_phases.get(phase_key="SF")
+        score = PoolBetScore.objects.get(bet=ko_bet)
+        self.assertEqual(score.points, sf_row.exact_wrong_advancing)
+        self.assertTrue(score.exact_score)
+        self.assertFalse(score.advancing_correct)
 
 
 class Tipo2FullBracketEndToEndTest(TestCase):
