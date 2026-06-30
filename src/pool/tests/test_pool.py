@@ -4382,10 +4382,12 @@ class KnockoutPhaseScoringSeedTest(TestCase):
         self.assertEqual(sf.diff, 50)
         self.assertEqual(sf.loser_goals, 44)
         self.assertEqual(sf.advancing_only, 40)
+        self.assertEqual(sf.exact_wrong_advancing, 38)
 
         final = rows["FINAL"]
         self.assertEqual(final.exact, 95)
         self.assertEqual(final.advancing_only, 48)
+        self.assertEqual(final.exact_wrong_advancing, 47)
 
 
 class RecalculateTipo2PhaseTierTest(TestCase):
