@@ -4643,3 +4643,66 @@ class Tipo1TeamAdvancementBonusWithoutWinnerPredTest(TestCase):
             positional + bonus,
             "As-of standings devem incluir o bônus de avanço mesmo sem winner_pred",
         )
+
+
+class ResolveKnockoutTeamsAndAdvancingTest(TestCase):
+    """resolve_knockout_teams_and_advancing devolve times e classificado num walk."""
+
+    def test_r32_real_teams_and_advancing(self):
+        from src.pool.services.context_builder import resolve_knockout_teams_and_advancing
+
+        user = User.objects.create_user(username="rkta", email="rkta@example.com", password="pass")
+        competition = Competition.objects.create(fifa_id=8500, name="Copa RKTA")
+        season = Season.objects.create(
+            fifa_id=8500,
+            competition=competition,
+            name="RKTA",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        ko_stage = Stage.objects.create(fifa_id="R32-rkta", season=season, name="32 Avos", order=40)
+        team_a = Team.objects.create(fifa_id="rkta-A", name="RKTA A", name_norm="rkta-a", code="RKA")
+        team_b = Team.objects.create(fifa_id="rkta-B", name="RKTA B", name_norm="rkta-b", code="RKB")
+        past = timezone.now() - timezone.timedelta(hours=2)
+        ko_match = Match.objects.create(
+            fifa_id="rkta-KO",
+            season=season,
+            stage=ko_stage,
+            match_number=8501,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=team_a,
+            away_team=team_b,
+            home_score=1,
+            away_score=1,
+            winner=team_a,
+            status=Match.STATUS_FINISHED,
+        )
+        pool = Pool.objects.create(
+            name="Pool RKTA",
+            slug="pool-rkta",
+            season=season,
+            created_by=user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        participant = PoolParticipant.objects.create(pool=pool, user=user, is_active=True)
+        PoolBet.objects.create(
+            participant=participant,
+            match=ko_match,
+            home_score_pred=1,
+            away_score_pred=1,
+            winner_pred=team_b,
+            is_active=True,
+        )
+
+        teams_by_match, advancing_by_match = resolve_knockout_teams_and_advancing(
+            participant=participant,
+            matches=[ko_match],
+            season=season,
+        )
+
+        self.assertEqual(teams_by_match[ko_match.id], (team_a, team_b))
+        self.assertEqual(advancing_by_match[ko_match.id], team_b.id)

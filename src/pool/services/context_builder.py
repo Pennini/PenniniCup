@@ -515,6 +515,18 @@ def resolve_knockout_advancing_by_match(*, participant, matches, season, bets_by
     return advancing_by_match
 
 
+def resolve_knockout_teams_and_advancing(*, participant, matches, season, bets_by_match_id=None):
+    """(teams_by_match, advancing_by_match) num único walk do bracket projetado.
+
+    teams_by_match: {match_id: (home_team, away_team)} (objetos Team ou None).
+    advancing_by_match: {match_id: team_id} do classificado projetado.
+    Evita dois walks quando o caller precisa de ambos.
+    """
+    return _walk_knockout_bracket(
+        participant=participant, matches=matches, season=season, bets_by_match_id=bets_by_match_id
+    )
+
+
 def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):
     participant = _hydrate_participant_for_context(pool=pool, participant=participant)
 
