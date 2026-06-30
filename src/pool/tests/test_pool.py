@@ -3764,6 +3764,194 @@ class RecalculateTipo2KnockoutR16CascadeTest(TestCase):
         self.assertEqual(score.points, 0, "Gate must block when projected advancer does not match real winner")
         self.assertFalse(score.advancing_correct)
 
+    def _build_r16_draw_fixture(self):
+        """R16 decidido nos pênaltis (empate 1-1, winner=team_a) com times OFICIAIS
+        já conhecidos (team_a×team_c), espelhando _build_r16_cascade_fixture.
+
+        Os feeders R32 são decisivos (#180 team_a×team_b winner team_a; #182
+        team_c×team_d winner team_c) → R16 real = W180×W182 = team_a×team_c.
+
+        Como o jogo está decidido, o R16 tem times oficiais (cenário de produção
+        em que a guarda antiga era no-op). O participante "correct" projeta o
+        confronto real (team_a, team_c); o "wrong" projeta o adversário errado
+        (team_b, team_c) ao errar o vencedor do feeder #180.
+        """
+        user_a = User.objects.create_user(username="r16d_correct", email="r16d_correct@example.com", password="pass")
+        user_b = User.objects.create_user(username="r16d_wrong", email="r16d_wrong@example.com", password="pass")
+
+        competition = Competition.objects.create(fifa_id=8250, name="Copa R16 Draw")
+        season = Season.objects.create(
+            fifa_id=8250,
+            competition=competition,
+            name="R16 Draw Season",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage_r32 = Stage.objects.create(fifa_id="R32-R16D", season=season, name="R32", order=50)
+        stage_r16 = Stage.objects.create(fifa_id="R16-R16D", season=season, name="Round of 16", order=51)
+
+        team_a = Team.objects.create(fifa_id="R16D-A", name="R16D Alpha", name_norm="r16d-alpha", code="RDA")
+        team_b = Team.objects.create(fifa_id="R16D-B", name="R16D Beta", name_norm="r16d-beta", code="RDB")
+        team_c = Team.objects.create(fifa_id="R16D-C", name="R16D Gamma", name_norm="r16d-gamma", code="RDC")
+        team_d = Team.objects.create(fifa_id="R16D-D", name="R16D Delta", name_norm="r16d-delta", code="RDD")
+
+        past = timezone.now() - timezone.timedelta(hours=3)
+
+        # R32 #180: team_a vs team_b — real: team_a wins 2-1 (decisive feeder).
+        r32_1 = Match.objects.create(
+            fifa_id="R16D-R32-1",
+            season=season,
+            stage=stage_r32,
+            match_number=180,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=team_a,
+            away_team=team_b,
+            home_score=2,
+            away_score=1,
+            winner=team_a,
+            status=Match.STATUS_FINISHED,
+        )
+
+        # R32 #182: team_c vs team_d — real: team_c wins 2-0 (decisive feeder).
+        r32_2 = Match.objects.create(
+            fifa_id="R16D-R32-2",
+            season=season,
+            stage=stage_r32,
+            match_number=182,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=team_c,
+            away_team=team_d,
+            home_score=2,
+            away_score=0,
+            winner=team_c,
+            status=Match.STATUS_FINISHED,
+        )
+
+        # R16 #190: real teams ARE known (decided game) = team_a × team_c, but the
+        # placeholders W180×W182 drive the user's PROJECTED matchup. Real result:
+        # draw 1-1 decided on penalties → winner=team_a.
+        r16 = Match.objects.create(
+            fifa_id="R16D-R16-1",
+            season=season,
+            stage=stage_r16,
+            match_number=190,
+            match_date_utc=past - timezone.timedelta(hours=1),
+            match_date_local=past - timezone.timedelta(hours=1),
+            match_date_brasilia=past - timezone.timedelta(hours=1),
+            home_team=team_a,
+            away_team=team_c,
+            home_placeholder="W180",
+            away_placeholder="W182",
+            home_score=1,
+            away_score=1,
+            winner=team_a,
+            status=Match.STATUS_FINISHED,
+        )
+
+        pool = Pool.objects.create(
+            name="Pool R16 Draw",
+            slug="pool-r16-draw",
+            season=season,
+            created_by=user_a,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+
+        # --- Participant "correct": projeta o confronto real (team_a, team_c) ---
+        participant_correct = PoolParticipant.objects.create(pool=pool, user=user_a, is_active=True)
+        PoolBet.objects.create(
+            participant=participant_correct,
+            match=r32_1,
+            home_score_pred=1,
+            away_score_pred=0,
+            winner_pred=team_a,
+            is_active=True,
+        )
+        PoolBet.objects.create(
+            participant=participant_correct,
+            match=r32_2,
+            home_score_pred=1,
+            away_score_pred=0,
+            winner_pred=team_c,
+            is_active=True,
+        )
+        # R16 #190: placar exato 1-1, classificado errado (team_c; real=team_a).
+        r16_correct_bet = PoolBet.objects.create(
+            participant=participant_correct,
+            match=r16,
+            home_score_pred=1,
+            away_score_pred=1,
+            winner_pred=team_c,
+            is_active=True,
+        )
+
+        # --- Participant "wrong": erra o feeder #180 → projeta (team_b, team_c) ---
+        participant_wrong = PoolParticipant.objects.create(pool=pool, user=user_b, is_active=True)
+        PoolBet.objects.create(
+            participant=participant_wrong,
+            match=r32_1,
+            home_score_pred=0,
+            away_score_pred=1,
+            winner_pred=team_b,
+            is_active=True,
+        )
+        PoolBet.objects.create(
+            participant=participant_wrong,
+            match=r32_2,
+            home_score_pred=1,
+            away_score_pred=0,
+            winner_pred=team_c,
+            is_active=True,
+        )
+        r16_wrong_bet = PoolBet.objects.create(
+            participant=participant_wrong,
+            match=r16,
+            home_score_pred=1,
+            away_score_pred=1,
+            winner_pred=team_c,
+            is_active=True,
+        )
+
+        return {
+            "pool": pool,
+            "participant_correct": participant_correct,
+            "participant_wrong": participant_wrong,
+            "r16": r16,
+            "r16_correct_bet": r16_correct_bet,
+            "r16_wrong_bet": r16_wrong_bet,
+        }
+
+    def test_r16_draw_projected_matchup_real_exact_wrong_advancing(self):
+        """Confronto projetado == real, placar exato, classificado errado → exceção
+        paga exact_wrong_advancing da fase R16."""
+        from src.pool.models import PoolBetScore
+
+        ctx = self._build_r16_draw_fixture()
+        recalculate_participant_scores(ctx["participant_correct"])
+
+        r16_row = ctx["pool"].get_scoring_config().knockout_phases.get(phase_key="R16")
+        score = PoolBetScore.objects.get(bet=ctx["r16_correct_bet"])
+        self.assertEqual(score.points, r16_row.exact_wrong_advancing)
+        self.assertTrue(score.exact_score)
+        self.assertFalse(score.advancing_correct)
+
+    def test_r16_draw_projected_matchup_wrong_opponent_zero(self):
+        """Confronto projetado != real (adversário errado), placar exato,
+        classificado errado → SEM exceção → 0 pontos."""
+        from src.pool.models import PoolBetScore
+
+        ctx = self._build_r16_draw_fixture()
+        recalculate_participant_scores(ctx["participant_wrong"])
+
+        score = PoolBetScore.objects.get(bet=ctx["r16_wrong_bet"])
+        self.assertEqual(score.points, 0)
+        self.assertFalse(score.advancing_correct)
+
 
 # ---------------------------------------------------------------------------
 # New unit tests — added to ScoringCalculateBetPointsTest via a separate block
@@ -4148,41 +4336,8 @@ class Tipo2IntegrationExtraTest(TestCase):
         self.assertTrue(ko_score_ok.advancing_correct)
 
         ko_score_ko = PoolBetScore.objects.get(bet=ko_bet_ko)
-        # ko_bet_ko has exact score (2-1 == 2-1) + wrong advancer + real teams
-        # → triggers exact_wrong_advancing exception (partial credit)
-        sf_row_e5 = ctx["pool"].get_scoring_config().knockout_phases.get(phase_key="SF")
-        self.assertEqual(ko_score_ko.points, sf_row_e5.exact_wrong_advancing)
+        self.assertEqual(ko_score_ko.points, 0, "Wrong-advancer knockout bet must score 0")
         self.assertFalse(ko_score_ko.advancing_correct)
-
-    def test_tipo2_exact_wrong_advancing_partial_credit(self):
-        """Empate 1x1 (pênaltis → team_a), palpite 1x1 com team_b classificando,
-        ambos os times reais → paga exact_wrong_advancing da fase SF."""
-        from src.pool.models import PoolBetScore
-
-        ctx = self._build_fixture(fifa_id_base=8600, slug_suffix="exwa")
-        ko = ctx["ko_match"]
-        ko.home_score = 1
-        ko.away_score = 1
-        ko.winner = ctx["team_a"]
-        ko.save(update_fields=["home_score", "away_score", "winner"])
-
-        participant = PoolParticipant.objects.create(pool=ctx["pool"], user=ctx["user"], is_active=True)
-        ko_bet = PoolBet.objects.create(
-            participant=participant,
-            match=ko,
-            home_score_pred=1,
-            away_score_pred=1,
-            winner_pred=ctx["team_b"],
-            is_active=True,
-        )
-
-        recalculate_participant_scores(participant)
-
-        sf_row = ctx["pool"].get_scoring_config().knockout_phases.get(phase_key="SF")
-        score = PoolBetScore.objects.get(bet=ko_bet)
-        self.assertEqual(score.points, sf_row.exact_wrong_advancing)
-        self.assertTrue(score.exact_score)
-        self.assertFalse(score.advancing_correct)
 
 
 class Tipo2FullBracketEndToEndTest(TestCase):
@@ -4731,11 +4886,12 @@ class ResolveKnockoutTeamsAndAdvancingTest(TestCase):
             is_active=True,
         )
 
-        teams_by_match, advancing_by_match = resolve_knockout_teams_and_advancing(
+        projected_teams_by_match, advancing_by_match = resolve_knockout_teams_and_advancing(
             participant=participant,
             matches=[ko_match],
             season=season,
         )
 
-        self.assertEqual(teams_by_match[ko_match.id], (team_a, team_b))
+        # R32: confronto projetado == times reais classificados da fase de grupos.
+        self.assertEqual(projected_teams_by_match[ko_match.id], (team_a, team_b))
         self.assertEqual(advancing_by_match[ko_match.id], team_b.id)
