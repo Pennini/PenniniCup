@@ -3903,7 +3903,7 @@ class ScoringTipo2ExhaustiveUnitTest(SimpleTestCase):
     # mesmo com placar exato (placar decisivo 2x1).
     def test_tipo2_knockout_exact_wrong_advancing_field_ignored(self):
         """Sem info dos times projetados, classificado errado → 0 (sem exceção)."""
-        # Config has knockout_exact_wrong_advancing=10, but Tipo 2 ignores it.
+        # Sem predicted_team_ids a exceção não dispara, mesmo com knockout_exact_wrong_advancing=10.
         bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1)
         result = calculate_bet_points(
             bet,
