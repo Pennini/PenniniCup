@@ -3899,10 +3899,10 @@ class ScoringTipo2ExhaustiveUnitTest(SimpleTestCase):
         self.assertEqual(result["points"], 18)
         self.assertTrue(result["advancing_correct"])
 
-    # D3: knockout_exact_wrong_advancing config field is dead in Tipo 2 —
-    # wrong advancer always yields 0 even with an exact placar.
+    # Sem predicted_team_ids a exceção não dispara: classificado errado → 0,
+    # mesmo com placar exato (placar decisivo 2x1).
     def test_tipo2_knockout_exact_wrong_advancing_field_ignored(self):
-        """D3: exact score 2×1 but wrong projected advancer → 0 in Tipo 2 (field is dead)."""
+        """Sem info dos times projetados, classificado errado → 0 (sem exceção)."""
         # Config has knockout_exact_wrong_advancing=10, but Tipo 2 ignores it.
         bet = self._make_knockout_bet(2, 1, 2, 1, winner_real_id=1)
         result = calculate_bet_points(
@@ -3913,6 +3913,69 @@ class ScoringTipo2ExhaustiveUnitTest(SimpleTestCase):
         )
         self.assertEqual(result["points"], 0)
         self.assertFalse(result["advancing_correct"])
+
+    # Exceção via fallback flat: classificado errado + placar exato + os dois
+    # times do palpite são os reais → paga knockout_exact_wrong_advancing (10).
+    def test_tipo2_exact_wrong_advancing_flat(self):
+        bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1)
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=2,
+            predicted_team_ids=(1, 2),
+        )
+        self.assertEqual(result["points"], 10)
+        self.assertTrue(result["exact_score"])
+        self.assertFalse(result["advancing_correct"])
+
+    # Exceção via faixa por fase: paga tier.exact_wrong_advancing (23), provando
+    # que lê o campo configurado (exact=99, advancing_only=15 não influenciam).
+    def test_tipo2_exact_wrong_advancing_per_phase(self):
+        tier = SimpleNamespace(
+            exact=99,
+            advancing_goals=70,
+            diff=60,
+            loser_goals=50,
+            advancing_only=15,
+            exact_wrong_advancing=23,
+        )
+        bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1)
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=2,
+            knockout_phase_scoring={"SF": tier},
+            predicted_team_ids=(1, 2),
+        )
+        self.assertEqual(result["points"], 23)
+        self.assertTrue(result["exact_score"])
+        self.assertFalse(result["advancing_correct"])
+
+    # R16+: par projetado difere do par real → exceção não dispara → 0.
+    def test_tipo2_exact_wrong_advancing_projected_teams_differ(self):
+        bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1)
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=2,
+            predicted_team_ids=(1, 3),
+        )
+        self.assertEqual(result["points"], 0)
+        self.assertFalse(result["advancing_correct"])
+
+    # Retrocompat: sem predicted_team_ids → exceção não dispara → 0.
+    def test_tipo2_exact_wrong_advancing_no_team_ids(self):
+        bet = self._make_knockout_bet(1, 1, 1, 1, winner_real_id=1)
+        result = calculate_bet_points(
+            bet,
+            self._make_scoring_config(),
+            pool_type=POOL_TYPE_2,
+            predicted_advancing_id=2,
+        )
+        self.assertEqual(result["points"], 0)
 
 
 # ---------------------------------------------------------------------------

@@ -70,11 +70,17 @@ def _tier_from_flat_config(scoring_config):
         diff=scoring_config.knockout_advancing_and_diff,
         loser_goals=scoring_config.knockout_advancing_and_loser_goals,
         advancing_only=scoring_config.knockout_advancing_only,
+        exact_wrong_advancing=scoring_config.knockout_exact_wrong_advancing,
     )
 
 
 def calculate_bet_points(
-    bet, scoring_config, pool_type=None, predicted_advancing_id=None, knockout_phase_scoring=None
+    bet,
+    scoring_config,
+    pool_type=None,
+    predicted_advancing_id=None,
+    knockout_phase_scoring=None,
+    predicted_team_ids=None,
 ):
     match = bet.match
     if (
@@ -138,8 +144,32 @@ def calculate_bet_points(
 
     # KNOCKOUT Tipo 2: gate por classificado (identidade do time), não por posição.
     if pool_type == POOL_TYPE_2:
+        stage_key = normalize_stage_key(match.stage)
+        tier = (knockout_phase_scoring or {}).get(stage_key)
+        if tier is None:
+            # Fallback retrocompatível: pool sem faixas por fase usa os campos flat.
+            tier = _tier_from_flat_config(scoring_config)
+
         is_advancing_correct = bool(match.winner_id) and predicted_advancing_id == match.winner_id
         if not is_advancing_correct:
+            # Exceção: placar EXATO + os dois times do palpite são exatamente os
+            # dois times reais do jogo, mas o classificado está errado. Paga o
+            # valor configurável da fase (tier.exact_wrong_advancing). Só ocorre
+            # em jogos decididos nos pênaltis: num placar decisivo, clean() força
+            # winner_pred ao vencedor do placar.
+            real_pair = {match.home_team_id, match.away_team_id}
+            teams_match_real = (
+                None not in real_pair and predicted_team_ids is not None and set(predicted_team_ids) == real_pair
+            )
+            if is_exact_score and teams_match_real:
+                return {
+                    "points": tier.exact_wrong_advancing,
+                    "exact_score": True,
+                    "advancing_correct": False,
+                    "advancing_goals_correct": False,
+                    "diff_correct": False,
+                    "eliminated_goals_correct": False,
+                }
             return {
                 "points": 0,
                 "exact_score": is_exact_score,
@@ -148,11 +178,6 @@ def calculate_bet_points(
                 "diff_correct": False,
                 "eliminated_goals_correct": False,
             }
-        stage_key = normalize_stage_key(match.stage)
-        tier = (knockout_phase_scoring or {}).get(stage_key)
-        if tier is None:
-            # Fallback retrocompatível: pool sem faixas por fase usa os campos flat.
-            tier = _tier_from_flat_config(scoring_config)
         points, is_exact, advancing_goals, diff_correct, eliminated_goals = _knockout_points_by_score(
             tier, home, away, guess_home, guess_away
         )
