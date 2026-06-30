@@ -28,8 +28,13 @@ def _group_match_ids(season):
     }
 
 
-def _asof_team_advancement_bonus(participant, allowed_match_ids, scoring_config):
-    """Tipo 1: bônus por time previsto que avançou, só de jogos no conjunto."""
+def _asof_team_advancement_bonus(participant, allowed_match_ids, scoring_config, advancing_map):
+    """Tipo 1: bônus por time previsto que avançou, só de jogos no conjunto.
+
+    O classificado palpitado vem de `advancing_map` (bracket projetado com fallback
+    por placar), pois `winner_pred` fica None em palpites decisivos de jogos
+    projetados. Cai para `winner_pred_id` quando o mapa não resolve a partida.
+    """
     total = 0
     stage_winners_cache = {}
     for bet in participant.bets.select_related("match", "match__stage").all():
@@ -44,7 +49,8 @@ def _asof_team_advancement_bonus(participant, allowed_match_ids, scoring_config)
                     "winner_id", flat=True
                 )
             )
-        if bet.winner_pred_id and bet.winner_pred_id in stage_winners_cache[stage_id]:
+        predicted_id = advancing_map.get(bet.match_id) or bet.winner_pred_id
+        if predicted_id and predicted_id in stage_winners_cache[stage_id]:
             total += scoring_config.knockout_team_advancement_bonus
     return total
 
@@ -156,12 +162,13 @@ def compute_asof_standings(pool, allowed_match_ids, scoring_config, official_res
 
     podium = _asof_podium(pool.season, allowed_match_ids, official_result)
 
-    # Mata-mata do Tipo 2 é pontuado pelo classificado; o conjunto de jogos é o
-    # mesmo para todos os participantes, então resolvemos a lista uma vez só (o
-    # walk do bracket projetado abaixo é que varia por participante).
+    # O classificado palpitado por partida resolve tanto o gate do Tipo 2 quanto
+    # o bônus de avanço do Tipo 1; o conjunto de jogos é o mesmo para todos os
+    # participantes, então resolvemos a lista uma vez só (o walk do bracket
+    # projetado abaixo é que varia por participante).
     knockout_matches = []
-    if pool_type == POOL_TYPE_2:
-        from src.pool.services.context_builder import resolve_knockout_advancing_by_match
+    if pool_type in (POOL_TYPE_1, POOL_TYPE_2):
+        from src.pool.services.context_builder import resolve_knockout_teams_and_advancing
 
         knockout_matches = [
             m
@@ -182,9 +189,10 @@ def compute_asof_standings(pool, allowed_match_ids, scoring_config, official_res
         bets = participant.bets.select_related("match", "match__stage", "winner_pred").all()
 
         advancing_map = {}
-        if pool_type == POOL_TYPE_2:
+        teams_by_match = {}
+        if pool_type in (POOL_TYPE_1, POOL_TYPE_2):
             bets_by_match_id = {b.match_id: b for b in bets}
-            advancing_map = resolve_knockout_advancing_by_match(
+            teams_by_match, advancing_map = resolve_knockout_teams_and_advancing(
                 participant=participant,
                 matches=knockout_matches,
                 season=pool.season,
@@ -194,12 +202,15 @@ def compute_asof_standings(pool, allowed_match_ids, scoring_config, official_res
         for bet in bets:
             if bet.match_id not in allowed_match_ids:
                 continue
+            home_t, away_t = teams_by_match.get(bet.match_id, (None, None))
+            predicted_team_ids = (home_t.id, away_t.id) if home_t is not None and away_t is not None else None
             score_data = calculate_bet_points(
                 bet,
                 scoring_config=scoring_config,
                 pool_type=pool_type,
                 predicted_advancing_id=advancing_map.get(bet.match_id),
                 knockout_phase_scoring=knockout_phase_scoring,
+                predicted_team_ids=predicted_team_ids,
             )
             total_points += score_data["points"]
             if phase_for_match(bet.match) == PHASE_GROUP:
@@ -212,7 +223,9 @@ def compute_asof_standings(pool, allowed_match_ids, scoring_config, official_res
                 advancing_hits += 1
 
         if pool_type == POOL_TYPE_1:
-            advancement_bonus = _asof_team_advancement_bonus(participant, allowed_match_ids, scoring_config)
+            advancement_bonus = _asof_team_advancement_bonus(
+                participant, allowed_match_ids, scoring_config, advancing_map
+            )
             knockout_points += advancement_bonus
             total_points += advancement_bonus
 

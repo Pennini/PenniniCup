@@ -9,6 +9,7 @@ from src.football.api import client as fifa_client_module
 from src.football.api.client import FootballDataClient
 from src.football.models import Competition, Group, Match, Season, Stage, Team
 from src.football.services.sync_matches import sync_matches
+from src.football.services.sync_rankings import sync_rankings
 from src.football.services.sync_teams import sync_teams
 
 User = get_user_model()
@@ -426,3 +427,46 @@ class GroupStageCloseProcessedFlagTest(TestCase):
         recalc_mock.assert_called_once()
         _, kwargs = recalc_mock.call_args
         self.assertFalse(kwargs["group_stage_just_closed"])
+
+
+class RankingSyncTest(TestCase):
+    def setUp(self):
+        self.arg = Team.objects.create(fifa_id="43922", name="Argentina", name_norm="argentina", code="ARG")
+        self.bra = Team.objects.create(fifa_id="43924", name="Brasil", name_norm="brasil", code="BRA")
+        # Sem rank na API: deve permanecer como estava (None).
+        self.ned = Team.objects.create(fifa_id="43960", name="Holanda", name_norm="holanda", code="NED")
+
+    @patch("src.football.services.sync_rankings.FootballDataClient")
+    def test_sync_rankings_updates_world_ranking_by_fifa_id(self, client_cls):
+        client_cls.return_value.get_world_rankings.return_value = [
+            {"IdTeam": "43922", "Rank": 1, "TotalPoints": 1907.4},
+            {"IdTeam": "43924", "Rank": 5, "TotalPoints": 1769.0},
+            # Time fora da nossa base é ignorado sem quebrar.
+            {"IdTeam": "99999", "Rank": 2, "TotalPoints": 1800.0},
+        ]
+
+        updated = sync_rankings()
+
+        self.arg.refresh_from_db()
+        self.bra.refresh_from_db()
+        self.ned.refresh_from_db()
+        self.assertEqual(self.arg.world_ranking, 1)
+        self.assertEqual(self.bra.world_ranking, 5)
+        self.assertIsNone(self.ned.world_ranking)
+        self.assertEqual(updated, 2)
+
+    @patch("src.football.services.sync_rankings.FootballDataClient")
+    def test_sync_rankings_skips_rows_without_id_or_rank(self, client_cls):
+        client_cls.return_value.get_world_rankings.return_value = [
+            {"IdTeam": "43922", "Rank": 1},
+            {"IdTeam": None, "Rank": 3},
+            {"IdTeam": "43924", "Rank": None},
+        ]
+
+        updated = sync_rankings()
+
+        self.arg.refresh_from_db()
+        self.bra.refresh_from_db()
+        self.assertEqual(self.arg.world_ranking, 1)
+        self.assertIsNone(self.bra.world_ranking)
+        self.assertEqual(updated, 1)

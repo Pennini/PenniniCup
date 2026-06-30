@@ -50,6 +50,17 @@ def standings_url(competition_id: int, season_id: int, stage_id: int) -> tuple[s
     return f"{FIFA_API_BASE}/calendar/{competition_id}/{season_id}/{stage_id}/standing", params
 
 
+def rankings_url() -> tuple[str, dict]:
+    """URL do ranking mundial masculino (FIFA/Coca-Cola) ao vivo.
+
+    Endpoint separado do teamsModule — este traz o ranking (Rank/TotalPoints),
+    casado aos times por IdTeam == Team.fifa_id.
+    """
+    params = {"gender": 1, "sportType": 0, "language": "en"}
+
+    return f"{FIFA_API_BASE}/fifarankings/rankings/live", params
+
+
 def players_url(team_id: int, competition_id: int, season_id: int) -> tuple[str, dict]:
     """URL para buscar detalhes de uma partida específica."""
     params = {"idCompetition": competition_id, "idSeason": season_id, "language": "pt"}

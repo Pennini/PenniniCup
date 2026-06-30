@@ -84,7 +84,7 @@ class Command(BaseCommand):
         knockout_matches = []
         knockout_phase_scoring = None
         if pool.pool_type == POOL_TYPE_2:
-            from src.pool.services.context_builder import resolve_knockout_advancing_by_match
+            from src.pool.services.context_builder import resolve_knockout_teams_and_advancing
 
             knockout_matches = [
                 m
@@ -100,8 +100,9 @@ class Command(BaseCommand):
             bets = list(p.bets.select_related("match", "match__stage", "score", "winner_pred").all())
 
             advancing_map = {}
+            teams_by_match = {}
             if pool.pool_type == POOL_TYPE_2:
-                advancing_map = resolve_knockout_advancing_by_match(
+                teams_by_match, advancing_map = resolve_knockout_teams_and_advancing(
                     participant=p,
                     matches=knockout_matches,
                     season=pool.season,
@@ -117,12 +118,15 @@ class Command(BaseCommand):
             for bet in bets:
                 sc = getattr(bet, "score", None)
                 stored_pts = sc.points if sc else 0
+                home_t, away_t = teams_by_match.get(bet.match_id, (None, None))
+                predicted_team_ids = (home_t.id, away_t.id) if home_t is not None and away_t is not None else None
                 fresh = calculate_bet_points(
                     bet,
                     scoring_config=cfg,
                     pool_type=pool.pool_type,
                     predicted_advancing_id=advancing_map.get(bet.match_id),
                     knockout_phase_scoring=knockout_phase_scoring,
+                    predicted_team_ids=predicted_team_ids,
                 )
 
                 if sc:

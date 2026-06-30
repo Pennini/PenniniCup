@@ -304,7 +304,15 @@ class PoolProjectionRecalcAdmin(admin.ModelAdmin):
 class PoolKnockoutPhaseScoringInline(admin.TabularInline):
     model = PoolKnockoutPhaseScoring
     extra = 0
-    fields = ("phase_key", "exact", "advancing_goals", "diff", "loser_goals", "advancing_only")
+    fields = (
+        "phase_key",
+        "exact",
+        "advancing_goals",
+        "diff",
+        "loser_goals",
+        "advancing_only",
+        "exact_wrong_advancing",
+    )
 
 
 @admin.register(PoolScoringConfig)

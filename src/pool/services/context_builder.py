@@ -427,9 +427,13 @@ def _build_third_rows_from_rows(projected_third_places):
 def _walk_knockout_bracket(*, participant, matches, season, bets_by_match_id=None):
     """Walk único do chaveamento: resolve times por slot e classificado por partida.
 
-    Retorna (teams_by_match, advancing_by_match):
-    - teams_by_match: {match_id: (home_team, away_team)}
+    Retorna (teams_by_match, advancing_by_match, projected_teams_by_match):
+    - teams_by_match: {match_id: (home_team, away_team)} preferindo os times OFICIAIS
+      (cai no placeholder projetado só quando o oficial é None) — usado pelas views.
     - advancing_by_match: {match_id: advancing_team_id}
+    - projected_teams_by_match: {match_id: (home_team, away_team)} com o CONFRONTO
+      PROJETADO pelo participante (R32 = times reais classificados da fase de grupos;
+      R16+ = cascata dos palpites via placeholder, IGNORANDO os times oficiais).
     Matches devem vir ordenados por match_number para a cascata de vencedores.
     """
     projected_standings = list(
@@ -456,6 +460,7 @@ def _walk_knockout_bracket(*, participant, matches, season, bets_by_match_id=Non
 
     teams_by_match = {}
     advancing_by_match = {}
+    projected_teams_by_match = {}
     for match in matches:
         if phase_for_match(match) != PHASE_KNOCKOUT:
             continue
@@ -482,6 +487,29 @@ def _walk_knockout_bracket(*, participant, matches, season, bets_by_match_id=Non
 
         teams_by_match[match.id] = (home_team, away_team)
 
+        stage_key = _normalize_stage_key(match.stage)
+        if stage_key == STAGE_R32:
+            # R32 Tipo 2: o usuário aposta nos times reais classificados.
+            projected_teams_by_match[match.id] = (home_team, away_team)
+        else:
+            # R16+: confronto que o usuário projetou (cascata dos seus palpites),
+            # independente dos times oficiais já conhecidos.
+            projected_home = _resolve_match_team_from_placeholder(
+                placeholder=match.home_placeholder,
+                projected_slots=projected_slots,
+                assign_third_map=assign_third_map,
+                winners_map=winners_map,
+                losers_map=losers_map,
+            )
+            projected_away = _resolve_match_team_from_placeholder(
+                placeholder=match.away_placeholder,
+                projected_slots=projected_slots,
+                assign_third_map=assign_third_map,
+                winners_map=winners_map,
+                losers_map=losers_map,
+            )
+            projected_teams_by_match[match.id] = (projected_home, projected_away)
+
         bet = bets_by_match_id.get(match.id)
         advancing = _infer_advancing_team(match=match, bet=bet, home_team=home_team, away_team=away_team)
         if advancing is not None:
@@ -491,7 +519,7 @@ def _walk_knockout_bracket(*, participant, matches, season, bets_by_match_id=Non
             if losing is not None:
                 losers_map[match.match_number] = losing
 
-    return teams_by_match, advancing_by_match
+    return teams_by_match, advancing_by_match, projected_teams_by_match
 
 
 def resolve_knockout_match_teams(*, participant, matches, season, bets_by_match_id=None):
@@ -501,7 +529,7 @@ def resolve_knockout_match_teams(*, participant, matches, season, bets_by_match_
     Matches must be ordered by match_number so winners cascade into later rounds.
     Pass bets_by_match_id (with winner_pred select_related) to avoid an extra DB query.
     """
-    teams_by_match, _ = _walk_knockout_bracket(
+    teams_by_match, _, _ = _walk_knockout_bracket(
         participant=participant, matches=matches, season=season, bets_by_match_id=bets_by_match_id
     )
     return teams_by_match
@@ -509,10 +537,25 @@ def resolve_knockout_match_teams(*, participant, matches, season, bets_by_match_
 
 def resolve_knockout_advancing_by_match(*, participant, matches, season, bets_by_match_id=None):
     """{match_id: team_id} do classificado projetado pelo participante em cada partida."""
-    _, advancing_by_match = _walk_knockout_bracket(
+    _, advancing_by_match, _ = _walk_knockout_bracket(
         participant=participant, matches=matches, season=season, bets_by_match_id=bets_by_match_id
     )
     return advancing_by_match
+
+
+def resolve_knockout_teams_and_advancing(*, participant, matches, season, bets_by_match_id=None):
+    """(projected_teams_by_match, advancing_by_match) num único walk do bracket.
+
+    projected_teams_by_match: {match_id: (home_team, away_team)} com o CONFRONTO
+    PROJETADO pelo participante (R32 = times reais; R16+ = cascata dos palpites,
+    ignorando os times oficiais). É o que o gate `exact_wrong_advancing` usa para
+    exigir que o usuário tenha previsto os dois times reais do confronto.
+    advancing_by_match: {match_id: team_id} do classificado projetado.
+    """
+    _, advancing_by_match, projected_teams_by_match = _walk_knockout_bracket(
+        participant=participant, matches=matches, season=season, bets_by_match_id=bets_by_match_id
+    )
+    return projected_teams_by_match, advancing_by_match
 
 
 def build_pool_participant_view_context(*, pool, participant, ensure_bets=True):

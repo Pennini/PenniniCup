@@ -250,7 +250,7 @@
                     <h3 class="font-semibold">Mata-Mata</h3>
                     <span class="rounded-full border border-sky-500/30 bg-sky-500/10 px-2.5 py-1 text-xs font-semibold text-sky-200">Máximo {{ knockout_max_points }} pts</span>
                 </div>
-                <p class="text-xs text-neutral-400">A pontuação olha o <strong class="text-neutral-200">classificado</strong> (o time que você marcou para avançar naquele jogo) e o placar — e <strong class="text-neutral-200">sobe a cada fase</strong>. Errou quem se classifica? <strong class="text-sky-200">0 pts</strong>, mesmo com placar exato.</p>
+                <p class="text-xs text-neutral-400">A pontuação olha o <strong class="text-neutral-200">classificado</strong> (o time que você marcou para avançar naquele jogo) e o placar — e <strong class="text-neutral-200">sobe a cada fase</strong>. Errou quem se classifica? <strong class="text-sky-200">0 pts</strong>, mesmo com placar exato — <strong class="text-amber-200">salvo</strong> se você cravar o placar exato tendo previsto os dois times certos do confronto (coluna <em>Exato s/ cls</em>).</p>
                 <div class="overflow-x-auto">
                     <table class="w-full border-collapse text-xs text-neutral-200">
                         <thead>
@@ -261,6 +261,7 @@
                                 <th class="px-2 py-1.5 text-center font-medium" title="Classificado + diferença de gols">Cls+dif</th>
                                 <th class="px-2 py-1.5 text-center font-medium" title="Classificado + gols do eliminado">Cls+elim</th>
                                 <th class="px-2 py-1.5 text-center font-medium" title="Só o classificado">Só&nbsp;cls</th>
+                                <th class="px-2 py-1.5 text-center font-medium" title="Placar exato, mas errou o classificado (tendo previsto os dois times certos do confronto)">Exato s/&nbsp;cls</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -272,14 +273,18 @@
                                 <td class="px-2 py-1.5 text-center">{{ item.row.diff }}</td>
                                 <td class="px-2 py-1.5 text-center">{{ item.row.loser_goals }}</td>
                                 <td class="px-2 py-1.5 text-center">{{ item.row.advancing_only }}</td>
+                                <td class="px-2 py-1.5 text-center text-amber-300">{{ item.row.exact_wrong_advancing }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
                     </table>
                 </div>
-                <p class="text-xs text-neutral-400">Vale só o primeiro critério que você acertar; os pontos não somam. <strong class="text-neutral-300">Classificado errado = 0</strong> em qualquer faixa.</p>
+                <p class="text-xs text-neutral-400">Vale só o primeiro critério que você acertar; os pontos não somam. <strong class="text-neutral-300">Classificado errado = 0</strong> em qualquer faixa, salvo a exceção do <em>Exato s/ cls</em> abaixo.</p>
                 <div class="rounded-lg border border-sky-700/30 bg-sky-900/10 px-3 py-2 text-xs text-sky-100">
                     <strong class="text-sky-200">Empate no tempo normal</strong> (decidido nos pênaltis): usa a faixa da <strong class="text-sky-200">própria fase</strong> — placar exato vale <em>Exato</em>, mesma diferença vale <em>Cls+dif</em>, senão <em>Só cls</em>. Você ainda precisa ter acertado quem passou nos pênaltis (o classificado), senão são 0 pts.
+                </div>
+                <div class="rounded-lg border border-amber-700/30 bg-amber-900/10 px-3 py-2 text-xs text-amber-100">
+                    <strong class="text-amber-200">Exato s/ cls</strong>: cravou o placar exato e tinha previsto <strong class="text-amber-200">os dois times certos</strong> do confronto, mas marcou o classificado errado (típico de empate decidido nos pênaltis)? Em vez de 0, você leva o valor <em>Exato s/ cls</em> da fase. Se errou algum dos dois times do confronto, continua 0 pts.
                 </div>
             </div>
             {% else %}
@@ -332,7 +337,7 @@
                 <i data-lucide="shuffle" class="h-4 w-4 text-orange-300 shrink-0"></i>
                 <p class="text-sm font-semibold text-orange-200">Como funciona o classificado</p>
             </div>
-            <p class="text-sm text-neutral-300">No mata-mata do Tipo 2 o que conta é a <strong class="text-neutral-100">identidade do time</strong> que você marcou para avançar naquele jogo — e o placar. Errar o adversário não importa: se você acertou quem passa e o placar, pontua cheio. Mas <strong class="text-neutral-100">errar o classificado zera o jogo</strong>, mesmo com placar exato. Cada jogo é avaliado sozinho — acertar ou errar um confronto não mexe nos outros.</p>
+            <p class="text-sm text-neutral-300">No mata-mata do Tipo 2 o que conta é a <strong class="text-neutral-100">identidade do time</strong> que você marcou para avançar naquele jogo — e o placar. Errar o adversário não importa: se você acertou quem passa e o placar, pontua cheio. Mas <strong class="text-neutral-100">errar o classificado zera o jogo</strong>, mesmo com placar exato — a única exceção é cravar o placar exato tendo previsto os <strong class="text-neutral-100">dois times certos</strong> do confronto (faixa <em>Exato s/ cls</em>). Cada jogo é avaliado sozinho — acertar ou errar um confronto não mexe nos outros.</p>
             <div class="rounded-lg border border-neutral-700 bg-neutral-950/80 p-3 space-y-2">
                 <p class="text-xs font-semibold text-neutral-200">Exemplo (acertou o classificado, errou o adversário)</p>
                 <p class="text-xs text-neutral-300">Você palpitou <span class="text-orange-200 font-medium">Brasil × Holanda</span> com <span class="text-orange-200 font-medium">1×2</span> (Holanda avança). O jogo de verdade é <span class="text-sky-200 font-medium">Marrocos × Holanda 1×2</span>. Como a <span class="text-sky-200 font-medium">Holanda</span> avançou e o placar bateu, você leva o <strong class="text-emerald-300">Exato</strong> da fase — o Brasil nem jogou, mas o classificado e o placar valeram.</p>

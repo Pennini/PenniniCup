@@ -13,7 +13,7 @@ from django.utils import timezone
 from src.accounts.models import UserProfile
 from src.football.models import Match, Season, Team
 from src.pool.models import PoolBet, PoolParticipant
-from src.pool.services.context_builder import build_pool_participant_view_context
+from src.pool.services.context_builder import _infer_advancing_team, build_pool_participant_view_context
 from src.pool.services.participants import resolve_selected_participation
 from src.pool.services.rules import PHASE_GROUP, PHASE_KNOCKOUT, POOL_TYPE_1, POOL_TYPE_2, normalize_stage_key
 from src.rankings.services.leaderboard import build_pool_leaderboard
@@ -75,6 +75,15 @@ def _build_knockout_by_phase(knockout_rows, scoring_config):
     phases = []
     for stage_key, rows in groupby(sorted_rows, key=lambda r: _resolve_stage_key(r["match"].stage)):
         rows = list(rows)
+        # Por card: classificado palpitado (deriva do placar no tipo 1 decisivo, ou do
+        # winner_pred) vs classificado real, com flag de acerto p/ pintar verde/vermelho.
+        for r in rows:
+            predicted = _infer_advancing_team(r["match"], r.get("bet"), r.get("home_team"), r.get("away_team"))
+            real = r["match"].winner
+            r["predicted_advancing"] = predicted
+            r["real_advancing"] = real
+            r["advancing_decided"] = real is not None
+            r["advancing_correct"] = bool(real and predicted and predicted.id == real.id)
         real_winners = [r["match"].winner for r in rows if r["match"].winner]
         real_winners_ids = {t.id for t in real_winners}
         predicted = [

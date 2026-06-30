@@ -3099,6 +3099,14 @@
   .border-neutral-600 {
     border-color: var(--color-neutral-600);
   }
+  .border-neutral-600\/40 {
+    border-color: color-mix(in srgb, oklch(43.9% 0 0) 40%, transparent);
+  }
+  @supports (color: color-mix(in lab, red, red)) {
+    .border-neutral-600\/40 {
+      border-color: color-mix(in oklab, var(--color-neutral-600) 40%, transparent);
+    }
+  }
   .border-neutral-700 {
     border-color: var(--color-neutral-700);
   }
@@ -3463,6 +3471,14 @@
   }
   .bg-neutral-700 {
     background-color: var(--color-neutral-700);
+  }
+  .bg-neutral-700\/20 {
+    background-color: color-mix(in srgb, oklch(37.1% 0 0) 20%, transparent);
+  }
+  @supports (color: color-mix(in lab, red, red)) {
+    .bg-neutral-700\/20 {
+      background-color: color-mix(in oklab, var(--color-neutral-700) 20%, transparent);
+    }
   }
   .bg-neutral-800 {
     background-color: var(--color-neutral-800);

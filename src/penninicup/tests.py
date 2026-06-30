@@ -683,9 +683,9 @@ class BuildKnockoutByPhasePredictedWinnersTest(SimpleTestCase):
             match_number=2,
             winner=None,
         )
-        bet_advanced = SimpleNamespace(winner_pred=team_a, winner_pred_id=1)
-        bet_eliminated = SimpleNamespace(winner_pred=team_c, winner_pred_id=3)
-        bet_pending = SimpleNamespace(winner_pred=team_b, winner_pred_id=2)
+        bet_advanced = SimpleNamespace(winner_pred=team_a, winner_pred_id=1, is_active=True)
+        bet_eliminated = SimpleNamespace(winner_pred=team_c, winner_pred_id=3, is_active=True)
+        bet_pending = SimpleNamespace(winner_pred=team_b, winner_pred_id=2, is_active=True)
 
         rows = [
             {"match": match_decided, "bet": bet_advanced, "bet_score": None},
@@ -712,6 +712,60 @@ class BuildKnockoutByPhasePredictedWinnersTest(SimpleTestCase):
         # team_b: match still pending → decided=False, advanced=False
         self.assertFalse(items_by_team_id[2]["decided"])
         self.assertFalse(items_by_team_id[2]["advanced"])
+
+
+class BuildKnockoutByPhaseAdvancingPerRowTest(SimpleTestCase):
+    """Cada card do mata-mata deve expor classificado palpitado e real, com flag
+    de acerto — vale tipo 1 (placar decisivo deriva o avançado do placar) e tipo 2."""
+
+    def test_rows_get_predicted_and_real_advancing(self):
+        from types import SimpleNamespace
+
+        from src.penninicup.views import _build_knockout_by_phase
+
+        team_a = SimpleNamespace(id=1, name="A")
+        team_b = SimpleNamespace(id=2, name="B")
+        stage = SimpleNamespace(fifa_id="R16", name="Oitavas de Final")
+
+        # winner_pred explícito, decidido e correto.
+        m1 = SimpleNamespace(stage=stage, match_number=1, winner=team_a)
+        bet1 = SimpleNamespace(
+            winner_pred=team_a, winner_pred_id=1, is_active=True, home_score_pred=1, away_score_pred=0
+        )
+        # Tipo 1: placar decisivo (2x1) sem winner_pred → avançado deriva do placar (home=A).
+        # Real avança B → palpite errado.
+        m2 = SimpleNamespace(stage=stage, match_number=2, winner=team_b)
+        bet2 = SimpleNamespace(
+            winner_pred=None, winner_pred_id=None, is_active=True, home_score_pred=2, away_score_pred=1
+        )
+        # Pendente: sem resultado real ainda.
+        m3 = SimpleNamespace(stage=stage, match_number=3, winner=None)
+        bet3 = SimpleNamespace(
+            winner_pred=team_a, winner_pred_id=1, is_active=True, home_score_pred=1, away_score_pred=0
+        )
+
+        rows = [
+            {"match": m1, "bet": bet1, "bet_score": None, "home_team": team_a, "away_team": team_b},
+            {"match": m2, "bet": bet2, "bet_score": None, "home_team": team_a, "away_team": team_b},
+            {"match": m3, "bet": bet3, "bet_score": None, "home_team": team_a, "away_team": team_b},
+        ]
+        scoring_config = SimpleNamespace(knockout_team_advancement_bonus=0)
+        out = _build_knockout_by_phase(rows, scoring_config)[0]["rows"]
+
+        self.assertEqual(out[0]["predicted_advancing"], team_a)
+        self.assertEqual(out[0]["real_advancing"], team_a)
+        self.assertTrue(out[0]["advancing_correct"])
+        self.assertTrue(out[0]["advancing_decided"])
+
+        self.assertEqual(out[1]["predicted_advancing"], team_a)
+        self.assertEqual(out[1]["real_advancing"], team_b)
+        self.assertFalse(out[1]["advancing_correct"])
+        self.assertTrue(out[1]["advancing_decided"])
+
+        self.assertEqual(out[2]["predicted_advancing"], team_a)
+        self.assertIsNone(out[2]["real_advancing"])
+        self.assertFalse(out[2]["advancing_correct"])
+        self.assertFalse(out[2]["advancing_decided"])
 
 
 class HomeNextMatchesContextTest(TestCase):
