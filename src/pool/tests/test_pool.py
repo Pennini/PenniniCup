@@ -4472,3 +4472,109 @@ class MatchMaxPointsPhaseTest(SimpleTestCase):
         match = SimpleNamespace(stage=final_stage, group_id=None)
 
         self.assertEqual(_match_max_points(match, scoring_config), 35)
+
+
+class Tipo1TeamAdvancementBonusWithoutWinnerPredTest(TestCase):
+    """Tipo 1: bônus de classificado deve sair mesmo com winner_pred=None.
+
+    Mata-mata é palpitado projetado (sem times reais), então clean() não deriva
+    winner_pred para palpites decisivos — o campo fica None. O bônus de avanço
+    precisa resolver o classificado palpitado pelo placar/projeção, não pelo
+    winner_pred cru.
+    """
+
+    def _build(self, *, slug_suffix, fifa_base):
+        from src.pool.services.rules import POOL_TYPE_1
+
+        user = User.objects.create_user(
+            username=f"t1adv_{slug_suffix}", email=f"t1adv_{slug_suffix}@example.com", password="pass"
+        )
+        competition = Competition.objects.create(fifa_id=fifa_base, name=f"Copa T1 Adv {slug_suffix}")
+        season = Season.objects.create(
+            fifa_id=fifa_base,
+            competition=competition,
+            name=f"T1 Adv Season {slug_suffix}",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage_r32 = Stage.objects.create(fifa_id=f"R32-T1ADV-{slug_suffix}", season=season, name="R32", order=50)
+        team_a = Team.objects.create(
+            fifa_id=f"T1ADV-A-{slug_suffix}", name="T1 Alpha", name_norm=f"t1adv-alpha-{slug_suffix}", code="T1A"
+        )
+        team_b = Team.objects.create(
+            fifa_id=f"T1ADV-B-{slug_suffix}", name="T1 Beta", name_norm=f"t1adv-beta-{slug_suffix}", code="T1B"
+        )
+        past = timezone.now() - timezone.timedelta(hours=2)
+        match = Match.objects.create(
+            fifa_id=f"T1ADV-R32-{slug_suffix}",
+            season=season,
+            stage=stage_r32,
+            match_number=910,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=team_a,
+            away_team=team_b,
+            home_score=2,
+            away_score=1,
+            winner=team_a,
+            status=Match.STATUS_FINISHED,
+        )
+        pool = Pool.objects.create(
+            name=f"Pool T1 Adv {slug_suffix}",
+            slug=f"pool-t1-adv-{slug_suffix}",
+            season=season,
+            created_by=user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_1,
+        )
+        participant = PoolParticipant.objects.create(pool=pool, user=user, is_active=True)
+        # Palpite decisivo 2-1 acertando o vencedor real (team_a), mas winner_pred=None
+        # — exatamente o estado salvo quando o jogo foi palpitado projetado.
+        bet = PoolBet.objects.create(
+            participant=participant,
+            match=match,
+            home_score_pred=2,
+            away_score_pred=1,
+            winner_pred=None,
+            is_active=True,
+        )
+        return SimpleNamespace(pool=pool, season=season, participant=participant, match=match, bet=bet, team_a=team_a)
+
+    def test_recalc_awards_bonus_without_winner_pred(self):
+        from src.pool.models import PoolBetScore
+
+        ctx = self._build(slug_suffix="recalc", fifa_base=9100)
+        bonus = ctx.pool.get_scoring_config().knockout_team_advancement_bonus
+
+        recalculate_participant_scores(ctx.participant)
+        ctx.participant.refresh_from_db()
+
+        score = PoolBetScore.objects.get(bet=ctx.bet)
+        self.assertTrue(
+            score.team_advancement_bonus,
+            "Palpite decisivo acertando o classificado deve dar bônus mesmo sem winner_pred",
+        )
+        self.assertEqual(ctx.participant.knockout_points, score.points + bonus)
+
+    def test_asof_awards_bonus_without_winner_pred(self):
+        from src.pool.services.rules import POOL_TYPE_1
+
+        ctx = self._build(slug_suffix="asof", fifa_base=9200)
+        scoring_config = ctx.pool.get_scoring_config()
+        bonus = scoring_config.knockout_team_advancement_bonus
+        positional = calculate_bet_points(ctx.bet, scoring_config=scoring_config, pool_type=POOL_TYPE_1)["points"]
+
+        rows = compute_asof_standings(
+            ctx.pool,
+            {ctx.match.id},
+            scoring_config,
+            ctx.pool.get_official_results(),
+        )
+        row = next(r for r in rows if r.participant.id == ctx.participant.id)
+        self.assertEqual(
+            row.knockout_points,
+            positional + bonus,
+            "As-of standings devem incluir o bônus de avanço mesmo sem winner_pred",
+        )

@@ -112,8 +112,13 @@ def _calculate_group_qualifier_bonus(participant, scoring_config):
     return total
 
 
-def _calculate_team_advancement_bonus(bets_by_stage, scoring_config):
+def _calculate_team_advancement_bonus(bets_by_stage, scoring_config, advancing_map):
     """Tipo 1 only: award bonus if predicted winner advanced from that stage (anywhere in the stage).
+
+    O classificado palpitado vem de `advancing_map` (resolvido pelo bracket
+    projetado, com fallback por placar), pois `winner_pred` fica None em palpites
+    decisivos de jogos ainda projetados. Cai para `winner_pred_id` se o mapa não
+    resolver a partida.
 
     Returns (team_advancement dict {bet_id: bool}, total bonus points).
     """
@@ -132,7 +137,8 @@ def _calculate_team_advancement_bonus(bets_by_stage, scoring_config):
             )
         real_winners = stage_winners_cache[stage_id]
         for bet in bets:
-            advanced = bool(bet.winner_pred_id and bet.winner_pred_id in real_winners)
+            predicted_id = advancing_map.get(bet.match_id) or bet.winner_pred_id
+            advanced = bool(predicted_id and predicted_id in real_winners)
             team_advancement[bet.id] = advanced
             if advanced:
                 total += scoring_config.knockout_team_advancement_bonus
@@ -152,9 +158,12 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
 
     bets = list(participant.bets.select_related("match", "match__stage", "winner_pred").all())
 
-    # Tipo 2: resolve advancing team per knockout match to gate scoring
+    # Resolve advancing team per knockout match. Tipo 2 usa para gatear a pontuação;
+    # Tipo 1 usa para o bônus de avanço. Em ambos, `winner_pred` é insuficiente
+    # (fica None em palpites decisivos de jogos projetados), então resolvemos pelo
+    # bracket projetado com fallback por placar.
     advancing_map = {}
-    if pool_type == POOL_TYPE_2:
+    if pool_type in (POOL_TYPE_1, POOL_TYPE_2):
         from src.football.models import Match as FootballMatch
         from src.pool.services.context_builder import resolve_knockout_advancing_by_match
 
@@ -183,7 +192,7 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
                 knockout_bets_by_stage.setdefault(bet.match.stage_id, []).append(bet)
         if knockout_bets_by_stage:
             team_advancement, team_advancement_bonus_total = _calculate_team_advancement_bonus(
-                knockout_bets_by_stage, scoring_config
+                knockout_bets_by_stage, scoring_config, advancing_map
             )
 
     total_points = 0
