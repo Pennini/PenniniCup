@@ -123,8 +123,10 @@ class MatchAdmin(admin.ModelAdmin):
         "away_team",
         "match_date_utc",
         "status",
+        "locked",
     )
-    list_filter = ("season", "stage", "group", "status")
+    list_editable = ("locked",)
+    list_filter = ("season", "stage", "group", "status", "locked")
     search_fields = ("fifa_id", "home_placeholder", "away_placeholder")
     ordering = ("match_date_utc",)
     autocomplete_fields = ("season", "stage", "group", "stadium", "home_team", "away_team", "winner")

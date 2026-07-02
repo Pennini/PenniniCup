@@ -207,6 +207,11 @@ class Match(models.Model):
 
     status = models.IntegerField(choices=STATUS_CHOICES, default=STATUS_SCHEDULED)
 
+    locked = models.BooleanField(
+        default=False,
+        help_text="Se marcado, nenhuma sincronização altera este jogo. Só edição manual no admin.",
+    )
+
     class Meta:
         ordering = ["match_date_utc"]
 

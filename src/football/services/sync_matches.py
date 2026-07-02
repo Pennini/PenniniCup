@@ -145,6 +145,21 @@ def sync_matches():
     )
 
     fifa_ids = [r.fifa_id for r in rows]
+
+    # Jogos travados (locked=True) são congelados: nenhuma sincronização os altera.
+    # Removidos do upsert; só edição manual no admin muda seus dados.
+    locked_ids = set(
+        Match.objects.filter(season=season, fifa_id__in=fifa_ids, locked=True).values_list("fifa_id", flat=True)
+    )
+    if locked_ids:
+        rows = [r for r in rows if r.fifa_id not in locked_ids]
+        fifa_ids = [fid for fid in fifa_ids if fid not in locked_ids]
+        logger.info("Jogos travados ignorados na sincronização: %s", len(locked_ids))
+
+    if not rows:
+        logger.info("Nenhuma partida elegível para sincronizar após filtro de travados.")
+        return
+
     existing = {m.fifa_id: m for m in Match.objects.filter(season=season, fifa_id__in=fifa_ids)}
 
     Match.objects.bulk_create(

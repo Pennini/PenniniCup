@@ -83,6 +83,76 @@ class MatchSyncTimezoneTest(TestCase):
         self.assertEqual(brasilia.hour, 13)
 
 
+@override_settings(FIFA_API_SEASON=1999)
+class LockedMatchSyncTest(TestCase):
+    def setUp(self):
+        competition = Competition.objects.create(fifa_id=1999, name="Copa Lock")
+        self.season = Season.objects.create(
+            fifa_id=1999,
+            competition=competition,
+            name="Temporada Lock",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.stage = Stage.objects.create(fifa_id="STAGE-LK", season=self.season, name="Group Stage", order=1)
+
+    def _make_match(self, *, locked):
+        return Match.objects.create(
+            fifa_id="LK-1",
+            season=self.season,
+            stage=self.stage,
+            match_number=1,
+            match_date_utc="2026-06-14T16:00:00Z",
+            match_date_local="2026-06-14T16:00:00Z",
+            match_date_brasilia="2026-06-14T13:00:00-03:00",
+            home_score=1,
+            away_score=0,
+            status=Match.STATUS_FINISHED,
+            locked=locked,
+        )
+
+    def _api_payload(self):
+        return [
+            {
+                "IdMatch": "LK-1",
+                "MatchNumber": 1,
+                "IdStage": "STAGE-LK",
+                "Date": "2026-06-14T16:00:00Z",
+                "LocalDate": "2026-06-14T16:00:00Z",
+                "MatchStatus": 0,
+                # placar da prorrogação vindo da API
+                "HomeTeamScore": 2,
+                "AwayTeamScore": 1,
+            }
+        ]
+
+    @patch("src.football.services.sync_matches.enqueue_projection_recalc_for_season")
+    @patch("src.football.services.sync_matches.FootballDataClient")
+    def test_locked_match_not_changed_by_sync(self, client_cls, enqueue_mock):
+        self._make_match(locked=True)
+        client_cls.return_value.get_matches.return_value = self._api_payload()
+
+        sync_matches()
+
+        match = Match.objects.get(fifa_id="LK-1")
+        self.assertEqual(match.home_score, 1)
+        self.assertEqual(match.away_score, 0)
+        enqueue_mock.assert_not_called()
+
+    @patch("src.football.services.sync_matches.enqueue_projection_recalc_for_season")
+    @patch("src.football.services.sync_matches.FootballDataClient")
+    def test_unlocked_match_is_updated_by_sync(self, client_cls, enqueue_mock):
+        self._make_match(locked=False)
+        client_cls.return_value.get_matches.return_value = self._api_payload()
+
+        sync_matches()
+
+        match = Match.objects.get(fifa_id="LK-1")
+        self.assertEqual(match.home_score, 2)
+        self.assertEqual(match.away_score, 1)
+
+
 class TeamSyncFlagStorageTest(TestCase):
     @patch("src.football.services.sync_teams.default_storage")
     @patch("src.football.services.sync_teams.requests.get")
