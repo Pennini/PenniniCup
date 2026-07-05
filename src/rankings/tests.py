@@ -750,6 +750,177 @@ class BuildGuessAggregatesTest(TestCase):
         self.assertEqual(build_guess_aggregates([]), [])
 
 
+class BuildGuessRowsAdvancingTeamTest(TestCase):
+    """Tipo 2 + mata-mata: cada row carrega `advancing_team` = classificado
+    PROJETADO pelo participante para o jogo, mesmo em placar decisivo (ex.:
+    2x1 sem winner_pred). Deriva do walk do bracket (mesma fonte do scoring),
+    então no R16+ mostra o time da projeção do usuário, não o oficial.
+    """
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username="adv-owner", email="adv-owner@example.com", password="pass")
+        competition = Competition.objects.create(fifa_id=920, name="Copa Advancing")
+        self.season = Season.objects.create(
+            fifa_id=920,
+            competition=competition,
+            name="Advancing",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        self.group_stage = Stage.objects.create(fifa_id="ST920G", season=self.season, name="Group Stage", order=1)
+        stage_r32 = Stage.objects.create(fifa_id="ST920R32", season=self.season, name="Segundas de Final", order=2)
+        stage_r16 = Stage.objects.create(fifa_id="ST920R16", season=self.season, name="Oitavas de Final", order=3)
+
+        self.team_a = Team.objects.create(fifa_id="ADV-A", name="Time A", name_norm="adv-a", code="AAA")
+        self.team_b = Team.objects.create(fifa_id="ADV-B", name="Time B", name_norm="adv-b", code="BBB")
+        self.team_c = Team.objects.create(fifa_id="ADV-C", name="Time C", name_norm="adv-c", code="CCC")
+        self.team_d = Team.objects.create(fifa_id="ADV-D", name="Time D", name_norm="adv-d", code="DDD")
+
+        past = timezone.now() - timedelta(hours=3)
+
+        def make_ko(number, stage, home, away, winner, home_ph="", away_ph=""):
+            return Match.objects.create(
+                fifa_id=f"ADV-M{number}",
+                season=self.season,
+                stage=stage,
+                match_number=number,
+                match_date_utc=past,
+                match_date_local=past,
+                match_date_brasilia=past,
+                home_team=home,
+                away_team=away,
+                home_placeholder=home_ph,
+                away_placeholder=away_ph,
+                home_score=1 if winner == home else 0,
+                away_score=1 if winner == away else 0,
+                winner=winner,
+                status=Match.STATUS_FINISHED,
+            )
+
+        # R32: A vence B; C vence D. Usuário projeta B e C.
+        self.r32_ab = make_ko(9201, stage_r32, self.team_a, self.team_b, self.team_a)
+        self.r32_cd = make_ko(9202, stage_r32, self.team_c, self.team_d, self.team_c)
+        # Oitavas oficiais: A × C. Projeção do usuário: B × C.
+        self.r16 = make_ko(9203, stage_r16, self.team_a, self.team_c, self.team_a, "W9201", "W9202")
+
+        from src.pool.services.rules import POOL_TYPE_2
+
+        self.pool = Pool.objects.create(
+            name="Pool Advancing",
+            slug="pool-advancing",
+            season=self.season,
+            created_by=self.owner,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        member = User.objects.create_user(username="adv-member", email="adv-member@example.com", password="pass")
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=member, is_active=True)
+
+        # R32: empate + winner_pred marca o classificado projetado.
+        PoolBet.objects.create(
+            participant=self.participant,
+            match=self.r32_ab,
+            home_score_pred=1,
+            away_score_pred=1,
+            winner_pred=self.team_b,
+            is_active=True,
+        )
+        PoolBet.objects.create(
+            participant=self.participant,
+            match=self.r32_cd,
+            home_score_pred=1,
+            away_score_pred=1,
+            winner_pred=self.team_c,
+            is_active=True,
+        )
+
+    def test_decisive_score_shows_projected_team_not_official(self):
+        # Oitavas: palpite decisivo 2x1 salvo antes dos times oficiais → sem
+        # winner_pred. Lado mandante projetado = B (não o oficial A).
+        PoolBet.objects.create(
+            participant=self.participant,
+            match=self.r16,
+            home_score_pred=2,
+            away_score_pred=1,
+            is_active=True,
+        )
+
+        [row] = _build_guess_rows(self.pool, self.r16)
+
+        self.assertIsNotNone(row["advancing_team"])
+        self.assertEqual(row["advancing_team"].id, self.team_b.id)
+
+    def test_r32_decisive_score_shows_real_side_team(self):
+        # R32: par projetado == times reais; 2x1 no mandante → classificado A.
+        bet = PoolBet.objects.get(participant=self.participant, match=self.r32_ab)
+        bet.home_score_pred = 2
+        bet.away_score_pred = 1
+        bet.winner_pred = None
+        bet.save()
+
+        [row] = _build_guess_rows(self.pool, self.r32_ab)
+
+        self.assertEqual(row["advancing_team"].id, self.team_a.id)
+
+    def test_no_bet_has_no_advancing_team(self):
+        [row] = _build_guess_rows(self.pool, self.r16)
+        self.assertIsNone(row["bet"])
+        self.assertIsNone(row["advancing_team"])
+
+    def test_group_match_has_no_advancing_team(self):
+        from src.football.models import Group
+
+        group = Group.objects.create(fifa_id="ADV-G1", stage=self.group_stage, name="Grupo A")
+        past = timezone.now() - timedelta(hours=3)
+        group_match = Match.objects.create(
+            fifa_id="ADV-GM1",
+            season=self.season,
+            stage=self.group_stage,
+            group=group,
+            match_number=9101,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=self.team_a,
+            away_team=self.team_b,
+            status=Match.STATUS_FINISHED,
+        )
+        PoolBet.objects.create(
+            participant=self.participant,
+            match=group_match,
+            home_score_pred=2,
+            away_score_pred=1,
+            is_active=True,
+        )
+
+        [row] = _build_guess_rows(self.pool, group_match)
+
+        self.assertIsNone(row["advancing_team"])
+
+    def test_tipo1_pool_has_no_advancing_annotation(self):
+        pool_t1 = Pool.objects.create(
+            name="Pool Advancing T1",
+            slug="pool-advancing-t1",
+            season=self.season,
+            created_by=self.owner,
+            requires_payment=False,
+        )
+        member = User.objects.create_user(username="adv-t1", email="adv-t1@example.com", password="pass")
+        participant = PoolParticipant.objects.create(pool=pool_t1, user=member, is_active=True)
+        PoolBet.objects.create(
+            participant=participant,
+            match=self.r16,
+            home_score_pred=2,
+            away_score_pred=1,
+            is_active=True,
+        )
+
+        [row] = _build_guess_rows(pool_t1, self.r16)
+
+        self.assertIsNone(row["advancing_team"])
+
+
 class RankingTabPoolSelectorTest(TestCase):
     """The slugless ranking-tab is the navbar/homepage entry. The pool selector
     must render on BOTH the ranking and palpites tabs, positioned above the

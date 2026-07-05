@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from src.football.models import Match
 from src.pool.models import PoolBet
-from src.pool.services.rules import normalize_stage_key, phase_for_match
+from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_2, normalize_stage_key, phase_for_match
 from src.rankings.services.divisions import build_divisions
 from src.rankings.services.leaderboard import build_pool_leaderboard
 
@@ -121,10 +121,59 @@ def resolve_selected_match(request, season):
     return resolve_default_match(season)
 
 
+def _resolve_advancing_teams(pool, match, ranking_rows):
+    """{participant_id: Team} com o classificado PROJETADO de cada participante
+    para `match`, via o mesmo walk do bracket usado pelo scoring — vale para
+    qualquer placar palpitado (um 2x1 decisivo não tem winner_pred salvo).
+    Só se aplica a mata-mata de bolão tipo 2; caso contrário, vazio.
+    """
+    if pool.pool_type != POOL_TYPE_2 or phase_for_match(match) == PHASE_GROUP:
+        return {}
+
+    from src.pool.services.context_builder import resolve_knockout_teams_and_advancing
+
+    knockout_matches = [
+        m
+        for m in Match.objects.filter(season=pool.season)
+        .select_related("stage", "home_team", "away_team", "winner")
+        .order_by("match_number")
+        if phase_for_match(m) != PHASE_GROUP
+    ]
+    bets_by_participant = {}
+    knockout_ids = [m.id for m in knockout_matches]
+    for bet in PoolBet.objects.filter(participant__pool=pool, match_id__in=knockout_ids).select_related("winner_pred"):
+        bets_by_participant.setdefault(bet.participant_id, {})[bet.match_id] = bet
+
+    advancing_teams = {}
+    for row in ranking_rows:
+        participant = row.participant
+        participant_bets = bets_by_participant.get(participant.id, {})
+        teams_by_match, advancing_map = resolve_knockout_teams_and_advancing(
+            participant=participant,
+            matches=knockout_matches,
+            season=pool.season,
+            bets_by_match_id=participant_bets,
+        )
+        advancing_id = advancing_map.get(match.id)
+        if advancing_id is None:
+            continue
+        pair = teams_by_match.get(match.id, (None, None))
+        team = next((t for t in pair if t is not None and t.id == advancing_id), None)
+        if team is None:
+            bet = participant_bets.get(match.id)
+            if bet is not None and bet.winner_pred_id == advancing_id:
+                team = bet.winner_pred
+        if team is not None:
+            advancing_teams[participant.id] = team
+    return advancing_teams
+
+
 def _build_guess_rows(pool, match):
     """Rows in the same order as the ranking, each carrying the participant's
     leaderboard position (so the guesses table mirrors the ranking, #position
     and all). Reuses build_pool_leaderboard, the single source of order/eligibility.
+    Tipo 2 + mata-mata: each row also carries `advancing_team`, the participant's
+    projected qualifier for this match (None otherwise).
     """
     ranking_rows = build_pool_leaderboard(pool)
     bets = {
@@ -133,8 +182,14 @@ def _build_guess_rows(pool, match):
             "winner_pred", "score"
         )
     }
+    advancing_teams = _resolve_advancing_teams(pool, match, ranking_rows)
     return [
-        {"position": row.position, "participant": row.participant, "bet": bets.get(row.participant.id)}
+        {
+            "position": row.position,
+            "participant": row.participant,
+            "bet": bets.get(row.participant.id),
+            "advancing_team": advancing_teams.get(row.participant.id),
+        }
         for row in ranking_rows
     ]
 

@@ -114,7 +114,7 @@ guesses_locked, match_finished, guess_rows, guess_divisions, pool, toggle_query_
                             {% endif %}
                         </div>
                         <p class="mt-2 text-lg font-semibold">
-                            {% if row.bet %}{{ row.bet.home_score_pred|default_if_none:"–" }} <span class="text-neutral-500 text-sm">x</span> {{ row.bet.away_score_pred|default_if_none:"–" }}{% if row.bet.winner_pred %} <span class="text-[11px] text-neutral-400">→ {{ row.bet.winner_pred.code }}</span>{% endif %}{% else %}<span class="text-sm text-neutral-500">Sem palpite</span>{% endif %}
+                            {% if row.bet %}{{ row.bet.home_score_pred|default_if_none:"–" }} <span class="text-neutral-500 text-sm">x</span> {{ row.bet.away_score_pred|default_if_none:"–" }}{% if row.advancing_team %} <span class="text-[11px] text-neutral-400">→ {{ row.advancing_team.code }}</span>{% elif row.bet.winner_pred %} <span class="text-[11px] text-neutral-400">→ {{ row.bet.winner_pred.code }}</span>{% endif %}{% else %}<span class="text-sm text-neutral-500">Sem palpite</span>{% endif %}
                         </p>
                     </article>
                     {% endfor %}
@@ -145,7 +145,7 @@ guesses_locked, match_finished, guess_rows, guess_divisions, pool, toggle_query_
                                     </span>
                                 </td>
                                 <td class="px-4 py-3 font-semibold">
-                                    {% if row.bet %}{{ row.bet.home_score_pred|default_if_none:"–" }} <span class="text-neutral-500">x</span> {{ row.bet.away_score_pred|default_if_none:"–" }}{% if row.bet.winner_pred %} <span class="text-[11px] text-neutral-400">→ {{ row.bet.winner_pred.code }}</span>{% endif %}{% else %}<span class="text-neutral-500 font-normal">Sem palpite</span>{% endif %}
+                                    {% if row.bet %}{{ row.bet.home_score_pred|default_if_none:"–" }} <span class="text-neutral-500">x</span> {{ row.bet.away_score_pred|default_if_none:"–" }}{% if row.advancing_team %} <span class="text-[11px] text-neutral-400">→ {{ row.advancing_team.code }}</span>{% elif row.bet.winner_pred %} <span class="text-[11px] text-neutral-400">→ {{ row.bet.winner_pred.code }}</span>{% endif %}{% else %}<span class="text-neutral-500 font-normal">Sem palpite</span>{% endif %}
                                 </td>
                                 {% if match_finished %}
                                 <td class="px-4 py-3">{% if row.bet and row.bet.score %}<span class="font-bold text-orange-300">{{ row.bet.score.points }}</span>{% if row.bet.score.exact_score %} <span class="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">Exato</span>{% endif %}{% else %}<span class="text-neutral-500">—</span>{% endif %}</td>
@@ -179,7 +179,7 @@ guesses_locked, match_finished, guess_rows, guess_divisions, pool, toggle_query_
                             {% if pool.show_supporter_stars and row.participant.user.profile.is_supporter %}<i data-lucide="star" class="h-3.5 w-3.5 shrink-0 text-yellow-400 fill-yellow-400"></i>{% endif %}
                         </span>
                         <span class="inline-flex shrink-0 items-center gap-2 text-sm">
-                            {% if not group.is_no_guess and row.bet.winner_pred %}<span class="text-[11px] text-neutral-400">→ {{ row.bet.winner_pred.code }}</span>{% endif %}
+                            {% if not group.is_no_guess %}{% if row.advancing_team %}<span class="text-[11px] text-neutral-400">→ {{ row.advancing_team.code }}</span>{% elif row.bet.winner_pred %}<span class="text-[11px] text-neutral-400">→ {{ row.bet.winner_pred.code }}</span>{% endif %}{% endif %}
                             {% if match_finished and not group.is_no_guess and row.bet.score %}<span class="font-bold text-orange-300">{{ row.bet.score.points }} pts</span>{% if row.bet.score.exact_score %} <span class="rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-300">Exato</span>{% endif %}{% endif %}
                         </span>
                     </li>
