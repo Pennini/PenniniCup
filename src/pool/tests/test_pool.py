@@ -4965,3 +4965,283 @@ class RecalculateTipo2R32SegundasDeFinalReproTest(TestCase):
         self.assertEqual(score.points, r32_row.exact_wrong_advancing)
         self.assertTrue(score.exact_score)
         self.assertFalse(score.advancing_correct)
+
+
+class RecalculateTipo2R16WrongProjectedAdvancingTest(TestCase):
+    """Repro do bug de produção: gate do tipo 2 vaza pontuação posicional no R16+.
+
+    R32: Marrocos elimina a Holanda, mas o usuário projetou a Holanda passando.
+    Oitavas real: Canada 0x1 Marrocos. O usuário palpitou Canada 0x1 Holanda —
+    o classificado projetado (Holanda) tem id diferente do real (Marrocos),
+    então deve pontuar 0. O bug: o advancing era inferido pelo par OFICIAL
+    (Canada x Marrocos) via fallback de placar, virando Marrocos (posicional).
+    """
+
+    def _build_fixture(self):
+        user = User.objects.create_user(username="r16repro", email="r16repro@example.com", password="pass")
+        competition = Competition.objects.create(fifa_id=8800, name="Copa R16 Repro")
+        season = Season.objects.create(
+            fifa_id=8800,
+            competition=competition,
+            name="R16 Repro",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage_r32 = Stage.objects.create(fifa_id="R32-R16REP", season=season, name="Segundas de Final", order=2)
+        stage_r16 = Stage.objects.create(fifa_id="R16-R16REP", season=season, name="Oitavas de Final", order=3)
+        canada = Team.objects.create(fifa_id="R16REP-CAN", name="Canada", name_norm="canada", code="CAN")
+        chile = Team.objects.create(fifa_id="R16REP-CHI", name="Chile", name_norm="chile", code="CHI")
+        marrocos = Team.objects.create(fifa_id="R16REP-MAR", name="Marrocos", name_norm="marrocos", code="MAR")
+        holanda = Team.objects.create(fifa_id="R16REP-HOL", name="Holanda", name_norm="holanda", code="HOL")
+
+        past = timezone.now() - timezone.timedelta(hours=2)
+        r32_canada = Match.objects.create(
+            fifa_id="R16REP-KO1",
+            season=season,
+            stage=stage_r32,
+            match_number=8801,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=canada,
+            away_team=chile,
+            home_score=2,
+            away_score=0,
+            winner=canada,
+            status=Match.STATUS_FINISHED,
+        )
+        r32_marrocos = Match.objects.create(
+            fifa_id="R16REP-KO2",
+            season=season,
+            stage=stage_r32,
+            match_number=8802,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=marrocos,
+            away_team=holanda,
+            home_score=1,
+            away_score=1,
+            winner=marrocos,
+            status=Match.STATUS_FINISHED,
+        )
+        # Oitavas real: Canada 0x1 Marrocos (times oficiais já sincronizados).
+        r16 = Match.objects.create(
+            fifa_id="R16REP-KO3",
+            season=season,
+            stage=stage_r16,
+            match_number=8803,
+            match_date_utc=past,
+            match_date_local=past,
+            match_date_brasilia=past,
+            home_team=canada,
+            away_team=marrocos,
+            home_placeholder="W8801",
+            away_placeholder="W8802",
+            home_score=0,
+            away_score=1,
+            winner=marrocos,
+            status=Match.STATUS_FINISHED,
+        )
+
+        pool = Pool.objects.create(
+            name="Pool R16 Repro",
+            slug="pool-r16-repro",
+            season=season,
+            created_by=user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        participant = PoolParticipant.objects.create(pool=pool, user=user, is_active=True)
+        PoolBet.objects.create(
+            participant=participant,
+            match=r32_canada,
+            home_score_pred=2,
+            away_score_pred=0,
+            is_active=True,
+        )
+        PoolBet.objects.create(
+            participant=participant,
+            match=r32_marrocos,
+            home_score_pred=1,
+            away_score_pred=1,
+            winner_pred=holanda,
+            is_active=True,
+        )
+        # Palpite salvo antes do kickoff do R32, quando as oitavas ainda não
+        # tinham times oficiais: winner_pred guarda o time projetado (Holanda).
+        r16_bet = PoolBet.objects.create(
+            participant=participant,
+            match=r16,
+            home_score_pred=0,
+            away_score_pred=1,
+            winner_pred=holanda,
+            is_active=True,
+        )
+        return participant, r32_canada, r32_marrocos, r16, r16_bet, holanda, marrocos
+
+    def test_advancing_resolved_from_projected_pair(self):
+        from src.pool.services.context_builder import resolve_knockout_teams_and_advancing
+
+        participant, r32_canada, r32_marrocos, r16, _, holanda, _ = self._build_fixture()
+
+        projected_teams_by_match, advancing_by_match = resolve_knockout_teams_and_advancing(
+            participant=participant,
+            matches=[r32_canada, r32_marrocos, r16],
+            season=participant.pool.season,
+        )
+
+        projected_home, projected_away = projected_teams_by_match[r16.id]
+        self.assertEqual(projected_home.code, "CAN")
+        self.assertEqual(projected_away.code, "HOL")
+        # Classificado projetado é a Holanda (id), não o Marrocos posicional.
+        self.assertEqual(advancing_by_match[r16.id], holanda.id)
+
+    def test_r16_wrong_projected_advancing_scores_zero(self):
+        from src.pool.models import PoolBetScore
+
+        participant, _, _, _, r16_bet, _, _ = self._build_fixture()
+
+        recalculate_participant_scores(participant)
+
+        score = PoolBetScore.objects.get(bet=r16_bet)
+        self.assertEqual(score.points, 0)
+        self.assertFalse(score.advancing_correct)
+
+
+class RecalculateTipo2LaterPhasesProjectedGateTest(TestCase):
+    """Gate por identidade do tipo 2 em QUARTAS, SEMI, FINAL e 3º LUGAR.
+
+    Usuário projeta o time B atravessando o bracket inteiro, mas o time A é quem
+    avança de verdade. Em cada fase o palpite 1x0 aponta para o lado projetado
+    do usuário (B/F), enquanto oficialmente quem venceu aquele lado foi outro
+    time (A/E). Sem o gate pelo confronto projetado, o fallback por placar
+    devolveria o time oficial do lado vencedor e pagaria pontos em todas.
+    """
+
+    def setUp(self):
+        user = User.objects.create_user(username="fases", email="fases@example.com", password="pass")
+        competition = Competition.objects.create(fifa_id=8810, name="Copa Fases")
+        season = Season.objects.create(
+            fifa_id=8810,
+            competition=competition,
+            name="Fases",
+            year=2026,
+            start_date="2026-06-01",
+            end_date="2026-07-30",
+        )
+        stage_r32 = Stage.objects.create(fifa_id="R32-FASES", season=season, name="Segundas de Final", order=2)
+        stage_qf = Stage.objects.create(fifa_id="QF-FASES", season=season, name="Quartas de Final", order=4)
+        stage_sf = Stage.objects.create(fifa_id="SF-FASES", season=season, name="Semifinal", order=5)
+        stage_third = Stage.objects.create(fifa_id="3P-FASES", season=season, name="Decisão de 3º lugar", order=6)
+        stage_final = Stage.objects.create(fifa_id="F-FASES", season=season, name="Final", order=7)
+
+        teams = {}
+        for code in ("A", "B", "C", "D", "E", "F", "G", "H"):
+            teams[code] = Team.objects.create(
+                fifa_id=f"FASES-{code}", name=f"Time {code}", name_norm=f"time-{code}", code=f"T{code}"
+            )
+        self.teams = teams
+
+        past = timezone.now() - timezone.timedelta(hours=2)
+
+        def make_match(number, stage, home, away, winner, home_ph="", away_ph=""):
+            return Match.objects.create(
+                fifa_id=f"FASES-M{number}",
+                season=season,
+                stage=stage,
+                match_number=number,
+                match_date_utc=past,
+                match_date_local=past,
+                match_date_brasilia=past,
+                home_team=home,
+                away_team=away,
+                home_placeholder=home_ph,
+                away_placeholder=away_ph,
+                home_score=1 if winner == home else 0,
+                away_score=1 if winner == away else 0,
+                winner=winner,
+                status=Match.STATUS_FINISHED,
+            )
+
+        # R32: em todos, o time do lado HOME avança de verdade; o usuário
+        # projeta o time do lado AWAY.
+        self.m11 = make_match(8811, stage_r32, teams["A"], teams["B"], teams["A"])
+        self.m12 = make_match(8812, stage_r32, teams["C"], teams["D"], teams["C"])
+        self.m13 = make_match(8813, stage_r32, teams["E"], teams["F"], teams["E"])
+        self.m14 = make_match(8814, stage_r32, teams["G"], teams["H"], teams["G"])
+        # Quartas oficiais: A×C e E×G (vencem A e E). Projetado: B×D e F×H.
+        self.m21 = make_match(8821, stage_qf, teams["A"], teams["C"], teams["A"], "W8811", "W8812")
+        self.m22 = make_match(8822, stage_qf, teams["E"], teams["G"], teams["E"], "W8813", "W8814")
+        # Semi oficial: A×E (vence A). Projetado: B×F.
+        self.m31 = make_match(8831, stage_sf, teams["A"], teams["E"], teams["A"], "W8821", "W8822")
+        # 3º lugar oficial: E×G (vence E). Projetado: F×H (perdedores projetados).
+        self.m32 = make_match(8832, stage_third, teams["E"], teams["G"], teams["E"], "RU8831", "RU8822")
+        # Final oficial: A×G (vence A). Projetado: B×H.
+        self.m41 = make_match(8841, stage_final, teams["A"], teams["G"], teams["A"], "W8831", "W8814")
+
+        self.pool = Pool.objects.create(
+            name="Pool Fases",
+            slug="pool-fases",
+            season=season,
+            created_by=user,
+            requires_payment=False,
+            pool_type=POOL_TYPE_2,
+        )
+        self.participant = PoolParticipant.objects.create(pool=self.pool, user=user, is_active=True)
+
+        # R32: empate + winner_pred no time visitante (projeção divergente).
+        for match in (self.m11, self.m12, self.m13, self.m14):
+            PoolBet.objects.create(
+                participant=self.participant,
+                match=match,
+                home_score_pred=1,
+                away_score_pred=1,
+                winner_pred=match.away_team,
+                is_active=True,
+            )
+        # QF/SF/FINAL/3º: palpite decisivo 1x0 no lado HOME projetado, sem
+        # winner_pred (como fica quando salvo antes dos times oficiais).
+        self.later_bets = {}
+        for match in (self.m21, self.m22, self.m31, self.m32, self.m41):
+            self.later_bets[match.id] = PoolBet.objects.create(
+                participant=self.participant,
+                match=match,
+                home_score_pred=1,
+                away_score_pred=0,
+                is_active=True,
+            )
+        self.season = season
+
+    def test_advancing_projected_in_all_later_phases(self):
+        from src.pool.services.context_builder import resolve_knockout_teams_and_advancing
+
+        matches = [self.m11, self.m12, self.m13, self.m14, self.m21, self.m22, self.m31, self.m32, self.m41]
+        projected_teams_by_match, advancing_by_match = resolve_knockout_teams_and_advancing(
+            participant=self.participant,
+            matches=matches,
+            season=self.season,
+        )
+
+        t = self.teams
+        expected = {
+            self.m21.id: ((t["B"], t["D"]), t["B"]),  # Quartas
+            self.m22.id: ((t["F"], t["H"]), t["F"]),  # Quartas
+            self.m31.id: ((t["B"], t["F"]), t["B"]),  # Semi
+            self.m32.id: ((t["F"], t["H"]), t["F"]),  # 3º lugar
+            self.m41.id: ((t["B"], t["H"]), t["B"]),  # Final
+        }
+        for match_id, (pair, advancing) in expected.items():
+            self.assertEqual(projected_teams_by_match[match_id], pair)
+            self.assertEqual(advancing_by_match[match_id], advancing.id)
+
+    def test_wrong_projected_advancing_scores_zero_in_all_later_phases(self):
+        from src.pool.models import PoolBetScore
+
+        recalculate_participant_scores(self.participant)
+
+        for match in (self.m21, self.m22, self.m31, self.m32, self.m41):
+            score = PoolBetScore.objects.get(bet=self.later_bets[match.id])
+            self.assertEqual(score.points, 0, f"fase {match.stage.name} pagou pontos com classificado errado")
+            self.assertFalse(score.advancing_correct, f"fase {match.stage.name} marcou classificado correto")

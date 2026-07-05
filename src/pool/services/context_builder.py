@@ -490,7 +490,7 @@ def _walk_knockout_bracket(*, participant, matches, season, bets_by_match_id=Non
         stage_key = _normalize_stage_key(match.stage)
         if stage_key == STAGE_R32:
             # R32 Tipo 2: o usuário aposta nos times reais classificados.
-            projected_teams_by_match[match.id] = (home_team, away_team)
+            projected_home, projected_away = home_team, away_team
         else:
             # R16+: confronto que o usuário projetou (cascata dos seus palpites),
             # independente dos times oficiais já conhecidos.
@@ -508,14 +508,18 @@ def _walk_knockout_bracket(*, participant, matches, season, bets_by_match_id=Non
                 winners_map=winners_map,
                 losers_map=losers_map,
             )
-            projected_teams_by_match[match.id] = (projected_home, projected_away)
+        projected_teams_by_match[match.id] = (projected_home, projected_away)
 
         bet = bets_by_match_id.get(match.id)
-        advancing = _infer_advancing_team(match=match, bet=bet, home_team=home_team, away_team=away_team)
+        # Classificado inferido pelo confronto PROJETADO, nunca pelo par oficial:
+        # com os times oficiais, o fallback por placar devolveria o time real do
+        # lado vencedor (posicional), fazendo o gate por identidade do tipo 2
+        # passar mesmo quando o usuário projetou outro time naquele lado.
+        advancing = _infer_advancing_team(match=match, bet=bet, home_team=projected_home, away_team=projected_away)
         if advancing is not None:
             advancing_by_match[match.id] = advancing.id
             winners_map[match.match_number] = advancing
-            losing = _infer_losing_team(winner_team=advancing, home_team=home_team, away_team=away_team)
+            losing = _infer_losing_team(winner_team=advancing, home_team=projected_home, away_team=projected_away)
             if losing is not None:
                 losers_map[match.match_number] = losing
 
