@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 from src.football.models import Match
 from src.pool.models import PoolParticipant
-from src.pool.services.ranking import _match_winner_loser, _real_qualifier_position_map
+from src.pool.services.ranking import _match_winner_loser, _real_qualifier_position_map, derive_podium_prediction
 from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_1, POOL_TYPE_2, normalize_stage_key, phase_for_match
 from src.pool.services.scoring import calculate_bet_points
 from src.rankings.services.leaderboard import eligible_participants
@@ -114,13 +114,17 @@ def _asof_podium(season, allowed_match_ids, official_result):
     return champion_id, runner_up_id, third_id
 
 
-def _asof_podium_bonus(participant, podium, official_result, scoring_config):
+def _asof_podium_bonus(participant, podium, official_result, scoring_config, derived_podium=(None, None, None)):
     """Bônus de pódio/artilheiro. Retorna (points, champion_hit, top_scorer_hit)."""
     champion_id, runner_up_id, third_id = podium
+    derived_champion_id, derived_runner_up_id, derived_third_id = derived_podium
+    champion_pred_id = participant.champion_pred_id or derived_champion_id
+    runner_up_pred_id = participant.runner_up_pred_id or derived_runner_up_id
+    third_place_pred_id = participant.third_place_pred_id or derived_third_id
     points = 0
-    champion_hit = bool(participant.champion_pred_id and participant.champion_pred_id == champion_id)
-    runner_up_hit = bool(participant.runner_up_pred_id and participant.runner_up_pred_id == runner_up_id)
-    third_place_hit = bool(participant.third_place_pred_id and participant.third_place_pred_id == third_id)
+    champion_hit = bool(champion_pred_id and champion_pred_id == champion_id)
+    runner_up_hit = bool(runner_up_pred_id and runner_up_pred_id == runner_up_id)
+    third_place_hit = bool(third_place_pred_id and third_place_pred_id == third_id)
 
     top_scorer_tied_ids = list(official_result.top_scorers.values_list("id", flat=True))
     if top_scorer_tied_ids:
@@ -233,8 +237,9 @@ def compute_asof_standings(pool, allowed_match_ids, scoring_config, official_res
         group_points += qualifier_bonus
         total_points += qualifier_bonus
 
+        derived_podium = derive_podium_prediction(knockout_matches, teams_by_match, advancing_map)
         podium_points, champion_hit, top_scorer_hit = _asof_podium_bonus(
-            participant, podium, official_result, scoring_config
+            participant, podium, official_result, scoring_config, derived_podium=derived_podium
         )
         total_points += podium_points
 

@@ -5,22 +5,47 @@ from src.pool.services.rules import PHASE_GROUP, POOL_TYPE_1, POOL_TYPE_2, is_gr
 from src.pool.services.scoring import calculate_bet_points
 
 
-def _calculate_bonus(participant, scoring_config, official_result):
+def derive_podium_prediction(knockout_matches, teams_by_match, advancing_map):
+    """Pódio projetado pelo participante a partir do bracket palpitado.
+
+    O usuário não preenche champion_pred/runner_up_pred/third_place_pred (não há
+    formulário); o palpite de pódio vive nas apostas: campeão = classificado
+    projetado da final (stage order 7), vice = o outro finalista projetado,
+    terceiro = classificado projetado da disputa de 3º (stage order 6).
+    Retorna (champion_id, runner_up_id, third_id), com None onde não resolver.
+    """
+    champion_id = runner_up_id = third_id = None
+    for match in knockout_matches:
+        order = match.stage.order if match.stage_id else None
+        if order == 7:
+            champion_id = advancing_map.get(match.id)
+            home_t, away_t = teams_by_match.get(match.id, (None, None))
+            if champion_id and home_t and away_t:
+                if champion_id == home_t.id:
+                    runner_up_id = away_t.id
+                elif champion_id == away_t.id:
+                    runner_up_id = home_t.id
+        elif order == 6:
+            third_id = advancing_map.get(match.id)
+    return champion_id, runner_up_id, third_id
+
+
+def _calculate_bonus(participant, scoring_config, official_result, derived_podium=(None, None, None)):
     bonus_points = 0
+    derived_champion_id, derived_runner_up_id, derived_third_id = derived_podium
+    champion_pred_id = participant.champion_pred_id or derived_champion_id
+    runner_up_pred_id = participant.runner_up_pred_id or derived_runner_up_id
+    third_place_pred_id = participant.third_place_pred_id or derived_third_id
     champion_hit = bool(
-        participant.champion_pred_id
-        and official_result.champion_id
-        and participant.champion_pred_id == official_result.champion_id
+        champion_pred_id and official_result.champion_id and champion_pred_id == official_result.champion_id
     )
     runner_up_hit = bool(
-        participant.runner_up_pred_id
-        and official_result.runner_up_id
-        and participant.runner_up_pred_id == official_result.runner_up_id
+        runner_up_pred_id and official_result.runner_up_id and runner_up_pred_id == official_result.runner_up_id
     )
     third_place_hit = bool(
-        participant.third_place_pred_id
+        third_place_pred_id
         and official_result.third_place_id
-        and participant.third_place_pred_id == official_result.third_place_id
+        and third_place_pred_id == official_result.third_place_id
     )
     top_scorer_tied_ids = list(official_result.top_scorers.values_list("id", flat=True))
     if top_scorer_tied_ids:
@@ -164,6 +189,7 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
     # bracket projetado com fallback por placar.
     advancing_map = {}
     teams_by_match = {}
+    derived_podium = (None, None, None)
     if pool_type in (POOL_TYPE_1, POOL_TYPE_2):
         from src.football.models import Match as FootballMatch
         from src.pool.services.context_builder import resolve_knockout_teams_and_advancing
@@ -182,6 +208,7 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
             season=participant.pool.season,
             bets_by_match_id=bets_by_match_id,
         )
+        derived_podium = derive_podium_prediction(knockout_matches, teams_by_match, advancing_map)
 
     # Tipo 1: pre-calculate team advancement bonus (needs cross-match lookup per stage)
     team_advancement = {}
@@ -263,6 +290,7 @@ def recalculate_participant_scores(participant, scoring_config=None, official_re
         participant=participant,
         scoring_config=scoring_config,
         official_result=official_result,
+        derived_podium=derived_podium,
     )
 
     qualifier_bonus_points = _calculate_group_qualifier_bonus(participant, scoring_config)
